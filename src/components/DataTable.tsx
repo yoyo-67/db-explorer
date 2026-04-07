@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ColumnInfo, JsonValue } from '#/lib/types'
 
 interface DataTableProps {
@@ -13,7 +13,6 @@ interface DataTableProps {
 
 type SortDir = 'asc' | 'desc' | null
 
-
 export default function DataTable({
   columns,
   rows,
@@ -27,21 +26,32 @@ export default function DataTable({
   const [sortDir, setSortDir] = useState<SortDir>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<{ col: string; value: string } | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Close filter dropdown on outside click
+  useEffect(() => {
+    if (!openFilter) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-filter-dropdown]') && !target.closest('[data-filter-trigger]')) {
+        setOpenFilter(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openFilter])
 
   const sortedRows = useMemo(() => {
     if (!sortCol || !sortDir) return rows
     return [...rows].sort((a, b) => {
-      const av = a[sortCol]
-      const bv = b[sortCol]
-      const as = formatRaw(av)
-      const bs = formatRaw(bv)
+      const as = formatRaw(a[sortCol])
+      const bs = formatRaw(b[sortCol])
       const an = Number(as)
       const bn = Number(bs)
       if (!isNaN(an) && !isNaN(bn)) {
         return sortDir === 'asc' ? an - bn : bn - an
       }
-      const cmp = as.localeCompare(bs)
-      return sortDir === 'asc' ? cmp : -cmp
+      return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as)
     })
   }, [rows, sortCol, sortDir])
 
@@ -56,14 +66,17 @@ export default function DataTable({
     }
   }
 
-  const handleFilter = (colName: string, value: string) => {
+  const handleFilter = useCallback((colName: string, value: string) => {
     setActiveFilter(value ? { col: colName, value } : null)
-    if (value && onSearch) {
-      onSearch(colName, value)
-    } else if (!value && onClearSearch) {
-      onClearSearch()
-    }
-  }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (value && onSearch) {
+        onSearch(colName, value)
+      } else if (!value && onClearSearch) {
+        onClearSearch()
+      }
+    }, 400)
+  }, [onSearch, onClearSearch])
 
   const clearFilter = () => {
     setActiveFilter(null)
@@ -72,23 +85,20 @@ export default function DataTable({
   }
 
   if (columns.length === 0) {
-    return (
-      <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">
-        No columns found
-      </p>
-    )
+    return <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">No columns found</p>
   }
 
   return (
     <div>
+      {/* Status bar */}
       <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--sea-ink-soft)]">
         <span>
-          {isSearching ? 'Searching...' : `${sortedRows.length} of ${totalRows} rows`}
+          {isSearching ? 'Searching...' : `Showing ${sortedRows.length} of ${totalRows.toLocaleString()} rows`}
         </span>
         {activeFilter && (
           <>
             <span className="rounded bg-[rgba(79,184,178,0.12)] px-1.5 py-0.5 text-[var(--lagoon-deep)]">
-              {activeFilter.col}: "{activeFilter.value}"
+              {activeFilter.col}: &quot;{activeFilter.value}&quot;
             </span>
             <button
               type="button"
@@ -100,6 +110,8 @@ export default function DataTable({
           </>
         )}
       </div>
+
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left font-mono text-[13px]">
           <thead>
@@ -121,11 +133,8 @@ export default function DataTable({
           <tbody>
             {sortedRows.length === 0 ? (
               <tr>
-                <td
-                  colSpan={columns.length}
-                  className="px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]"
-                >
-                  {rows.length === 0 ? 'No rows' : 'No matching rows'}
+                <td colSpan={columns.length} className="px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
+                  {activeFilter ? 'No matching rows' : 'No rows'}
                 </td>
               </tr>
             ) : (
@@ -140,14 +149,10 @@ export default function DataTable({
   )
 }
 
+/* ── Column Header ────────────────────────────────────────── */
+
 function ColumnHeader({
-  col,
-  sortDir,
-  onSort,
-  filterValue,
-  onFilter,
-  isFilterOpen,
-  onToggleFilter,
+  col, sortDir, onSort, filterValue, onFilter, isFilterOpen, onToggleFilter,
 }: {
   col: ColumnInfo
   sortDir: SortDir
@@ -160,15 +165,14 @@ function ColumnHeader({
   const filterRef = useRef<HTMLInputElement>(null)
   const hasFilter = filterValue.length > 0
 
+  useEffect(() => {
+    if (isFilterOpen) filterRef.current?.focus()
+  }, [isFilterOpen])
+
   return (
-    <th className="relative whitespace-nowrap px-3 py-2 text-xs font-bold tracking-wide text-[var(--sea-ink)]">
+    <th className="whitespace-nowrap px-3 py-2 text-xs font-bold tracking-wide text-[var(--sea-ink)]">
       <div className="flex items-center gap-1">
-        {/* Column name — click to sort */}
-        <button
-          type="button"
-          onClick={onSort}
-          className="flex items-center gap-1 hover:text-[var(--lagoon-deep)]"
-        >
+        <button type="button" onClick={onSort} className="flex items-center gap-1 hover:text-[var(--lagoon-deep)]">
           {col.name}
           <SortIcon dir={sortDir} />
         </button>
@@ -177,18 +181,12 @@ function ColumnHeader({
           {col.dataType}
         </span>
 
-        {/* Filter icon */}
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFilter()
-            setTimeout(() => filterRef.current?.focus(), 50)
-          }}
+          data-filter-trigger
+          onClick={(e) => { e.stopPropagation(); onToggleFilter() }}
           className={`ml-auto rounded p-0.5 transition ${
-            hasFilter
-              ? 'text-[var(--lagoon-deep)]'
-              : 'text-[var(--sea-ink-soft)]/40 hover:text-[var(--sea-ink-soft)]'
+            hasFilter ? 'text-[var(--lagoon-deep)]' : 'text-[var(--sea-ink-soft)]/40 hover:text-[var(--sea-ink-soft)]'
           }`}
           title="Filter column"
         >
@@ -198,34 +196,61 @@ function ColumnHeader({
         </button>
       </div>
 
-      {/* Filter dropdown */}
+      {/* Filter dropdown — rendered in a portal-like fixed position */}
       {isFilterOpen && (
-        <div
-          className="absolute left-0 top-full z-30 mt-1 w-52 rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] p-2 shadow-lg"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <input
-            ref={filterRef}
-            type="text"
-            value={filterValue}
-            onChange={(e) => onFilter(e.target.value)}
-            placeholder={`Filter ${col.name}...`}
-            className="w-full rounded border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
-          />
-          {hasFilter && (
-            <button
-              type="button"
-              onClick={() => onFilter('')}
-              className="mt-1 w-full rounded px-2 py-1 text-[10px] text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        <FilterDropdown
+          filterRef={filterRef}
+          col={col}
+          filterValue={filterValue}
+          onFilter={onFilter}
+          hasFilter={hasFilter}
+        />
       )}
     </th>
   )
 }
+
+function FilterDropdown({
+  filterRef, col, filterValue, onFilter, hasFilter,
+}: {
+  filterRef: React.RefObject<HTMLInputElement | null>
+  col: ColumnInfo
+  filterValue: string
+  onFilter: (v: string) => void
+  hasFilter: boolean
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  return (
+    <div
+      ref={containerRef}
+      data-filter-dropdown
+      className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-[var(--line)] bg-[var(--bg-base)] p-2 shadow-xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        ref={filterRef}
+        type="text"
+        value={filterValue}
+        onChange={(e) => onFilter(e.target.value)}
+        placeholder={`Search ${col.name}...`}
+        className="w-full rounded border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none placeholder:text-[var(--sea-ink-soft)]/50 focus:border-[var(--lagoon)]"
+        onKeyDown={(e) => { if (e.key === 'Escape') onFilter('') }}
+      />
+      {hasFilter && (
+        <button
+          type="button"
+          onClick={() => onFilter('')}
+          className="mt-1.5 w-full rounded px-2 py-1 text-[10px] font-medium text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
+        >
+          Clear filter
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ── Sort Icon ────────────────────────────────────────────── */
 
 function SortIcon({ dir }: { dir: SortDir }) {
   if (!dir) {
@@ -246,11 +271,10 @@ function SortIcon({ dir }: { dir: SortDir }) {
   )
 }
 
+/* ── Expandable Row ───────────────────────────────────────── */
+
 function ExpandableRow({
-  row,
-  columns,
-  index,
-  prettyJson,
+  row, columns, index, prettyJson,
 }: {
   row: Record<string, JsonValue>
   columns: ColumnInfo[]
@@ -268,11 +292,7 @@ function ExpandableRow({
         }`}
       >
         {columns.map((col) => (
-          <HoverExpandCell
-            key={col.name}
-            value={row[col.name]}
-            prettyJson={prettyJson}
-          />
+          <HoverExpandCell key={col.name} value={row[col.name]} prettyJson={prettyJson} />
         ))}
       </tr>
       {expanded && (
@@ -290,22 +310,14 @@ function ExpandableRow({
   )
 }
 
-function ExpandedField({
-  col,
-  value,
-  prettyJson,
-}: {
-  col: ColumnInfo
-  value: JsonValue
-  prettyJson: boolean
-}) {
+/* ── Expanded Field ───────────────────────────────────────── */
+
+function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: JsonValue; prettyJson: boolean }) {
   return (
     <>
       <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
         {col.name}
-        <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">
-          {col.dataType}
-        </span>
+        <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">{col.dataType}</span>
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
         {value !== null && typeof value === 'object' && prettyJson ? (
@@ -320,28 +332,42 @@ function ExpandedField({
   )
 }
 
-function HoverExpandCell({
-  value,
-  prettyJson,
-}: {
-  value: JsonValue
-  prettyJson: boolean
-}) {
+/* ── Hover Expand Cell ────────────────────────────────────── */
+
+function HoverExpandCell({ value, prettyJson }: { value: JsonValue; prettyJson: boolean }) {
   const [hovered, setHovered] = useState(false)
+  const cellRef = useRef<HTMLTableCellElement>(null)
+  const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
   const str = formatRaw(value)
   const isLong = str.length > 50
 
+  const showPopup = () => {
+    if (!isLong || !cellRef.current) return
+    const rect = cellRef.current.getBoundingClientRect()
+    setPopupStyle({
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: Math.min(rect.left, window.innerWidth - 520),
+      zIndex: 50,
+    })
+    setHovered(true)
+  }
+
   return (
     <td
+      ref={cellRef}
       className="px-3 py-2 text-[var(--sea-ink)]"
-      onMouseEnter={() => isLong && setHovered(true)}
+      onMouseEnter={showPopup}
       onMouseLeave={() => setHovered(false)}
     >
       <div className="max-w-[300px] truncate whitespace-nowrap">
         <CellValue value={value} />
       </div>
       {hovered && isLong && (
-        <div className="fixed z-50 mt-1 max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-xl">
+        <div
+          style={popupStyle}
+          className="max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--bg-base)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-xl"
+        >
           {typeof value === 'object' && value !== null && prettyJson
             ? JSON.stringify(value, null, 2)
             : str}
@@ -350,6 +376,8 @@ function HoverExpandCell({
     </td>
   )
 }
+
+/* ── Helpers ──────────────────────────────────────────────── */
 
 function formatRaw(value: JsonValue): string {
   if (value === null || value === undefined) return ''
@@ -362,19 +390,13 @@ function CellValue({ value }: { value: JsonValue }) {
     return <span className="italic text-[var(--sea-ink-soft)]/50">NULL</span>
   }
   if (typeof value === 'boolean') {
-    return (
-      <span className={value ? 'text-green-600' : 'text-red-500'}>
-        {String(value)}
-      </span>
-    )
+    return <span className={value ? 'text-green-600' : 'text-red-500'}>{String(value)}</span>
   }
   if (typeof value === 'number') {
     return <span className="tabular-nums text-[var(--lagoon-deep)]">{value}</span>
   }
   if (typeof value === 'object') {
-    return (
-      <span className="text-[var(--sea-ink-soft)]">{JSON.stringify(value)}</span>
-    )
+    return <span className="text-[var(--sea-ink-soft)]">{JSON.stringify(value)}</span>
   }
   return <>{String(value)}</>
 }

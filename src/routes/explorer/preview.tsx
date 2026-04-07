@@ -16,6 +16,7 @@ function PreviewPage() {
   const [extraData, setExtraData] = useState<Record<string, TableData>>({})
   const [loadingMore, setLoadingMore] = useState<string | null>(null)
   const [prettyJson, setPrettyJson] = useState(true)
+  const [hideEmpty, setHideEmpty] = useState(true)
 
   const tablesQuery = useQuery({
     queryKey: ['tables'],
@@ -42,11 +43,9 @@ function PreviewPage() {
     ...extraData,
   }
 
-  const filteredTables = filter
-    ? tables.filter((t) =>
-        t.name.toLowerCase().includes(filter.toLowerCase()),
-      )
-    : tables
+  const filteredTables = tables
+    .filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
+    .filter((t) => !hideEmpty || t.rowCount > 0)
 
   const handleLoadMore = async (tableName: string) => {
     const current = previews[tableName]
@@ -77,15 +76,26 @@ function PreviewPage() {
           <span className="text-sm text-[var(--sea-ink-soft)]">
             {filteredTables.length} table{filteredTables.length !== 1 ? 's' : ''}
           </span>
-          <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
-            <input
-              type="checkbox"
-              checked={prettyJson}
-              onChange={(e) => setPrettyJson(e.target.checked)}
-              className="rounded border-[var(--line)]"
-            />
-            Pretty JSON
-          </label>
+          <div className="ml-auto flex items-center gap-4">
+            <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
+              <input
+                type="checkbox"
+                checked={hideEmpty}
+                onChange={(e) => setHideEmpty(e.target.checked)}
+                className="rounded border-[var(--line)]"
+              />
+              Hide empty
+            </label>
+            <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
+              <input
+                type="checkbox"
+                checked={prettyJson}
+                onChange={(e) => setPrettyJson(e.target.checked)}
+                className="rounded border-[var(--line)]"
+              />
+              Pretty JSON
+            </label>
+          </div>
         </div>
 
         {tablesQuery.isLoading && (
