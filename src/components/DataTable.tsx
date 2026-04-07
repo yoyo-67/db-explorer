@@ -10,7 +10,6 @@ interface DataTableProps {
 const MAX_COLS_PER_CHUNK = 8
 
 export default function DataTable({ columns, rows, prettyJson = false }: DataTableProps) {
-
   if (columns.length === 0) {
     return (
       <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">
@@ -19,7 +18,6 @@ export default function DataTable({ columns, rows, prettyJson = false }: DataTab
     )
   }
 
-  // Split columns into chunks to avoid horizontal scrolling
   const chunks: ColumnInfo[][] = []
   for (let i = 0; i < columns.length; i += MAX_COLS_PER_CHUNK) {
     chunks.push(columns.slice(i, i + MAX_COLS_PER_CHUNK))
@@ -109,17 +107,11 @@ function ExpandableRow({
         }`}
       >
         {columns.map((col) => (
-          <td
+          <HoverExpandCell
             key={col.name}
-            className={`px-4 py-2 text-[var(--sea-ink)] ${
-              prettyJson && isJsonValue(row[col.name])
-                ? 'whitespace-pre-wrap'
-                : 'max-w-[400px] truncate whitespace-nowrap'
-            }`}
-            title={!prettyJson ? String(row[col.name] ?? '') : undefined}
-          >
-            <CellValue value={row[col.name]} prettyJson={prettyJson} />
-          </td>
+            value={row[col.name]}
+            prettyJson={prettyJson}
+          />
         ))}
       </tr>
       {expanded && (
@@ -167,8 +159,39 @@ function ExpandedField({
   )
 }
 
-function isJsonValue(value: JsonValue): boolean {
-  return value !== null && typeof value === 'object'
+function HoverExpandCell({
+  value,
+  prettyJson,
+}: {
+  value: JsonValue
+  prettyJson: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+  const str = value === null || value === undefined
+    ? ''
+    : typeof value === 'object'
+      ? JSON.stringify(value)
+      : String(value)
+  const isLong = str.length > 50
+
+  return (
+    <td
+      className="relative px-4 py-2 text-[var(--sea-ink)]"
+      onMouseEnter={() => isLong && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="max-w-[300px] truncate whitespace-nowrap">
+        <CellValue value={value} prettyJson={false} />
+      </div>
+      {hovered && isLong && (
+        <div className="absolute left-2 top-0 z-20 max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-lg">
+          {typeof value === 'object' && value !== null && prettyJson
+            ? JSON.stringify(value, null, 2)
+            : str}
+        </div>
+      )}
+    </td>
+  )
 }
 
 function CellValue({ value, prettyJson }: { value: JsonValue; prettyJson: boolean }) {
