@@ -29,6 +29,7 @@ export interface TableInfo {
   name: string
   schema: string
   rowCount: number
+  lastModified: string | null
   columns: ColumnInfo[]
 }
 

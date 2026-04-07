@@ -60,8 +60,8 @@ describe('getTables', () => {
     // First query: table list with row counts
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { table_name: 'users', table_schema: 'public', row_count: '100' },
-        { table_name: 'posts', table_schema: 'public', row_count: '500' },
+        { table_name: 'users', table_schema: 'public', row_count: '100', last_modified: null },
+        { table_name: 'posts', table_schema: 'public', row_count: '500', last_modified: null },
       ],
     })
     // Second query: columns for all tables
@@ -101,6 +101,7 @@ describe('getTables', () => {
       name: 'users',
       schema: 'public',
       rowCount: 100,
+      lastModified: null,
       columns: [
         { name: 'id', dataType: 'integer', isNullable: false },
         { name: 'email', dataType: 'character varying', isNullable: false },
@@ -214,7 +215,7 @@ describe('getAllTablesPreview', () => {
   it('returns preview data for all tables', async () => {
     // getTables queries
     mockQuery.mockResolvedValueOnce({
-      rows: [{ table_name: 'users', table_schema: 'public', row_count: '10' }],
+      rows: [{ table_name: 'users', table_schema: 'public', row_count: '10', last_modified: null }],
     })
     mockQuery.mockResolvedValueOnce({
       rows: [

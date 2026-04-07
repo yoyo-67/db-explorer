@@ -63,7 +63,8 @@ export async function getTables(): Promise<TableInfo[]> {
     SELECT
       t.table_name,
       t.table_schema,
-      COALESCE(s.n_live_tup, 0) AS row_count
+      COALESCE(s.n_live_tup, 0) AS row_count,
+      GREATEST(s.last_autoanalyze, s.last_autovacuum, s.last_analyze, s.last_vacuum) AS last_modified
     FROM information_schema.tables t
     LEFT JOIN pg_stat_user_tables s
       ON s.relname = t.table_name AND s.schemaname = t.table_schema
@@ -98,6 +99,7 @@ export async function getTables(): Promise<TableInfo[]> {
     name: row.table_name,
     schema: row.table_schema,
     rowCount: Number(row.row_count),
+    lastModified: row.last_modified ? new Date(row.last_modified).toISOString() : null,
     columns: columnsByTable.get(row.table_name) ?? [],
   }))
 }

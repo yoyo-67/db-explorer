@@ -161,6 +161,7 @@ function RelatedSection({
   prettyJson: boolean
 }) {
   const [expanded, setExpanded] = useState(true)
+  const [fullHeight, setFullHeight] = useState(false)
 
   return (
     <div className="border-t border-[var(--line)]/60">
@@ -181,7 +182,12 @@ function RelatedSection({
       </button>
 
       {expanded && (
-        <div className="ml-5 space-y-2 border-l-2 border-[var(--lagoon)]/20 pb-3 pl-4">
+        <div
+          className={`ml-5 space-y-2 border-l-2 border-[var(--lagoon)]/20 pb-3 pl-4 ${
+            fullHeight ? '' : 'max-h-[300px] overflow-y-auto'
+          }`}
+          onClick={() => !fullHeight && setFullHeight(true)}
+        >
           {rows.map((row, j) => (
             <div
               key={j}
