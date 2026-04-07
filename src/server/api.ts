@@ -11,6 +11,34 @@ import {
 } from '#/server/functions'
 import type { ConnectionConfig, ConnectionPreset, DocumentConfig } from '#/lib/types'
 
+export const $isConnected = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const { getConnection } = await import('#/server/db')
+    const pool = getConnection()
+    if (!pool) return { connected: false as const }
+    try {
+      await pool.query('SELECT 1')
+      return { connected: true as const }
+    } catch {
+      return { connected: false as const }
+    }
+  },
+)
+
+export const $reconnect = createServerFn({ method: 'POST' }).handler(
+  async () => {
+    const { getLastConfig, createConnection } = await import('#/server/db')
+    const config = getLastConfig()
+    if (!config) return { success: false as const, error: 'No previous connection' }
+    try {
+      await createConnection(config)
+      return { success: true as const }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) }
+    }
+  },
+)
+
 export const $testConnection = createServerFn({ method: 'POST' })
   .inputValidator((data: ConnectionConfig) => data)
   .handler(async ({ data }) => {

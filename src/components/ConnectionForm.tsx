@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ConnectionConfig, ConnectionPreset } from '#/lib/types'
 
 interface ConnectionFormProps {
@@ -23,11 +23,6 @@ export default function ConnectionForm({
     ssl: false,
   })
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    onConnect(config)
-  }
-
   const update = (field: keyof ConnectionConfig, value: string | number | boolean) => {
     setConfig((prev) => ({ ...prev, [field]: value }))
   }
@@ -41,6 +36,17 @@ export default function ConnectionForm({
       password: preset.password,
       ssl: preset.ssl,
     })
+  }
+
+  useEffect(() => {
+    if (presets.length > 0 && !config.database) {
+      applyPreset(presets[0])
+    }
+  }, [presets])
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    onConnect(config)
   }
 
   return (

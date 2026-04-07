@@ -64,6 +64,7 @@ function DocumentRow({
         },
       }),
     enabled: expanded && rootId !== undefined,
+    staleTime: Infinity,
   })
 
   const related = relatedQuery.data?.related ?? {}

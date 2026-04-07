@@ -14,6 +14,38 @@ import type {
 
 type Row = Record<string, JsonValue>
 
+/** Convert pg row values to plain JSON-safe types (Date, Buffer, etc. → string) */
+function sanitizeRow(row: Record<string, unknown>): Row {
+  const result: Row = {}
+  for (const [key, value] of Object.entries(row)) {
+    result[key] = toJsonValue(value)
+  }
+  return result
+}
+
+function toJsonValue(value: unknown): JsonValue {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value
+  if (value instanceof Date) return value.toISOString()
+  if (Buffer.isBuffer(value)) return value.toString('hex')
+  if (Array.isArray(value)) return value.map(toJsonValue)
+  if (typeof value === 'bigint') return value.toString()
+  if (typeof value === 'object') {
+    const obj: Record<string, JsonValue> = {}
+    for (const [k, v] of Object.entries(value)) {
+      obj[k] = toJsonValue(v)
+    }
+    return obj
+  }
+  return String(value)
+}
+
+function sanitizeRows(rows: Record<string, unknown>[]): Row[] {
+  return rows.map(sanitizeRow)
+}
+
 export async function testConnection(
   config: ConnectionConfig,
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -92,7 +124,7 @@ export async function getTablePreview(
   return {
     tableName,
     columns,
-    rows: dataResult.rows as Row[],
+    rows: sanitizeRows(dataResult.rows),
   }
 }
 
@@ -149,7 +181,7 @@ export async function getDocumentData(
   // Fetch the root row by primary key (assumes 'id' column)
   const rootQuery = format('SELECT * FROM %I WHERE id = %L LIMIT 1', config.rootTable, rootId)
   const rootResult = await query(rootQuery)
-  const root = (rootResult.rows[0] ?? {}) as Row
+  const root = sanitizeRow(rootResult.rows[0] ?? {})
 
   // Fetch related data for each FK pointing to this root table
   const related: Record<string, Row[]> = {}
@@ -165,7 +197,7 @@ export async function getDocumentData(
         rootId,
       )
       const result = await query(relQuery)
-      return { table: fk.fromTable, rows: result.rows as Row[] }
+      return { table: fk.fromTable, rows: sanitizeRows(result.rows) }
     }),
   )
 

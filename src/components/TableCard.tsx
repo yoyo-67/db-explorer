@@ -5,7 +5,7 @@ import type { TableData, TableInfo } from '#/lib/types'
 interface TableCardProps {
   tableInfo: TableInfo
   tableData: TableData | undefined
-  defaultExpanded?: boolean
+
   onLoadMore?: () => void
   isLoadingMore?: boolean
 }
@@ -13,11 +13,11 @@ interface TableCardProps {
 export default function TableCard({
   tableInfo,
   tableData,
-  defaultExpanded = false,
+
   onLoadMore,
   isLoadingMore = false,
 }: TableCardProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [expanded, setExpanded] = useState(true)
 
   return (
     <div className="island-shell overflow-hidden rounded-xl">
@@ -62,7 +62,7 @@ export default function TableCard({
 
       {expanded && !tableData && (
         <div className="border-t border-[var(--line)] px-4 py-4 text-center text-sm text-[var(--sea-ink-soft)]">
-          Loading...
+          <span className="inline-block animate-pulse">Loading data...</span>
         </div>
       )}
     </div>
