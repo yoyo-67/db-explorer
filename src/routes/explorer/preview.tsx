@@ -68,7 +68,7 @@ function PreviewPage() {
   const [extraData, setExtraData] = useState<Record<string, TableData>>({})
   const [loadingMore, setLoadingMore] = useState<string | null>(null)
   const [prettyJson, setPrettyJson] = useState(true)
-  const [hideEmpty, setHideEmpty] = useState(true)
+  const [emptyFilter, setEmptyFilter] = useState<'hide' | 'only' | 'all'>('hide')
   const [sortBy, setSortBy] = useState<'name' | 'rows' | 'modified'>('name')
   const [sortAsc, setSortAsc] = useState(true)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -95,7 +95,11 @@ function PreviewPage() {
 
   const filteredTables = tables
     .filter((t) => !filter || t.name.toLowerCase().includes(filter.toLowerCase()))
-    .filter((t) => !hideEmpty || t.rowCount > 0)
+    .filter((t) => {
+      if (emptyFilter === 'hide') return t.rowCount > 0
+      if (emptyFilter === 'only') return t.rowCount === 0
+      return true
+    })
     .sort((a, b) => {
       let cmp = 0
       if (sortBy === 'rows') cmp = a.rowCount - b.rowCount
@@ -167,15 +171,15 @@ function PreviewPage() {
             >
               {sortAsc ? '\u2191' : '\u2193'}
             </button>
-            <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
-              <input
-                type="checkbox"
-                checked={hideEmpty}
-                onChange={(e) => setHideEmpty(e.target.checked)}
-                className="rounded border-[var(--line)]"
-              />
-              Hide empty
-            </label>
+            <select
+              value={emptyFilter}
+              onChange={(e) => setEmptyFilter(e.target.value as 'hide' | 'only' | 'all')}
+              className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-sm text-[var(--sea-ink)] outline-none"
+            >
+              <option value="hide">Hide empty</option>
+              <option value="only">Only empty</option>
+              <option value="all">All tables</option>
+            </select>
             <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
               <input
                 type="checkbox"
