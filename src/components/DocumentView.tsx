@@ -26,12 +26,12 @@ export default function DocumentView({
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
-        <h2 className="text-lg font-bold text-[var(--sea-ink)]">{rootTable}</h2>
+        <h2 className="whitespace-nowrap text-lg font-bold text-[var(--sea-ink)]">{rootTable}</h2>
         <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2.5 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
           {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
         </span>
         {relatedTables.length > 0 && (
-          <span className="text-xs text-[var(--sea-ink-soft)]">
+          <span className="max-w-[400px] truncate text-xs text-[var(--sea-ink-soft)]" title={relatedTables.map((t) => t.name).join(', ')}>
             + {relatedTables.map((t) => t.name).join(', ')}
           </span>
         )}
@@ -41,7 +41,6 @@ export default function DocumentView({
         {filteredDocs.map((doc, i) => (
           <DocumentCard
             key={i}
-            rootTable={rootTable}
             doc={doc}
             prettyJson={prettyJson}
           />
@@ -52,15 +51,13 @@ export default function DocumentView({
 }
 
 function DocumentCard({
-  rootTable,
   doc,
   prettyJson,
 }: {
-  rootTable: string
   doc: { root: Record<string, JsonValue>; related: Record<string, Record<string, JsonValue>[]> }
   prettyJson: boolean
 }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const label = getRowLabel(doc.root)
   const rootId = doc.root['id']
   const hasRelated = Object.values(doc.related).some((rows) => rows.length > 0)
@@ -77,15 +74,12 @@ function DocumentCard({
         >
           &#9654;
         </span>
-        <span className="rounded bg-[rgba(79,184,178,0.1)] px-2 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
-          {rootTable}
-        </span>
-        <span className="font-semibold text-[var(--sea-ink)]">{label}</span>
         {rootId !== undefined && (
           <span className="font-mono text-xs text-[var(--sea-ink-soft)]">
             #{String(rootId)}
           </span>
         )}
+        <span className="font-semibold text-[var(--sea-ink)]">{label}</span>
         {hasRelated && (
           <span className="ml-auto text-xs text-[var(--sea-ink-soft)]">
             {Object.entries(doc.related)

@@ -87,11 +87,6 @@ function PreviewPage() {
     staleTime: Infinity,
   })
 
-  if (isChecking) {
-    return <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">Checking connection...</div>
-  }
-  if (!isConnected) return null
-
   const tables = tablesQuery.data ?? []
   const previews: AllTablesPreview = {
     ...(previewQuery.data ?? {}),
@@ -110,6 +105,11 @@ function PreviewPage() {
     })
 
   const groups = useMemo(() => groupTables(filteredTables), [filteredTables])
+
+  if (isChecking) {
+    return <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">Checking connection...</div>
+  }
+  if (!isConnected) return null
 
   const toggleGroup = (prefix: string) => {
     setExpandedGroups((prev) => {
