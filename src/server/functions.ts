@@ -129,6 +129,38 @@ export async function getTablePreview(
   }
 }
 
+export async function searchTable(
+  tableName: string,
+  columnName: string,
+  searchValue: string,
+  limit: number = 50,
+): Promise<TableData> {
+  const columnsResult = await query(`
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = $1
+    ORDER BY ordinal_position
+  `, [tableName])
+
+  const columns: ColumnInfo[] = columnsResult.rows.map((row) => ({
+    name: row.column_name,
+    dataType: row.data_type,
+    isNullable: row.is_nullable === 'YES',
+  }))
+
+  const dataQuery = format(
+    'SELECT * FROM %I WHERE %I::text ILIKE %L LIMIT %s',
+    tableName, columnName, `%${searchValue}%`, limit,
+  )
+  const dataResult = await query(dataQuery)
+
+  return {
+    tableName,
+    columns,
+    rows: sanitizeRows(dataResult.rows),
+  }
+}
+
 export async function getAllTablesPreview(): Promise<AllTablesPreview> {
   const tables = await getTables()
   const result: AllTablesPreview = {}

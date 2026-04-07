@@ -9,6 +9,7 @@ import {
   getForeignKeys,
   getDocumentData,
   getDocumentCollections,
+  searchTable,
 } from '#/server/functions'
 import type { ConnectionConfig, ConnectionPreset, DocumentConfig } from '#/lib/types'
 
@@ -85,6 +86,12 @@ export const $getForeignKeys = createServerFn({ method: 'GET' }).handler(
     return getForeignKeys()
   },
 )
+
+export const $searchTable = createServerFn({ method: 'GET' })
+  .inputValidator((data: { tableName: string; columnName: string; searchValue: string; limit?: number }) => data)
+  .handler(async ({ data }) => {
+    return searchTable(data.tableName, data.columnName, data.searchValue, data.limit)
+  })
 
 export const $getDocumentData = createServerFn({ method: 'POST' })
   .inputValidator((data: { config: DocumentConfig; rootId: unknown }) => data)

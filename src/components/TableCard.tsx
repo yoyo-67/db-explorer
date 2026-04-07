@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import DataTable from '#/components/DataTable'
+import { $searchTable } from '#/server/api'
 import type { TableData, TableInfo } from '#/lib/types'
 
 interface TableCardProps {
@@ -18,6 +19,26 @@ export default function TableCard({
   prettyJson = false,
 }: TableCardProps) {
   const [expanded, setExpanded] = useState(true)
+  const [searchResult, setSearchResult] = useState<TableData | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+
+  const displayData = searchResult ?? tableData
+
+  const handleSearch = async (columnName: string, value: string) => {
+    setIsSearching(true)
+    try {
+      const result = await $searchTable({
+        data: { tableName: tableInfo.name, columnName, searchValue: value },
+      })
+      setSearchResult(result)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const handleClearSearch = () => {
+    setSearchResult(null)
+  }
 
   return (
     <div className="island-shell overflow-visible rounded-xl">
@@ -42,10 +63,18 @@ export default function TableCard({
         </span>
       </button>
 
-      {expanded && tableData && (
+      {expanded && displayData && (
         <div>
-          <DataTable columns={tableData.columns} rows={tableData.rows} prettyJson={prettyJson} />
-          {onLoadMore && tableData.rows.length >= 10 && (
+          <DataTable
+            columns={displayData.columns}
+            rows={displayData.rows}
+            totalRows={tableInfo.rowCount}
+            prettyJson={prettyJson}
+            onSearch={handleSearch}
+            onClearSearch={handleClearSearch}
+            isSearching={isSearching}
+          />
+          {!searchResult && onLoadMore && displayData.rows.length >= 10 && (
             <div className="border-t border-[var(--line)]/50 px-4 py-2">
               <button
                 type="button"
@@ -60,7 +89,7 @@ export default function TableCard({
         </div>
       )}
 
-      {expanded && !tableData && (
+      {expanded && !displayData && (
         <div className="border-t border-[var(--line)] px-4 py-4 text-center text-sm text-[var(--sea-ink-soft)]">
           <span className="inline-block animate-pulse">Loading data...</span>
         </div>
