@@ -1,0 +1,177 @@
+import format from 'pg-format'
+import { createConnection as dbConnect, query } from '#/server/db'
+import type {
+  ConnectionConfig,
+  TableInfo,
+  ColumnInfo,
+  TableData,
+  AllTablesPreview,
+  ForeignKey,
+  DocumentConfig,
+  DocumentData,
+  JsonValue,
+} from '#/lib/types'
+
+type Row = Record<string, JsonValue>
+
+export async function testConnection(
+  config: ConnectionConfig,
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    await dbConnect(config)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function getTables(): Promise<TableInfo[]> {
+  const tablesResult = await query(`
+    SELECT
+      t.table_name,
+      t.table_schema,
+      COALESCE(s.n_live_tup, 0) AS row_count
+    FROM information_schema.tables t
+    LEFT JOIN pg_stat_user_tables s
+      ON s.relname = t.table_name AND s.schemaname = t.table_schema
+    WHERE t.table_schema = 'public'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY t.table_name
+  `)
+
+  const columnsResult = await query(`
+    SELECT
+      table_name,
+      column_name,
+      data_type,
+      is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+    ORDER BY table_name, ordinal_position
+  `)
+
+  const columnsByTable = new Map<string, ColumnInfo[]>()
+  for (const row of columnsResult.rows) {
+    const cols = columnsByTable.get(row.table_name) ?? []
+    cols.push({
+      name: row.column_name,
+      dataType: row.data_type,
+      isNullable: row.is_nullable === 'YES',
+    })
+    columnsByTable.set(row.table_name, cols)
+  }
+
+  return tablesResult.rows.map((row) => ({
+    name: row.table_name,
+    schema: row.table_schema,
+    rowCount: Number(row.row_count),
+    columns: columnsByTable.get(row.table_name) ?? [],
+  }))
+}
+
+export async function getTablePreview(
+  tableName: string,
+  limit: number = 10,
+): Promise<TableData> {
+  const columnsResult = await query(`
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = $1
+    ORDER BY ordinal_position
+  `, [tableName])
+
+  const columns: ColumnInfo[] = columnsResult.rows.map((row) => ({
+    name: row.column_name,
+    dataType: row.data_type,
+    isNullable: row.is_nullable === 'YES',
+  }))
+
+  const dataQuery = format('SELECT * FROM %I LIMIT %s', tableName, limit)
+  const dataResult = await query(dataQuery)
+
+  return {
+    tableName,
+    columns,
+    rows: dataResult.rows as Row[],
+  }
+}
+
+export async function getAllTablesPreview(): Promise<AllTablesPreview> {
+  const tables = await getTables()
+  const result: AllTablesPreview = {}
+
+  // Process in batches of 3
+  const batchSize = 3
+  for (let i = 0; i < tables.length; i += batchSize) {
+    const batch = tables.slice(i, i + batchSize)
+    const previews = await Promise.all(
+      batch.map((t) => getTablePreview(t.name)),
+    )
+    for (const preview of previews) {
+      result[preview.tableName] = preview
+    }
+  }
+
+  return result
+}
+
+export async function getForeignKeys(): Promise<ForeignKey[]> {
+  const result = await query(`
+    SELECT
+      kcu.table_name AS from_table,
+      kcu.column_name AS from_column,
+      ccu.table_name AS to_table,
+      ccu.column_name AS to_column
+    FROM information_schema.key_column_usage kcu
+    JOIN information_schema.constraint_column_usage ccu
+      ON kcu.constraint_name = ccu.constraint_name
+      AND kcu.constraint_schema = ccu.constraint_schema
+    JOIN information_schema.table_constraints tc
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.constraint_schema = kcu.constraint_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND kcu.table_schema = 'public'
+    ORDER BY kcu.table_name, kcu.column_name
+  `)
+
+  return result.rows.map((row) => ({
+    fromTable: row.from_table,
+    fromColumn: row.from_column,
+    toTable: row.to_table,
+    toColumn: row.to_column,
+  }))
+}
+
+export async function getDocumentData(
+  config: DocumentConfig,
+  rootId: unknown,
+): Promise<DocumentData> {
+  // Fetch the root row by primary key (assumes 'id' column)
+  const rootQuery = format('SELECT * FROM %I WHERE id = %L LIMIT 1', config.rootTable, rootId)
+  const rootResult = await query(rootQuery)
+  const root = (rootResult.rows[0] ?? {}) as Row
+
+  // Fetch related data for each FK pointing to this root table
+  const related: Record<string, Row[]> = {}
+
+  const relatedFks = config.foreignKeys.filter((fk) => fk.toTable === config.rootTable)
+
+  const relatedResults = await Promise.all(
+    relatedFks.map(async (fk) => {
+      const relQuery = format(
+        'SELECT * FROM %I WHERE %I = %L LIMIT 50',
+        fk.fromTable,
+        fk.fromColumn,
+        rootId,
+      )
+      const result = await query(relQuery)
+      return { table: fk.fromTable, rows: result.rows as Row[] }
+    }),
+  )
+
+  for (const { table, rows } of relatedResults) {
+    related[table] = rows
+  }
+
+  return { root, related }
+}
