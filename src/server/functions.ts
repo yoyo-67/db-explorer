@@ -9,6 +9,7 @@ import type {
   ForeignKey,
   DocumentConfig,
   DocumentData,
+  DocumentCollection,
   JsonValue,
 } from '#/lib/types'
 
@@ -206,4 +207,66 @@ export async function getDocumentData(
   }
 
   return { root, related }
+}
+
+export async function getDocumentCollections(limit: number = 10): Promise<DocumentCollection[]> {
+  const [tables, foreignKeys] = await Promise.all([getTables(), getForeignKeys()])
+
+  // Find root tables: tables that are referenced by other tables via FK
+  const rootTableNames = [...new Set(foreignKeys.map((fk) => fk.toTable))]
+  const collections: DocumentCollection[] = []
+
+  for (const rootName of rootTableNames) {
+    const rootInfo = tables.find((t) => t.name === rootName)
+    if (!rootInfo) continue
+
+    const relatedFks = foreignKeys.filter((fk) => fk.toTable === rootName)
+    const relatedTables = relatedFks.map((fk) => ({
+      name: fk.fromTable,
+      fkColumn: fk.fromColumn,
+      toColumn: fk.toColumn,
+    }))
+
+    // Fetch root rows
+    const rootQuery = format('SELECT * FROM %I LIMIT %s', rootName, limit)
+    const rootResult = await query(rootQuery)
+    const rootRows = sanitizeRows(rootResult.rows)
+
+    // For each root row, fetch related data
+    const documents: DocumentData[] = await Promise.all(
+      rootRows.map(async (rootRow) => {
+        const rootId = rootRow['id'] ?? rootRow[relatedFks[0]?.toColumn]
+        const related: Record<string, Row[]> = {}
+
+        if (rootId !== undefined && rootId !== null) {
+          const results = await Promise.all(
+            relatedFks.map(async (fk) => {
+              const relQuery = format(
+                'SELECT * FROM %I WHERE %I = %L LIMIT 50',
+                fk.fromTable,
+                fk.fromColumn,
+                rootId,
+              )
+              const result = await query(relQuery)
+              return { table: fk.fromTable, rows: sanitizeRows(result.rows) }
+            }),
+          )
+          for (const { table, rows } of results) {
+            related[table] = rows
+          }
+        }
+
+        return { root: rootRow, related }
+      }),
+    )
+
+    collections.push({
+      rootTable: rootName,
+      rootColumns: rootInfo.columns,
+      relatedTables,
+      documents,
+    })
+  }
+
+  return collections
 }

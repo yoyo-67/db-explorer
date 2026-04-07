@@ -1,73 +1,69 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { $getDocumentData } from '#/server/api'
-import type { ForeignKey, JsonValue, TableInfo } from '#/lib/types'
+import type { DocumentCollection, JsonValue } from '#/lib/types'
 
 interface DocumentViewProps {
-  rootTable: TableInfo
-  rootRows: Record<string, JsonValue>[]
-  foreignKeys: ForeignKey[]
+  collection: DocumentCollection
+  filter: string
+  prettyJson: boolean
 }
 
 export default function DocumentView({
-  rootTable,
-  rootRows,
-  foreignKeys,
+  collection,
+  filter,
+  prettyJson,
 }: DocumentViewProps) {
-  const relatedTables = foreignKeys.filter(
-    (fk) => fk.toTable === rootTable.name,
-  )
+  const { rootTable, relatedTables, documents } = collection
 
-  if (relatedTables.length === 0) {
-    return (
-      <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">
-        No foreign keys reference this table.
-      </p>
-    )
-  }
+  const filteredDocs = filter
+    ? documents.filter((doc) => {
+        const text = JSON.stringify(doc).toLowerCase()
+        return text.includes(filter.toLowerCase())
+      })
+    : documents
+
+  if (filteredDocs.length === 0 && filter) return null
 
   return (
-    <div className="space-y-2">
-      {rootRows.map((row, i) => (
-        <DocumentRow
-          key={i}
-          rootTable={rootTable.name}
-          row={row}
-          foreignKeys={foreignKeys}
-        />
-      ))}
+    <div>
+      <div className="mb-3 flex items-center gap-3">
+        <h2 className="text-lg font-bold text-[var(--sea-ink)]">{rootTable}</h2>
+        <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2.5 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
+          {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
+        </span>
+        {relatedTables.length > 0 && (
+          <span className="text-xs text-[var(--sea-ink-soft)]">
+            + {relatedTables.map((t) => t.name).join(', ')}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {filteredDocs.map((doc, i) => (
+          <DocumentCard
+            key={i}
+            rootTable={rootTable}
+            doc={doc}
+            prettyJson={prettyJson}
+          />
+        ))}
+      </div>
     </div>
   )
 }
 
-function DocumentRow({
+function DocumentCard({
   rootTable,
-  row,
-  foreignKeys,
+  doc,
+  prettyJson,
 }: {
   rootTable: string
-  row: Record<string, JsonValue>
-  foreignKeys: ForeignKey[]
+  doc: { root: Record<string, JsonValue>; related: Record<string, Record<string, JsonValue>[]> }
+  prettyJson: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
-
-  const label = getRowLabel(row)
-  const rootId = row['id']
-
-  const relatedQuery = useQuery({
-    queryKey: ['document', rootTable, rootId],
-    queryFn: () =>
-      $getDocumentData({
-        data: {
-          config: { rootTable, foreignKeys },
-          rootId,
-        },
-      }),
-    enabled: expanded && rootId !== undefined,
-    staleTime: Infinity,
-  })
-
-  const related = relatedQuery.data?.related ?? {}
+  const [expanded, setExpanded] = useState(true)
+  const label = getRowLabel(doc.root)
+  const rootId = doc.root['id']
+  const hasRelated = Object.values(doc.related).some((rows) => rows.length > 0)
 
   return (
     <div className="island-shell overflow-hidden rounded-xl">
@@ -81,62 +77,119 @@ function DocumentRow({
         >
           &#9654;
         </span>
-        <span className="font-medium text-[var(--sea-ink)]">{label}</span>
-        <span className="text-xs text-[var(--sea-ink-soft)]">
-          id: {String(rootId ?? '?')}
+        <span className="rounded bg-[rgba(79,184,178,0.1)] px-2 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
+          {rootTable}
+        </span>
+        <span className="font-semibold text-[var(--sea-ink)]">{label}</span>
+        {rootId !== undefined && (
+          <span className="font-mono text-xs text-[var(--sea-ink-soft)]">
+            #{String(rootId)}
+          </span>
+        )}
+        {hasRelated && (
+          <span className="ml-auto text-xs text-[var(--sea-ink-soft)]">
+            {Object.entries(doc.related)
+              .filter(([, rows]) => rows.length > 0)
+              .map(([t, rows]) => `${rows.length} ${t}`)
+              .join(', ')}
+          </span>
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-[var(--line)]">
+          {/* Root row fields */}
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-5 py-3 font-mono text-[13px]">
+            {Object.entries(doc.root).map(([key, value]) => (
+              <FieldRow key={key} fieldKey={key} value={value} prettyJson={prettyJson} />
+            ))}
+          </div>
+
+          {/* Related data */}
+          {Object.entries(doc.related).map(([tableName, rows]) => {
+            if (rows.length === 0) return null
+            return (
+              <RelatedSection
+                key={tableName}
+                tableName={tableName}
+                rows={rows}
+                prettyJson={prettyJson}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FieldRow({
+  fieldKey,
+  value,
+  prettyJson,
+}: {
+  fieldKey: string
+  value: JsonValue
+  prettyJson: boolean
+}) {
+  const isJson = value !== null && typeof value === 'object'
+
+  return (
+    <>
+      <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
+        {fieldKey}
+      </span>
+      <span className="min-w-0 py-0.5">
+        <CellValue value={value} prettyJson={prettyJson} />
+        {isJson && prettyJson && (
+          <pre className="mt-1 overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        )}
+      </span>
+    </>
+  )
+}
+
+function RelatedSection({
+  tableName,
+  rows,
+  prettyJson,
+}: {
+  tableName: string
+  rows: Record<string, JsonValue>[]
+  prettyJson: boolean
+}) {
+  const [expanded, setExpanded] = useState(true)
+
+  return (
+    <div className="border-t border-[var(--line)]/60">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-5 py-2 text-left transition hover:bg-[var(--surface)]"
+      >
+        <span
+          className={`text-[10px] text-[var(--sea-ink-soft)] transition-transform ${expanded ? 'rotate-90' : ''}`}
+        >
+          &#9654;
+        </span>
+        <span className="text-sm font-semibold text-[var(--sea-ink)]">{tableName}</span>
+        <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)]">
+          {rows.length}
         </span>
       </button>
 
       {expanded && (
-        <div className="border-t border-[var(--line)] px-4 py-3">
-          {relatedQuery.isLoading && (
-            <p className="text-sm text-[var(--sea-ink-soft)]">
-              Loading related data...
-            </p>
-          )}
-
-          {relatedQuery.error && (
-            <p className="text-sm text-red-600">
-              Error: {String(relatedQuery.error)}
-            </p>
-          )}
-
-          {Object.keys(related).length === 0 && !relatedQuery.isLoading && (
-            <p className="text-sm text-[var(--sea-ink-soft)]">
-              No related records found.
-            </p>
-          )}
-
-          {Object.entries(related).map(([tableName, rows]) => (
-            <div key={tableName} className="mb-3 last:mb-0">
-              <div className="mb-1 flex items-center gap-2">
-                <span className="text-sm font-semibold text-[var(--sea-ink)]">
-                  {tableName}
-                </span>
-                <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)]">
-                  {rows.length}
-                </span>
-              </div>
-              <div className="ml-3 space-y-1 border-l-2 border-[var(--line)] pl-3">
-                {rows.map((relRow, j) => (
-                  <div
-                    key={j}
-                    className="rounded-md bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--sea-ink-soft)]"
-                  >
-                    {Object.entries(relRow)
-                      .slice(0, 6)
-                      .map(([k, v]) => (
-                        <span key={k} className="mr-3">
-                          <span className="font-medium text-[var(--sea-ink)]">
-                            {k}:
-                          </span>{' '}
-                          {formatVal(v)}
-                        </span>
-                      ))}
-                    {Object.keys(relRow).length > 6 && (
-                      <span className="text-[var(--sea-ink-soft)]">...</span>
-                    )}
-                  </div>
+        <div className="ml-5 space-y-2 border-l-2 border-[var(--lagoon)]/20 pb-3 pl-4">
+          {rows.map((row, j) => (
+            <div
+              key={j}
+              className="rounded-lg bg-[rgba(0,0,0,0.02)] px-4 py-2 dark:bg-[rgba(255,255,255,0.03)]"
+            >
+              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 font-mono text-[12px]">
+                {Object.entries(row).map(([key, value]) => (
+                  <FieldRow key={key} fieldKey={key} value={value} prettyJson={prettyJson} />
                 ))}
               </div>
             </div>
@@ -147,25 +200,37 @@ function DocumentRow({
   )
 }
 
+function CellValue({ value, prettyJson }: { value: JsonValue; prettyJson: boolean }) {
+  if (value === null || value === undefined) {
+    return <span className="italic text-[var(--sea-ink-soft)]/50">null</span>
+  }
+  if (typeof value === 'boolean') {
+    return <span className={value ? 'text-green-600' : 'text-red-500'}>{String(value)}</span>
+  }
+  if (typeof value === 'number') {
+    return <span className="tabular-nums text-[var(--lagoon-deep)]">{value}</span>
+  }
+  if (typeof value === 'object') {
+    if (prettyJson) return null // rendered as <pre> block in FieldRow
+    return <span className="text-[var(--sea-ink-soft)]">{JSON.stringify(value)}</span>
+  }
+  const s = String(value)
+  if (s.length > 120) {
+    return <span title={s}>{s.slice(0, 117)}...</span>
+  }
+  return <>{s}</>
+}
+
 function getRowLabel(row: Record<string, JsonValue>): string {
-  // Try common label fields
   for (const field of ['name', 'title', 'email', 'username', 'label', 'slug']) {
     if (row[field] && typeof row[field] === 'string') {
       return row[field] as string
     }
   }
-  // Fallback to first string value
   for (const val of Object.values(row)) {
     if (typeof val === 'string' && val.length > 0 && val.length < 100) {
       return val
     }
   }
   return `Row ${row['id'] ?? '?'}`
-}
-
-function formatVal(v: JsonValue): string {
-  if (v === null || v === undefined) return 'NULL'
-  if (typeof v === 'object') return JSON.stringify(v)
-  const s = String(v)
-  return s.length > 60 ? s.slice(0, 57) + '...' : s
 }

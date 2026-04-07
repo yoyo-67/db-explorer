@@ -56,3 +56,10 @@ export interface DocumentData {
   root: Record<string, JsonValue>
   related: Record<string, Record<string, JsonValue>[]>
 }
+
+export interface DocumentCollection {
+  rootTable: string
+  rootColumns: ColumnInfo[]
+  relatedTables: { name: string; fkColumn: string; toColumn: string }[]
+  documents: DocumentData[]
+}

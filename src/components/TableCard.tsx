@@ -5,17 +5,17 @@ import type { TableData, TableInfo } from '#/lib/types'
 interface TableCardProps {
   tableInfo: TableInfo
   tableData: TableData | undefined
-
   onLoadMore?: () => void
   isLoadingMore?: boolean
+  prettyJson?: boolean
 }
 
 export default function TableCard({
   tableInfo,
   tableData,
-
   onLoadMore,
   isLoadingMore = false,
+  prettyJson = false,
 }: TableCardProps) {
   const [expanded, setExpanded] = useState(true)
 
@@ -44,7 +44,7 @@ export default function TableCard({
 
       {expanded && tableData && (
         <div className="border-t border-[var(--line)]">
-          <DataTable columns={tableData.columns} rows={tableData.rows} />
+          <DataTable columns={tableData.columns} rows={tableData.rows} prettyJson={prettyJson} />
           {onLoadMore && tableData.rows.length >= 10 && (
             <div className="border-t border-[var(--line)]/50 px-4 py-2">
               <button

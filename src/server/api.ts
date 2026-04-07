@@ -8,6 +8,7 @@ import {
   getAllTablesPreview,
   getForeignKeys,
   getDocumentData,
+  getDocumentCollections,
 } from '#/server/functions'
 import type { ConnectionConfig, ConnectionPreset, DocumentConfig } from '#/lib/types'
 
@@ -90,6 +91,12 @@ export const $getDocumentData = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     return getDocumentData(data.config, data.rootId)
   })
+
+export const $getDocumentCollections = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    return getDocumentCollections()
+  },
+)
 
 export const $getPresets = createServerFn({ method: 'GET' }).handler(
   async () => {

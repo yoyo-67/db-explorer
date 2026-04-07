@@ -15,6 +15,7 @@ function PreviewPage() {
   const [filter, setFilter] = useState('')
   const [extraData, setExtraData] = useState<Record<string, TableData>>({})
   const [loadingMore, setLoadingMore] = useState<string | null>(null)
+  const [prettyJson, setPrettyJson] = useState(false)
 
   const tablesQuery = useQuery({
     queryKey: ['tables'],
@@ -76,6 +77,15 @@ function PreviewPage() {
           <span className="text-sm text-[var(--sea-ink-soft)]">
             {filteredTables.length} table{filteredTables.length !== 1 ? 's' : ''}
           </span>
+          <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
+            <input
+              type="checkbox"
+              checked={prettyJson}
+              onChange={(e) => setPrettyJson(e.target.checked)}
+              className="rounded border-[var(--line)]"
+            />
+            Pretty JSON
+          </label>
         </div>
 
         {tablesQuery.isLoading && (
@@ -101,14 +111,17 @@ function PreviewPage() {
           </div>
         )}
 
-        {filteredTables.map((table) => (
-          <TableCard
-            key={table.name}
-            tableInfo={table}
-            tableData={previews[table.name]}
-            onLoadMore={() => handleLoadMore(table.name)}
-            isLoadingMore={loadingMore === table.name}
-          />
+        {filteredTables.map((table, i) => (
+          <div key={table.name}>
+            {i > 0 && <hr className="my-4 border-[var(--line)]" />}
+            <TableCard
+              tableInfo={table}
+              tableData={previews[table.name]}
+              onLoadMore={() => handleLoadMore(table.name)}
+              isLoadingMore={loadingMore === table.name}
+              prettyJson={prettyJson}
+            />
+          </div>
         ))}
       </div>
     </main>
