@@ -15,7 +15,7 @@ function PreviewPage() {
   const [filter, setFilter] = useState('')
   const [extraData, setExtraData] = useState<Record<string, TableData>>({})
   const [loadingMore, setLoadingMore] = useState<string | null>(null)
-  const [prettyJson, setPrettyJson] = useState(false)
+  const [prettyJson, setPrettyJson] = useState(true)
 
   const tablesQuery = useQuery({
     queryKey: ['tables'],
@@ -64,7 +64,7 @@ function PreviewPage() {
   }
 
   return (
-    <main className="page-wrap px-4 pb-8 pt-8">
+    <main className="px-4 pb-8 pt-8">
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <input

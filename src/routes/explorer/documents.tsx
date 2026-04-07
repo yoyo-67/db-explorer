@@ -29,7 +29,7 @@ function DocumentsPage() {
   const collections = collectionsQuery.data ?? []
 
   return (
-    <main className="page-wrap px-4 pb-8 pt-8">
+    <main className="px-4 pb-8 pt-8">
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <input

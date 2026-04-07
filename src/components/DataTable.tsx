@@ -7,8 +7,6 @@ interface DataTableProps {
   prettyJson?: boolean
 }
 
-const MAX_COLS_PER_CHUNK = 8
-
 export default function DataTable({ columns, rows, prettyJson = false }: DataTableProps) {
   if (columns.length === 0) {
     return (
@@ -18,43 +16,15 @@ export default function DataTable({ columns, rows, prettyJson = false }: DataTab
     )
   }
 
-  const chunks: ColumnInfo[][] = []
-  for (let i = 0; i < columns.length; i += MAX_COLS_PER_CHUNK) {
-    chunks.push(columns.slice(i, i + MAX_COLS_PER_CHUNK))
-  }
-
-  return (
-    <div>
-      {chunks.map((chunkCols, chunkIdx) => (
-        <div key={chunkIdx}>
-          {chunkIdx > 0 && (
-            <div className="mx-4 my-2 border-t border-dashed border-[var(--line)]" />
-          )}
-          <TableChunk columns={chunkCols} rows={rows} prettyJson={prettyJson} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function TableChunk({
-  columns,
-  rows,
-  prettyJson,
-}: {
-  columns: ColumnInfo[]
-  rows: Record<string, JsonValue>[]
-  prettyJson: boolean
-}) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-left font-mono text-[13px]">
         <thead>
-          <tr className="bg-[rgba(79,184,178,0.06)]">
+          <tr className="border-b-2 border-[var(--line)] bg-[var(--bg-base)]">
             {columns.map((col) => (
               <th
                 key={col.name}
-                className="whitespace-nowrap border-b-2 border-[var(--line)] px-4 py-2.5 text-xs font-bold tracking-wide text-[var(--sea-ink)]"
+                className="whitespace-nowrap px-4 py-2.5 text-xs font-bold tracking-wide text-[var(--sea-ink)]"
               >
                 {col.name}
                 <span className="ml-1.5 rounded bg-[rgba(79,184,178,0.12)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]">
@@ -115,8 +85,8 @@ function ExpandableRow({
         ))}
       </tr>
       {expanded && (
-        <tr className="bg-[rgba(79,184,178,0.03)]">
-          <td colSpan={columns.length} className="px-6 py-3">
+        <tr>
+          <td colSpan={columns.length} className="bg-[rgba(79,184,178,0.03)] px-6 py-3">
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[12px]">
               {columns.map((col) => (
                 <ExpandedField key={col.name} col={col} value={row[col.name]} prettyJson={prettyJson} />
@@ -152,7 +122,7 @@ function ExpandedField({
             {JSON.stringify(value, null, 2)}
           </pre>
         ) : (
-          <CellValue value={value} prettyJson={false} />
+          <CellValue value={value} />
         )}
       </span>
     </>
@@ -167,24 +137,20 @@ function HoverExpandCell({
   prettyJson: boolean
 }) {
   const [hovered, setHovered] = useState(false)
-  const str = value === null || value === undefined
-    ? ''
-    : typeof value === 'object'
-      ? JSON.stringify(value)
-      : String(value)
+  const str = formatRaw(value)
   const isLong = str.length > 50
 
   return (
     <td
-      className="relative px-4 py-2 text-[var(--sea-ink)]"
+      className="px-4 py-2 text-[var(--sea-ink)]"
       onMouseEnter={() => isLong && setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <div className="max-w-[300px] truncate whitespace-nowrap">
-        <CellValue value={value} prettyJson={false} />
+        <CellValue value={value} />
       </div>
       {hovered && isLong && (
-        <div className="absolute left-2 top-0 z-20 max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-lg">
+        <div className="fixed z-50 mt-1 max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-xl">
           {typeof value === 'object' && value !== null && prettyJson
             ? JSON.stringify(value, null, 2)
             : str}
@@ -194,7 +160,13 @@ function HoverExpandCell({
   )
 }
 
-function CellValue({ value, prettyJson }: { value: JsonValue; prettyJson: boolean }) {
+function formatRaw(value: JsonValue): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function CellValue({ value }: { value: JsonValue }) {
   if (value === null || value === undefined) {
     return <span className="italic text-[var(--sea-ink-soft)]/50">NULL</span>
   }
@@ -209,13 +181,6 @@ function CellValue({ value, prettyJson }: { value: JsonValue; prettyJson: boolea
     return <span className="tabular-nums text-[var(--lagoon-deep)]">{value}</span>
   }
   if (typeof value === 'object') {
-    if (prettyJson) {
-      return (
-        <pre className="overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )
-    }
     return (
       <span className="text-[var(--sea-ink-soft)]">{JSON.stringify(value)}</span>
     )
