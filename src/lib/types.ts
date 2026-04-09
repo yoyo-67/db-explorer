@@ -64,3 +64,15 @@ export interface DocumentCollection {
   relatedTables: { name: string; fkColumn: string; toColumn: string }[]
   documents: DocumentData[]
 }
+
+export interface TableCatalogGroup {
+  name: string
+  description: string
+  order: number
+  tables: string[]
+}
+
+export interface TableCatalog {
+  groups: TableCatalogGroup[]
+  tables: Record<string, string>
+}

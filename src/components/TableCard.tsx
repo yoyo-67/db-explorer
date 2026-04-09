@@ -9,6 +9,7 @@ interface TableCardProps {
   onLoadMore?: () => void
   isLoadingMore?: boolean
   prettyJson?: boolean
+  description?: string
 }
 
 export default function TableCard({
@@ -17,6 +18,7 @@ export default function TableCard({
   onLoadMore,
   isLoadingMore = false,
   prettyJson = false,
+  description,
 }: TableCardProps) {
   const [expanded, setExpanded] = useState(true)
   const [searchResult, setSearchResult] = useState<TableData | null>(null)
@@ -61,6 +63,11 @@ export default function TableCard({
         <span className="text-xs text-[var(--sea-ink-soft)]">
           {tableInfo.columns.length} cols
         </span>
+        {description && (
+          <span className="ml-auto text-xs italic text-[var(--sea-ink-soft)] opacity-70">
+            {description}
+          </span>
+        )}
       </button>
 
       {expanded && displayData && (

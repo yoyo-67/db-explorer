@@ -2,30 +2,81 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import TableCard from '#/components/TableCard'
-import { $getTables, $getAllTablesPreview, $getTablePreview } from '#/server/api'
+import { $getTables, $getAllTablesPreview, $getTablePreview, $getTableCatalog } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
-import type { AllTablesPreview, TableData, TableInfo } from '#/lib/types'
+import type { AllTablesPreview, TableCatalog, TableData, TableInfo } from '#/lib/types'
 
 export const Route = createFileRoute('/explorer/preview')({
   component: PreviewPage,
 })
 
-function getPrefix(name: string): string {
-  const parts = name.split('_')
-  if (parts.length <= 1) return ''
-  // Use all but last segment as prefix
-  return parts.slice(0, -1).join('_')
+interface CatalogGroup {
+  name: string
+  description: string
+  order: number
+  tables: TableInfo[]
 }
 
-function groupTables(tables: TableInfo[]): { group: string; tables: TableInfo[] }[] {
-  // Count how many tables share each prefix
+function groupTablesByCatalog(
+  tables: TableInfo[],
+  catalog: TableCatalog | undefined,
+): CatalogGroup[] {
+  if (!catalog || catalog.groups.length === 0) {
+    // Fallback: prefix-based grouping
+    return fallbackGroupTables(tables)
+  }
+
+  // Build a lookup: table name -> group index
+  const tableToGroup = new Map<string, number>()
+  for (let i = 0; i < catalog.groups.length; i++) {
+    for (const tableName of catalog.groups[i].tables) {
+      tableToGroup.set(tableName, i)
+    }
+  }
+
+  // Distribute tables into groups
+  const groupBuckets = catalog.groups.map((g) => ({
+    name: g.name,
+    description: g.description,
+    order: g.order,
+    tables: [] as TableInfo[],
+  }))
+  const uncategorized: TableInfo[] = []
+
+  for (const table of tables) {
+    const groupIdx = tableToGroup.get(table.name)
+    if (groupIdx !== undefined) {
+      groupBuckets[groupIdx].tables.push(table)
+    } else {
+      uncategorized.push(table)
+    }
+  }
+
+  // Filter out empty groups and sort by order
+  const result = groupBuckets
+    .filter((g) => g.tables.length > 0)
+    .sort((a, b) => a.order - b.order)
+
+  // Add uncategorized at the end
+  if (uncategorized.length > 0) {
+    result.push({
+      name: 'Uncategorized',
+      description: 'Tables not assigned to any group in table-catalog.json',
+      order: 999,
+      tables: uncategorized,
+    })
+  }
+
+  return result
+}
+
+function fallbackGroupTables(tables: TableInfo[]): CatalogGroup[] {
   const prefixCount = new Map<string, number>()
   for (const t of tables) {
     const prefix = getPrefix(t.name)
     if (prefix) prefixCount.set(prefix, (prefixCount.get(prefix) ?? 0) + 1)
   }
 
-  // Only group if 2+ tables share a prefix
   const grouped = new Map<string, TableInfo[]>()
   const ungrouped: TableInfo[] = []
 
@@ -40,26 +91,29 @@ function groupTables(tables: TableInfo[]): { group: string; tables: TableInfo[] 
     }
   }
 
-  const result: { group: string; tables: TableInfo[] }[] = []
+  const result: CatalogGroup[] = []
 
-  // Ungrouped tables go first as individual entries
   for (const t of ungrouped) {
-    result.push({ group: '', tables: [t] })
+    result.push({ name: '', description: '', order: 0, tables: [t] })
   }
 
-  // Grouped tables
   for (const [prefix, list] of grouped) {
-    result.push({ group: prefix, tables: list })
+    result.push({ name: `${prefix}_*`, description: '', order: 0, tables: list })
   }
 
-  // Sort groups: ungrouped by their table name, grouped by prefix
   result.sort((a, b) => {
-    const aName = a.group || a.tables[0].name
-    const bName = b.group || b.tables[0].name
+    const aName = a.name || a.tables[0].name
+    const bName = b.name || b.tables[0].name
     return aName.localeCompare(bName)
   })
 
   return result
+}
+
+function getPrefix(name: string): string {
+  const parts = name.split('_')
+  if (parts.length <= 1) return ''
+  return parts.slice(0, -1).join('_')
 }
 
 function PreviewPage() {
@@ -87,7 +141,14 @@ function PreviewPage() {
     staleTime: Infinity,
   })
 
+  const catalogQuery = useQuery({
+    queryKey: ['tableCatalog'],
+    queryFn: () => $getTableCatalog(),
+    staleTime: Infinity,
+  })
+
   const tables = tablesQuery.data ?? []
+  const catalog = catalogQuery.data
   const previews: AllTablesPreview = {
     ...(previewQuery.data ?? {}),
     ...extraData,
@@ -108,18 +169,22 @@ function PreviewPage() {
       return sortAsc ? cmp : -cmp
     })
 
-  const groups = useMemo(() => groupTables(filteredTables), [filteredTables])
+  const hasCatalog = !!catalog && catalog.groups.length > 0
+  const groups = useMemo(
+    () => groupTablesByCatalog(filteredTables, catalog),
+    [filteredTables, catalog],
+  )
 
   if (isChecking) {
     return <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">Checking connection...</div>
   }
   if (!isConnected) return null
 
-  const toggleGroup = (prefix: string) => {
+  const toggleGroup = (name: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev)
-      if (next.has(prefix)) next.delete(prefix)
-      else next.add(prefix)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
       return next
     })
   }
@@ -138,6 +203,8 @@ function PreviewPage() {
     }
   }
 
+  const tableDescription = (name: string) => catalog?.tables[name]
+
   return (
     <main className="px-4 pb-8 pt-8">
       <div className="space-y-4">
@@ -153,6 +220,11 @@ function PreviewPage() {
           <span className="text-sm text-[var(--sea-ink-soft)]">
             {filteredTables.length} table{filteredTables.length !== 1 ? 's' : ''}
           </span>
+          {hasCatalog && (
+            <span className="rounded-full bg-[rgba(79,184,178,0.08)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)]">
+              {groups.length} groups
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-4">
             <select
               value={sortBy}
@@ -214,9 +286,9 @@ function PreviewPage() {
         )}
 
         {/* Table groups */}
-        {groups.map(({ group, tables: groupTables }) => {
-          if (!group) {
-            // Ungrouped single table
+        {groups.map(({ name, description, tables: groupTables }) => {
+          // Ungrouped single table (fallback mode only)
+          if (!name) {
             const table = groupTables[0]
             return (
               <div key={table.name}>
@@ -226,32 +298,38 @@ function PreviewPage() {
                   onLoadMore={() => handleLoadMore(table.name)}
                   isLoadingMore={loadingMore === table.name}
                   prettyJson={prettyJson}
+                  description={tableDescription(table.name)}
                 />
               </div>
             )
           }
 
-          // Grouped tables
-          const isExpanded = expandedGroups.has(group)
+          // Catalog group or prefix group
+          const isExpanded = expandedGroups.has(name)
           const totalRows = groupTables.reduce((sum, t) => sum + t.rowCount, 0)
 
           return (
-            <div key={group} className="rounded-xl border border-[var(--line)]/60">
+            <div key={name} className="rounded-xl border border-[var(--line)]/60">
               <button
                 type="button"
-                onClick={() => toggleGroup(group)}
+                onClick={() => toggleGroup(name)}
                 className="sticky top-[40px] z-20 flex w-full items-center gap-3 rounded-t-xl bg-[var(--surface-strong)] px-4 py-2.5 text-left backdrop-blur-sm transition hover:bg-[var(--surface)]"
               >
                 <span className={`text-xs text-[var(--sea-ink-soft)] transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
                   &#9654;
                 </span>
-                <span className="font-semibold text-[var(--sea-ink)]">{group}_*</span>
+                <span className="font-semibold text-[var(--sea-ink)]">{name}</span>
                 <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
                   {groupTables.length} tables
                 </span>
                 <span className="text-xs text-[var(--sea-ink-soft)]">
                   {totalRows.toLocaleString()} total rows
                 </span>
+                {description && (
+                  <span className="ml-auto text-xs italic text-[var(--sea-ink-soft)] opacity-70">
+                    {description}
+                  </span>
+                )}
               </button>
 
               {!isExpanded ? (
@@ -262,6 +340,7 @@ function PreviewPage() {
                     onLoadMore={() => handleLoadMore(groupTables[0].name)}
                     isLoadingMore={loadingMore === groupTables[0].name}
                     prettyJson={prettyJson}
+                    description={tableDescription(groupTables[0].name)}
                   />
                 </div>
               ) : (
@@ -274,6 +353,7 @@ function PreviewPage() {
                       onLoadMore={() => handleLoadMore(table.name)}
                       isLoadingMore={loadingMore === table.name}
                       prettyJson={prettyJson}
+                      description={tableDescription(table.name)}
                     />
                   ))}
                 </div>

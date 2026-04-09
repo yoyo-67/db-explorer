@@ -11,7 +11,7 @@ import {
   getDocumentCollections,
   searchTable,
 } from '#/server/functions'
-import type { ConnectionConfig, ConnectionPreset, DocumentConfig } from '#/lib/types'
+import type { ConnectionConfig, ConnectionPreset, DocumentConfig, TableCatalog } from '#/lib/types'
 
 export const $isConnected = createServerFn({ method: 'GET' }).handler(
   async () => {
@@ -113,6 +113,18 @@ export const $getPresets = createServerFn({ method: 'GET' }).handler(
       return JSON.parse(raw) as ConnectionPreset[]
     } catch {
       return [] as ConnectionPreset[]
+    }
+  },
+)
+
+export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    try {
+      const catalogPath = resolve(process.cwd(), 'table-catalog.json')
+      const raw = await readFile(catalogPath, 'utf-8')
+      return JSON.parse(raw) as TableCatalog
+    } catch {
+      return { groups: [], tables: {} } as TableCatalog
     }
   },
 )
