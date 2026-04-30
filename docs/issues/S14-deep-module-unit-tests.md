@@ -2,6 +2,7 @@
 title: "S14: Vitest unit tests for deep modules"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
