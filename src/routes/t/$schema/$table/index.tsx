@@ -99,15 +99,6 @@ function TablePage() {
     staleTime: 30_000,
   })
 
-  if (isChecking) {
-    return (
-      <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">
-        Checking connection...
-      </div>
-    )
-  }
-  if (!isConnected) return null
-
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
   const otherTables = (introspectQuery.data?.tables ?? []).filter((t) => t.name !== table)
   const fks = introspectQuery.data?.fks ?? []
@@ -118,6 +109,15 @@ function TablePage() {
     () => enrichColumnsWithFks(displayColumns, fks, table),
     [displayColumns, fks, table],
   )
+
+  if (isChecking) {
+    return (
+      <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">
+        Checking connection...
+      </div>
+    )
+  }
+  if (!isConnected) return null
 
   const updateSearch = (next: Partial<TableSearch>) => {
     navigate({
