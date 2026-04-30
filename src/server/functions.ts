@@ -322,14 +322,35 @@ const FALLBACK_PK = 'id'
 
 const CONSOLE_ROW_CAP = 500
 
+/**
+ * Execute user-supplied SQL inside an explicit `BEGIN READ ONLY`
+ * transaction on a dedicated pool client, then ROLLBACK. The wrapping
+ * transaction is what makes the read-only guarantee real:
+ *
+ * - Session-level `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`
+ *   (set in db.ts) is only the *default* for new transactions; user SQL
+ *   can still escape with `SET TRANSACTION READ WRITE`.
+ * - Inside an already-open `BEGIN READ ONLY`, Postgres rejects any
+ *   subsequent attempt to switch to READ WRITE mid-transaction.
+ * - Passing the user SQL via the extended-query protocol (text + empty
+ *   `values` array) makes node-postgres reject multi-statement input,
+ *   so a single user query cannot smuggle a second statement.
+ */
 export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
   const trimmed = sql.trim()
   if (!trimmed) {
     return { ok: false, error: 'Empty query' }
   }
+  const { getConnection } = await import('#/server/db')
+  const pool = getConnection()
+  if (!pool) return { ok: false, error: 'Not connected to database' }
+
+  const client = await pool.connect()
   const started = Date.now()
   try {
-    const result = await query(trimmed)
+    await client.query('BEGIN READ ONLY')
+    const result = await client.query({ text: trimmed, values: [] })
+    await client.query('ROLLBACK')
     const fields = (result.fields ?? []) as Array<{ name: string; dataTypeID?: number }>
     const columns: ColumnInfo[] = fields.map((f) => ({
       name: f.name,
@@ -346,10 +367,17 @@ export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
       durationMs: Date.now() - started,
     }
   } catch (err) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      /* ignore — already failed */
+    }
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     }
+  } finally {
+    client.release()
   }
 }
 
@@ -366,6 +394,11 @@ export async function getRowChildren(args: {
   const offset = Math.max(0, args.offset ?? 0)
 
   const columns = await fetchColumns(schema, args.childTable)
+  if (!columns.some((c) => c.name === args.fkColumn)) {
+    throw new Error(
+      `Column "${args.fkColumn}" not found in ${schema}.${args.childTable}`,
+    )
+  }
   const dataQuery = format(
     'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT %s OFFSET %s',
     schema,
