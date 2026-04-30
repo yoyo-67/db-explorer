@@ -1,37 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import type { ColumnInfo, JsonValue } from '#/lib/types'
+import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
   columns: ColumnInfo[]
   rows: Record<string, JsonValue>[]
   totalRows: number
   prettyJson?: boolean
-  onSearch?: (columnName: string, value: string) => void
-  onClearSearch?: () => void
-  isSearching?: boolean
   schema?: string
+  sort?: TableSort | null
+  onSortChange?: (sort: TableSort | null) => void
+  filter?: Record<string, string>
+  onFilterChange?: (column: string, value: string) => void
 }
-
-type SortDir = 'asc' | 'desc' | null
 
 export default function DataTable({
   columns,
   rows,
   totalRows,
   prettyJson = false,
-  onSearch,
-  onClearSearch,
-  isSearching = false,
   schema,
+  sort = null,
+  onSortChange,
+  filter = {},
+  onFilterChange,
 }: DataTableProps) {
-  const [sortCol, setSortCol] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>(null)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
-  const [activeFilter, setActiveFilter] = useState<{ col: string; value: string } | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Close filter dropdown on outside click
   useEffect(() => {
     if (!openFilter) return
     const handler = (e: MouseEvent) => {
@@ -44,48 +39,17 @@ export default function DataTable({
     return () => document.removeEventListener('mousedown', handler)
   }, [openFilter])
 
-  const sortedRows = useMemo(() => {
-    if (!sortCol || !sortDir) return rows
-    return [...rows].sort((a, b) => {
-      const as = formatRaw(a[sortCol])
-      const bs = formatRaw(b[sortCol])
-      const an = Number(as)
-      const bn = Number(bs)
-      if (!isNaN(an) && !isNaN(bn)) {
-        return sortDir === 'asc' ? an - bn : bn - an
-      }
-      return sortDir === 'asc' ? as.localeCompare(bs) : bs.localeCompare(as)
-    })
-  }, [rows, sortCol, sortDir])
-
   const handleSort = (colName: string) => {
-    if (sortCol === colName) {
-      if (sortDir === 'asc') setSortDir('desc')
-      else if (sortDir === 'desc') { setSortCol(null); setSortDir(null) }
-      else setSortDir('asc')
+    if (!onSortChange) return
+    if (sort && sort.column === colName) {
+      if (sort.direction === 'asc') onSortChange({ column: colName, direction: 'desc' })
+      else onSortChange(null)
     } else {
-      setSortCol(colName)
-      setSortDir('asc')
+      onSortChange({ column: colName, direction: 'asc' })
     }
   }
 
-  const handleFilter = useCallback((colName: string, value: string) => {
-    setActiveFilter(value ? { col: colName, value } : null)
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      if (value && onSearch) {
-        onSearch(colName, value)
-      } else if (!value && onClearSearch) {
-        onClearSearch()
-      }
-    }, 400)
-  }, [onSearch, onClearSearch])
-
-  const clearFilter = () => {
-    setActiveFilter(null)
-    setOpenFilter(null)
-    if (onClearSearch) onClearSearch()
-  }
+  const activeFilterCount = Object.values(filter).filter((v) => v && v.trim()).length
 
   if (columns.length === 0) {
     return <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">No columns found</p>
@@ -93,55 +57,48 @@ export default function DataTable({
 
   return (
     <div>
-      {/* Status bar */}
       <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--sea-ink-soft)]">
         <span>
-          {isSearching ? 'Searching...' : `Showing ${sortedRows.length} of ${totalRows.toLocaleString()} rows`}
+          {rows.length} of {totalRows.toLocaleString()} rows
         </span>
-        {activeFilter && (
-          <>
-            <span className="rounded bg-[rgba(79,184,178,0.12)] px-1.5 py-0.5 text-[var(--lagoon-deep)]">
-              {activeFilter.col}: &quot;{activeFilter.value}&quot;
-            </span>
-            <button
-              type="button"
-              onClick={clearFilter}
-              className="rounded px-1.5 py-0.5 text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
-            >
-              Clear
-            </button>
-          </>
+        {activeFilterCount > 0 && (
+          <span className="rounded bg-[rgba(79,184,178,0.12)] px-1.5 py-0.5 text-[var(--lagoon-deep)]">
+            {activeFilterCount} active filter{activeFilterCount !== 1 ? 's' : ''}
+          </span>
         )}
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left font-mono text-[13px]">
           <thead>
             <tr className="border-b-2 border-[var(--line)] bg-[var(--bg-base)]">
-              {columns.map((col) => (
-                <ColumnHeader
-                  key={col.name}
-                  col={col}
-                  sortDir={sortCol === col.name ? sortDir : null}
-                  onSort={() => handleSort(col.name)}
-                  filterValue={activeFilter?.col === col.name ? activeFilter.value : ''}
-                  onFilter={(v) => handleFilter(col.name, v)}
-                  isFilterOpen={openFilter === col.name}
-                  onToggleFilter={() => setOpenFilter(openFilter === col.name ? null : col.name)}
-                />
-              ))}
+              {columns.map((col) => {
+                const sortDir = sort?.column === col.name ? sort.direction : null
+                const filterValue = filter[col.name] ?? ''
+                return (
+                  <ColumnHeader
+                    key={col.name}
+                    col={col}
+                    sortDir={sortDir}
+                    onSort={() => handleSort(col.name)}
+                    filterValue={filterValue}
+                    onFilter={(v) => onFilterChange?.(col.name, v)}
+                    isFilterOpen={openFilter === col.name}
+                    onToggleFilter={() => setOpenFilter(openFilter === col.name ? null : col.name)}
+                  />
+                )
+              })}
             </tr>
           </thead>
           <tbody>
-            {sortedRows.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
-                  {activeFilter ? 'No matching rows' : 'No rows'}
+                  {activeFilterCount > 0 ? 'No matching rows' : 'No rows'}
                 </td>
               </tr>
             ) : (
-              sortedRows.map((row, i) => (
+              rows.map((row, i) => (
                 <ExpandableRow
                   key={i}
                   row={row}
@@ -159,7 +116,7 @@ export default function DataTable({
   )
 }
 
-/* ── Column Header ────────────────────────────────────────── */
+type SortDir = 'asc' | 'desc' | null
 
 function ColumnHeader({
   col, sortDir, onSort, filterValue, onFilter, isFilterOpen, onToggleFilter,
@@ -207,7 +164,7 @@ function ColumnHeader({
           className={`ml-auto rounded p-0.5 transition ${
             hasFilter ? 'text-[var(--lagoon-deep)]' : 'text-[var(--sea-ink-soft)]/40 hover:text-[var(--sea-ink-soft)]'
           }`}
-          title="Filter column"
+          title="Filter column (>N, <N, null, ~regex, or substring)"
         >
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
             <path d="M1.5 1.5h13L9.5 7.5v5l-3 2v-7L1.5 1.5z" />
@@ -215,7 +172,6 @@ function ColumnHeader({
         </button>
       </div>
 
-      {/* Filter dropdown — rendered in a portal-like fixed position */}
       {isFilterOpen && (
         <FilterDropdown
           filterRef={filterRef}
@@ -238,13 +194,10 @@ function FilterDropdown({
   onFilter: (v: string) => void
   hasFilter: boolean
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-
   return (
     <div
-      ref={containerRef}
       data-filter-dropdown
-      className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-[var(--line)] bg-[var(--bg-base)] p-2 shadow-xl"
+      className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--bg-base)] p-2 shadow-xl"
       onClick={(e) => e.stopPropagation()}
     >
       <input
@@ -252,10 +205,13 @@ function FilterDropdown({
         type="text"
         value={filterValue}
         onChange={(e) => onFilter(e.target.value)}
-        placeholder={`Search ${col.name}...`}
+        placeholder={`>10, <5, null, ~regex, ...`}
         className="w-full rounded border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none placeholder:text-[var(--sea-ink-soft)]/50 focus:border-[var(--lagoon)]"
         onKeyDown={(e) => { if (e.key === 'Escape') onFilter('') }}
       />
+      <p className="mt-1 px-0.5 text-[10px] text-[var(--sea-ink-soft)]">
+        Filter on {col.name}. Plain text = ILIKE.
+      </p>
       {hasFilter && (
         <button
           type="button"
@@ -268,8 +224,6 @@ function FilterDropdown({
     </div>
   )
 }
-
-/* ── Sort Icon ────────────────────────────────────────────── */
 
 function SortIcon({ dir }: { dir: SortDir }) {
   if (!dir) {
@@ -289,8 +243,6 @@ function SortIcon({ dir }: { dir: SortDir }) {
     </svg>
   )
 }
-
-/* ── Expandable Row ───────────────────────────────────────── */
 
 function ExpandableRow({
   row, columns, index, prettyJson, schema,
@@ -335,8 +287,6 @@ function ExpandableRow({
   )
 }
 
-/* ── Expanded Field ───────────────────────────────────────── */
-
 function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: JsonValue; prettyJson: boolean }) {
   return (
     <>
@@ -356,8 +306,6 @@ function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: Jso
     </>
   )
 }
-
-/* ── Hover Expand Cell ────────────────────────────────────── */
 
 function HoverExpandCell({
   value,
@@ -426,8 +374,6 @@ function HoverExpandCell({
     </td>
   )
 }
-
-/* ── Helpers ──────────────────────────────────────────────── */
 
 function formatRaw(value: JsonValue): string {
   if (value === null || value === undefined) return ''

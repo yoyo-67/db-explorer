@@ -1,5 +1,6 @@
 import format from 'pg-format'
 import { createConnection as dbConnect, query } from '#/server/db'
+import { compileFilters } from '#/lib/filter-dsl'
 import type {
   ConnectionConfig,
   TableInfo,
@@ -155,46 +156,6 @@ export async function getTablePreview(
   }
 }
 
-export async function searchTable(
-  tableName: string,
-  columnName: string,
-  searchValue: string,
-  limit: number = 50,
-  schema: string = DEFAULT_SCHEMA,
-): Promise<TableData> {
-  const columnsResult = await query(
-    `
-    SELECT column_name, data_type, is_nullable
-    FROM information_schema.columns
-    WHERE table_schema = $1 AND table_name = $2
-    ORDER BY ordinal_position
-  `,
-    [schema, tableName],
-  )
-
-  const columns: ColumnInfo[] = columnsResult.rows.map((row) => ({
-    name: row.column_name,
-    dataType: row.data_type,
-    isNullable: row.is_nullable === 'YES',
-  }))
-
-  const dataQuery = format(
-    'SELECT * FROM %I.%I WHERE %I::text ILIKE %L LIMIT %s',
-    schema,
-    tableName,
-    columnName,
-    `%${searchValue}%`,
-    limit,
-  )
-  const dataResult = await query(dataQuery)
-
-  return {
-    tableName,
-    columns,
-    rows: sanitizeRows(dataResult.rows),
-  }
-}
-
 export async function getForeignKeys(schema: string = DEFAULT_SCHEMA): Promise<ForeignKey[]> {
   const result = await query(
     `
@@ -272,22 +233,46 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
   const offset = (page - 1) * pageSize
 
   const columns = await fetchColumns(schema, table)
+  const validColumnNames = new Set(columns.map((c) => c.name))
+
+  const safeFilter: Record<string, string> = {}
+  for (const [col, input] of Object.entries(req.filter ?? {})) {
+    if (validColumnNames.has(col)) safeFilter[col] = input
+  }
+  const whereBody = compileFilters(safeFilter)
+  const whereClause = whereBody ? `WHERE ${whereBody}` : ''
+
+  const sort =
+    req.sort && validColumnNames.has(req.sort.column)
+      ? req.sort
+      : null
+  const orderClause = sort
+    ? format('ORDER BY %I %s', sort.column, sort.direction === 'desc' ? 'DESC' : 'ASC')
+    : ''
 
   const dataQuery = format(
-    'SELECT * FROM %I.%I LIMIT %s OFFSET %s',
+    'SELECT * FROM %I.%I %s %s LIMIT %s OFFSET %s',
     schema,
     table,
+    whereClause,
+    orderClause,
     pageSize,
     offset,
   )
   const dataResult = await query(dataQuery)
 
   const approx = await fetchApproxRowCount(schema, table)
-  const wantExact = req.exactCount === true || approx < EXACT_COUNT_THRESHOLD
+  const hasFilter = whereBody.length > 0
+  const wantExact = req.exactCount === true || hasFilter || approx < EXACT_COUNT_THRESHOLD
   let count = approx
   let isCountApproximate = true
   if (wantExact) {
-    const countQuery = format('SELECT COUNT(*)::bigint AS c FROM %I.%I', schema, table)
+    const countQuery = format(
+      'SELECT COUNT(*)::bigint AS c FROM %I.%I %s',
+      schema,
+      table,
+      whereClause,
+    )
     const countResult = await query(countQuery)
     count = Number(countResult.rows[0]?.c ?? 0)
     isCountApproximate = false

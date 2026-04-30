@@ -10,7 +10,6 @@ import {
   getForeignKeys,
   getRowDetail,
   introspect,
-  searchTable,
 } from '#/server/functions'
 import type {
   ConnectionConfig,
@@ -101,26 +100,6 @@ export const $getForeignKeys = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => {
     return getForeignKeys(data.schema)
-  })
-
-export const $searchTable = createServerFn({ method: 'GET' })
-  .inputValidator(
-    (data: {
-      tableName: string
-      columnName: string
-      searchValue: string
-      limit?: number
-      schema?: string
-    }) => data,
-  )
-  .handler(async ({ data }) => {
-    return searchTable(
-      data.tableName,
-      data.columnName,
-      data.searchValue,
-      data.limit,
-      data.schema,
-    )
   })
 
 export const $getRowDetail = createServerFn({ method: 'GET' })

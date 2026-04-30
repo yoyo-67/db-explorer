@@ -2,6 +2,7 @@
 title: "S8: Filter DSL (parser + compiler) + per-column input + sort in URL"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

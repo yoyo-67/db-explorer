@@ -69,12 +69,19 @@ export interface RowDetail {
   children: RowChildGroup[]
 }
 
+export interface TableSort {
+  column: string
+  direction: 'asc' | 'desc'
+}
+
 export interface TablePageRequest {
   schema: string
   table: string
   page?: number
   pageSize?: number
   exactCount?: boolean
+  filter?: Record<string, string>
+  sort?: TableSort | null
 }
 
 export interface TablePage {
