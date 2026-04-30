@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
+import ExportButtons from '#/components/ExportButtons'
 import Pager from '#/components/Pager'
 import { $getTablePage, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
@@ -187,15 +188,26 @@ function TablePage() {
               Clear filters & sort
             </button>
           )}
-          <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
-            <input
-              type="checkbox"
-              checked={prettyJson}
-              onChange={(e) => setPrettyJson(e.target.checked)}
-              className="rounded border-[var(--line)]"
-            />
-            Pretty JSON
-          </label>
+          <div className="ml-auto flex items-center gap-3">
+            {pageData && (
+              <ExportButtons
+                schema={schema}
+                table={table}
+                page={pageData.page}
+                columns={pageData.columns}
+                rows={pageData.rows}
+              />
+            )}
+            <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
+              <input
+                type="checkbox"
+                checked={prettyJson}
+                onChange={(e) => setPrettyJson(e.target.checked)}
+                className="rounded border-[var(--line)]"
+              />
+              Pretty JSON
+            </label>
+          </div>
         </div>
 
         {pageQuery.error && (

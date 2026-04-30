@@ -2,6 +2,7 @@
 title: "S11: CSV download + clipboard JSON export of current view"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
