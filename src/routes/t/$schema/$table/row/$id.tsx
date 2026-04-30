@@ -6,18 +6,27 @@ import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { getRowLabel } from '#/lib/row-label'
 import type { ColumnInfo, JsonValue, RowChildGroup } from '#/lib/types'
 
+interface RowDetailSearch {
+  col?: string
+}
+
 export const Route = createFileRoute('/t/$schema/$table/row/$id')({
   component: RowDetailPage,
+  validateSearch: (search: Record<string, unknown>): RowDetailSearch => ({
+    col: typeof search.col === 'string' && search.col.length > 0 ? search.col : undefined,
+  }),
 })
 
 function RowDetailPage() {
   const { schema, table, id } = Route.useParams()
+  const { col } = Route.useSearch()
   const { isChecking, isConnected } = useConnectionGuard()
   const [prettyJson, setPrettyJson] = useState(true)
 
   const detailQuery = useQuery({
-    queryKey: ['rowDetail', schema, table, id],
-    queryFn: () => $getRowDetail({ data: { schema, table, rowId: id } }),
+    queryKey: ['rowDetail', schema, table, id, col ?? ''],
+    queryFn: () =>
+      $getRowDetail({ data: { schema, table, rowId: id, column: col } }),
     enabled: isConnected,
     staleTime: 30_000,
   })

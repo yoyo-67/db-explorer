@@ -294,13 +294,34 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 }
 
 const CHILD_PAGE_SIZE = 25
-const PK_COLUMN = 'id'
+const FALLBACK_PK = 'id'
+
+async function resolvePrimaryKey(schema: string, table: string): Promise<string | null> {
+  const result = await query(
+    `
+    SELECT kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+    WHERE tc.constraint_type = 'PRIMARY KEY'
+      AND tc.table_schema = $1
+      AND tc.table_name = $2
+    ORDER BY kcu.ordinal_position
+    LIMIT 1
+  `,
+    [schema, table],
+  )
+  return result.rows[0]?.column_name ?? null
+}
 
 export async function getRowDetail(
   schema: string,
   table: string,
   rowId: string,
   childLimit: number = CHILD_PAGE_SIZE,
+  lookupColumn?: string,
 ): Promise<RowDetail> {
   const columnsResult = await query(
     `
@@ -318,15 +339,27 @@ export async function getRowDetail(
     isNullable: row.is_nullable === 'YES',
   }))
 
-  const rootQuery = format(
-    'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT 1',
-    schema,
-    table,
-    PK_COLUMN,
-    rowId,
-  )
-  const rootResult = await query(rootQuery)
-  const root = rootResult.rows[0] ? sanitizeRow(rootResult.rows[0]) : null
+  const validColumnNames = new Set(columns.map((c) => c.name))
+  let column = lookupColumn && validColumnNames.has(lookupColumn) ? lookupColumn : null
+  if (!column) {
+    const pk = await resolvePrimaryKey(schema, table)
+    column = pk && validColumnNames.has(pk) ? pk : null
+  }
+  if (!column && validColumnNames.has(FALLBACK_PK)) column = FALLBACK_PK
+
+  const root = column
+    ? await (async () => {
+        const rootQuery = format(
+          'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT 1',
+          schema,
+          table,
+          column,
+          rowId,
+        )
+        const rootResult = await query(rootQuery)
+        return rootResult.rows[0] ? sanitizeRow(rootResult.rows[0]) : null
+      })()
+    : null
 
   const fks = await getForeignKeys(schema)
   const incoming = fks.filter((fk) => fk.toTable === table)

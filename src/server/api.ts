@@ -105,10 +105,22 @@ export const $getForeignKeys = createServerFn({ method: 'GET' })
 
 export const $getRowDetail = createServerFn({ method: 'GET' })
   .inputValidator(
-    (data: { schema: string; table: string; rowId: string; childLimit?: number }) => data,
+    (data: {
+      schema: string
+      table: string
+      rowId: string
+      childLimit?: number
+      column?: string
+    }) => data,
   )
   .handler(async ({ data }) => {
-    return getRowDetail(data.schema, data.table, data.rowId, data.childLimit)
+    return getRowDetail(
+      data.schema,
+      data.table,
+      data.rowId,
+      data.childLimit,
+      data.column,
+    )
   })
 
 export const $getPresets = createServerFn({ method: 'GET' }).handler(

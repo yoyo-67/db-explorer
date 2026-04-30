@@ -351,6 +351,7 @@ function HoverExpandCell({
               table: fkTarget.table,
               id: String(value),
             }}
+            search={fkTarget.column !== 'id' ? { col: fkTarget.column } : {}}
             onClick={(e) => e.stopPropagation()}
             className="text-[var(--lagoon-deep)] underline decoration-dotted underline-offset-2 hover:decoration-solid"
             title={`Open ${fkTarget.table}.${fkTarget.column} = ${str}`}
