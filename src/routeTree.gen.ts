@@ -10,53 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ExplorerPreviewRouteImport } from './routes/explorer/preview'
-import { Route as ExplorerDocumentsRouteImport } from './routes/explorer/documents'
+import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ExplorerPreviewRoute = ExplorerPreviewRouteImport.update({
-  id: '/explorer/preview',
-  path: '/explorer/preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ExplorerDocumentsRoute = ExplorerDocumentsRouteImport.update({
-  id: '/explorer/documents',
-  path: '/explorer/documents',
+const TSchemaTableIndexRoute = TSchemaTableIndexRouteImport.update({
+  id: '/t/$schema/$table/',
+  path: '/t/$schema/$table/',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/explorer/documents': typeof ExplorerDocumentsRoute
-  '/explorer/preview': typeof ExplorerPreviewRoute
+  '/t/$schema/$table/': typeof TSchemaTableIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/explorer/documents': typeof ExplorerDocumentsRoute
-  '/explorer/preview': typeof ExplorerPreviewRoute
+  '/t/$schema/$table': typeof TSchemaTableIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/explorer/documents': typeof ExplorerDocumentsRoute
-  '/explorer/preview': typeof ExplorerPreviewRoute
+  '/t/$schema/$table/': typeof TSchemaTableIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/explorer/documents' | '/explorer/preview'
+  fullPaths: '/' | '/t/$schema/$table/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/explorer/documents' | '/explorer/preview'
-  id: '__root__' | '/' | '/explorer/documents' | '/explorer/preview'
+  to: '/' | '/t/$schema/$table'
+  id: '__root__' | '/' | '/t/$schema/$table/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ExplorerDocumentsRoute: typeof ExplorerDocumentsRoute
-  ExplorerPreviewRoute: typeof ExplorerPreviewRoute
+  TSchemaTableIndexRoute: typeof TSchemaTableIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,18 +58,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/explorer/preview': {
-      id: '/explorer/preview'
-      path: '/explorer/preview'
-      fullPath: '/explorer/preview'
-      preLoaderRoute: typeof ExplorerPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/explorer/documents': {
-      id: '/explorer/documents'
-      path: '/explorer/documents'
-      fullPath: '/explorer/documents'
-      preLoaderRoute: typeof ExplorerDocumentsRouteImport
+    '/t/$schema/$table/': {
+      id: '/t/$schema/$table/'
+      path: '/t/$schema/$table'
+      fullPath: '/t/$schema/$table/'
+      preLoaderRoute: typeof TSchemaTableIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -87,8 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ExplorerDocumentsRoute: ExplorerDocumentsRoute,
-  ExplorerPreviewRoute: ExplorerPreviewRoute,
+  TSchemaTableIndexRoute: TSchemaTableIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

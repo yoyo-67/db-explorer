@@ -48,21 +48,26 @@ export interface ForeignKey {
   toColumn: string
 }
 
-export interface DocumentConfig {
-  rootTable: string
-  foreignKeys: ForeignKey[]
+export interface IntrospectResult {
+  schema: string
+  tables: TableInfo[]
+  fks: ForeignKey[]
 }
 
-export interface DocumentData {
-  root: Record<string, JsonValue>
-  related: Record<string, Record<string, JsonValue>[]>
+export interface RowChildGroup {
+  table: string
+  fkColumn: string
+  toColumn: string
+  rows: Record<string, JsonValue>[]
+  total: number
 }
 
-export interface DocumentCollection {
-  rootTable: string
-  rootColumns: ColumnInfo[]
-  relatedTables: { name: string; fkColumn: string; toColumn: string }[]
-  documents: DocumentData[]
+export interface RowDetail {
+  schema: string
+  table: string
+  columns: ColumnInfo[]
+  root: Record<string, JsonValue> | null
+  children: RowChildGroup[]
 }
 
 export interface TableCatalogGroup {

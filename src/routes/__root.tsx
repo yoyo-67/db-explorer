@@ -7,6 +7,7 @@ import {
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import Header from '../components/Header'
+import Sidebar from '../components/Sidebar'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
@@ -58,7 +59,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className="font-sans antialiased [overflow-wrap:anywhere] selection:bg-[rgba(79,184,178,0.24)]">
         <Header />
-        {children}
+        <div className="flex">
+          <Sidebar />
+          <div className="min-w-0 flex-1">{children}</div>
+        </div>
         <TanStackDevtools
           config={{
             position: 'bottom-right',

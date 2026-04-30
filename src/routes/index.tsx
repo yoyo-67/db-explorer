@@ -2,7 +2,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import ConnectionForm from '#/components/ConnectionForm'
-import { $testConnection, $connect, $getPresets } from '#/server/api'
+import {
+  $connect,
+  $getPresets,
+  $getSchemas,
+  $getTables,
+  $testConnection,
+} from '#/server/api'
 import type { ConnectionConfig } from '#/lib/types'
 
 export const Route = createFileRoute('/')({ component: HomePage })
@@ -29,7 +35,21 @@ function HomePage() {
       }
 
       await $connect({ data: config })
-      navigate({ to: '/explorer/preview' })
+      const schemas = await $getSchemas()
+      const schema = schemas.includes('public') ? 'public' : schemas[0]
+      if (!schema) {
+        setError('Connected, but no schemas were found')
+        return
+      }
+      const tables = await $getTables({ data: { schema } })
+      if (tables.length === 0) {
+        setError(`Connected, but schema "${schema}" has no tables`)
+        return
+      }
+      navigate({
+        to: '/t/$schema/$table',
+        params: { schema, table: tables[0].name },
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')
     } finally {

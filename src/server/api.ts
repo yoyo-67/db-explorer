@@ -3,15 +3,15 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
   testConnection,
+  getSchemas,
   getTables,
   getTablePreview,
-  getAllTablesPreview,
   getForeignKeys,
-  getDocumentData,
-  getDocumentCollections,
+  getRowDetail,
+  introspect,
   searchTable,
 } from '#/server/functions'
-import type { ConnectionConfig, ConnectionPreset, DocumentConfig, TableCatalog } from '#/lib/types'
+import type { ConnectionConfig, ConnectionPreset, TableCatalog } from '#/lib/types'
 
 export const $isConnected = createServerFn({ method: 'GET' }).handler(
   async () => {
@@ -63,47 +63,61 @@ export const $disconnect = createServerFn({ method: 'POST' }).handler(
   },
 )
 
-export const $getTables = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    return getTables()
-  },
-)
+export const $getSchemas = createServerFn({ method: 'GET' }).handler(async () => {
+  return getSchemas()
+})
+
+export const $introspect = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string }) => data)
+  .handler(async ({ data }) => {
+    return introspect(data.schema)
+  })
+
+export const $getTables = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    return getTables(data.schema)
+  })
 
 export const $getTablePreview = createServerFn({ method: 'GET' })
-  .inputValidator((data: { tableName: string; limit?: number }) => data)
+  .inputValidator((data: { tableName: string; limit?: number; schema?: string }) => data)
   .handler(async ({ data }) => {
-    return getTablePreview(data.tableName, data.limit)
+    return getTablePreview(data.tableName, data.limit, data.schema)
   })
 
-export const $getAllTablesPreview = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    return getAllTablesPreview()
-  },
-)
-
-export const $getForeignKeys = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    return getForeignKeys()
-  },
-)
+export const $getForeignKeys = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    return getForeignKeys(data.schema)
+  })
 
 export const $searchTable = createServerFn({ method: 'GET' })
-  .inputValidator((data: { tableName: string; columnName: string; searchValue: string; limit?: number }) => data)
+  .inputValidator(
+    (data: {
+      tableName: string
+      columnName: string
+      searchValue: string
+      limit?: number
+      schema?: string
+    }) => data,
+  )
   .handler(async ({ data }) => {
-    return searchTable(data.tableName, data.columnName, data.searchValue, data.limit)
+    return searchTable(
+      data.tableName,
+      data.columnName,
+      data.searchValue,
+      data.limit,
+      data.schema,
+    )
   })
 
-export const $getDocumentData = createServerFn({ method: 'POST' })
-  .inputValidator((data: { config: DocumentConfig; rootId: unknown }) => data)
+export const $getRowDetail = createServerFn({ method: 'GET' })
+  .inputValidator(
+    (data: { schema: string; table: string; rowId: string; childLimit?: number }) => data,
+  )
   .handler(async ({ data }) => {
-    return getDocumentData(data.config, data.rootId)
+    return getRowDetail(data.schema, data.table, data.rowId, data.childLimit)
   })
-
-export const $getDocumentCollections = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    return getDocumentCollections()
-  },
-)
 
 export const $getPresets = createServerFn({ method: 'GET' }).handler(
   async () => {

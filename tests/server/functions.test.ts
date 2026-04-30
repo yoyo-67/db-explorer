@@ -16,9 +16,7 @@ const {
   testConnection,
   getTables,
   getTablePreview,
-  getAllTablesPreview,
   getForeignKeys,
-  getDocumentData,
 } = await import('#/server/functions')
 
 const validConfig: ConnectionConfig = {
@@ -192,7 +190,9 @@ describe('getTablePreview', () => {
     // The entire malicious input is safely quoted as one identifier
     expect(dataQuery).toContain('"users; DROP TABLE users--"')
     // Verify it's treated as a single SELECT, not multiple statements
-    expect(dataQuery).toBe('SELECT * FROM "users; DROP TABLE users--" LIMIT 10')
+    expect(dataQuery).toBe(
+      'SELECT * FROM public."users; DROP TABLE users--" LIMIT 10',
+    )
   })
 
   it('returns empty rows for empty table', async () => {
@@ -204,38 +204,6 @@ describe('getTablePreview', () => {
     const result = await getTablePreview('empty_table')
     expect(result.rows).toEqual([])
     expect(result.columns).toHaveLength(1)
-  })
-})
-
-describe('getAllTablesPreview', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('returns preview data for all tables', async () => {
-    // getTables queries
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ table_name: 'users', table_schema: 'public', row_count: '10', last_modified: null }],
-    })
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { table_name: 'users', column_name: 'id', data_type: 'integer', is_nullable: 'NO' },
-      ],
-    })
-    // getTablePreview for 'users' — columns query
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ column_name: 'id', data_type: 'integer', is_nullable: 'NO' }],
-    })
-    // getTablePreview for 'users' — data query
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1 }],
-    })
-
-    const result = await getAllTablesPreview()
-
-    expect(result).toHaveProperty('users')
-    expect(result.users.tableName).toBe('users')
-    expect(result.users.rows).toEqual([{ id: 1 }])
   })
 })
 
@@ -281,47 +249,3 @@ describe('getForeignKeys', () => {
   })
 })
 
-describe('getDocumentData', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('fetches root row and related data', async () => {
-    // Root row query
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, email: 'alice@example.com' }],
-    })
-    // Related table 'posts' query
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 10, title: 'Hello', user_id: 1 },
-        { id: 11, title: 'World', user_id: 1 },
-      ],
-    })
-
-    const result = await getDocumentData({
-      rootTable: 'users',
-      foreignKeys: [
-        { fromTable: 'posts', fromColumn: 'user_id', toTable: 'users', toColumn: 'id' },
-      ],
-    }, 1)
-
-    expect(result.root).toEqual({ id: 1, email: 'alice@example.com' })
-    expect(result.related).toHaveProperty('posts')
-    expect(result.related.posts).toHaveLength(2)
-  })
-
-  it('returns empty related when no foreign keys match', async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, name: 'Alice' }],
-    })
-
-    const result = await getDocumentData({
-      rootTable: 'users',
-      foreignKeys: [],
-    }, 1)
-
-    expect(result.root).toEqual({ id: 1, name: 'Alice' })
-    expect(result.related).toEqual({})
-  })
-})
