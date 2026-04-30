@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import LinkableValue from '#/components/LinkableValue'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
@@ -295,9 +296,25 @@ function ExpandableRow({
         <tr>
           <td colSpan={columns.length} className="bg-[rgba(79,184,178,0.03)] px-6 py-3">
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[12px]">
-              {columns.map((col) => (
-                <ExpandedField key={col.name} col={col} value={row[col.name]} prettyJson={prettyJson} />
-              ))}
+              {columns.map((col) => {
+                const isPkCell =
+                  !!schema && !!table && !!pkColumn && col.name === pkColumn
+                const target = col.references && schema
+                  ? { schema, ...col.references }
+                  : isPkCell && schema && table
+                    ? { schema, table, column: pkColumn ?? 'id' }
+                    : undefined
+                return (
+                  <ExpandedField
+                    key={col.name}
+                    col={col}
+                    value={row[col.name]}
+                    prettyJson={prettyJson}
+                    target={target}
+                    variant={isPkCell ? 'pk' : 'fk'}
+                  />
+                )
+              })}
             </div>
           </td>
         </tr>
@@ -306,7 +323,20 @@ function ExpandableRow({
   )
 }
 
-function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: JsonValue; prettyJson: boolean }) {
+function ExpandedField({
+  col,
+  value,
+  prettyJson,
+  target,
+  variant,
+}: {
+  col: ColumnInfo
+  value: JsonValue
+  prettyJson: boolean
+  target?: { schema: string; table: string; column: string }
+  variant: 'fk' | 'pk'
+}) {
+  const isJsonObject = value !== null && typeof value === 'object'
   return (
     <>
       <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
@@ -314,12 +344,12 @@ function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: Jso
         <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">{col.dataType}</span>
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
-        {value !== null && typeof value === 'object' && prettyJson ? (
+        {isJsonObject && prettyJson ? (
           <pre className="overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed dark:bg-[rgba(255,255,255,0.04)]">
             {JSON.stringify(value, null, 2)}
           </pre>
         ) : (
-          <CellValue value={value} />
+          <LinkableValue value={value} prettyJson={prettyJson} target={target} variant={variant} />
         )}
       </span>
     </>
