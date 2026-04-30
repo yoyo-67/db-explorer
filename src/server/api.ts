@@ -11,6 +11,7 @@ import {
   getRowDetail,
   introspect,
 } from '#/server/functions'
+import { resolvePresets } from '#/lib/preset-resolver'
 import type {
   ConnectionConfig,
   ConnectionPreset,
@@ -112,12 +113,22 @@ export const $getRowDetail = createServerFn({ method: 'GET' })
 
 export const $getPresets = createServerFn({ method: 'GET' }).handler(
   async () => {
+    let raw: string
     try {
       const presetsPath = resolve(process.cwd(), 'presets.json')
-      const raw = await readFile(presetsPath, 'utf-8')
-      return JSON.parse(raw) as ConnectionPreset[]
+      raw = await readFile(presetsPath, 'utf-8')
     } catch {
-      return [] as ConnectionPreset[]
+      return { presets: [] as ConnectionPreset[], error: null as string | null }
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      const presets = resolvePresets(parsed, process.env)
+      return { presets, error: null as string | null }
+    } catch (err) {
+      return {
+        presets: [] as ConnectionPreset[],
+        error: err instanceof Error ? err.message : String(err),
+      }
     }
   },
 )

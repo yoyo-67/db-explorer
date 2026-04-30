@@ -2,6 +2,7 @@
 title: "S13: Preset password ${ENV_VAR} resolver + .gitignore"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

@@ -71,11 +71,17 @@ function HomePage() {
           visualize relationships. All queries are read-only.
         </p>
 
+        {presetsQuery.data?.error && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+            Preset error: {presetsQuery.data.error}
+          </div>
+        )}
+
         <ConnectionForm
           onConnect={handleConnect}
           isLoading={isLoading}
           error={error}
-          presets={presetsQuery.data ?? []}
+          presets={presetsQuery.data?.presets ?? []}
         />
       </section>
     </main>

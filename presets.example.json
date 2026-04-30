@@ -5,6 +5,6 @@
     "port": 5432,
     "database": "postgres",
     "user": "postgres",
-    "password": "your-password-here"
+    "password": "${POSTGRES_PASSWORD}"
   }
 ]
