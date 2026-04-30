@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
+import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table/row/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const TSchemaTableIndexRoute = TSchemaTableIndexRouteImport.update({
   path: '/t/$schema/$table/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
+  id: '/t/$schema/$table/row/$id',
+  path: '/t/$schema/$table/row/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
+  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/t/$schema/$table': typeof TSchemaTableIndexRoute
+  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
+  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/t/$schema/$table/'
+  fullPaths: '/' | '/t/$schema/$table/' | '/t/$schema/$table/row/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/t/$schema/$table'
-  id: '__root__' | '/' | '/t/$schema/$table/'
+  to: '/' | '/t/$schema/$table' | '/t/$schema/$table/row/$id'
+  id: '__root__' | '/' | '/t/$schema/$table/' | '/t/$schema/$table/row/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   TSchemaTableIndexRoute: typeof TSchemaTableIndexRoute
+  TSchemaTableRowIdRoute: typeof TSchemaTableRowIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TSchemaTableIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/t/$schema/$table/row/$id': {
+      id: '/t/$schema/$table/row/$id'
+      path: '/t/$schema/$table/row/$id'
+      fullPath: '/t/$schema/$table/row/$id'
+      preLoaderRoute: typeof TSchemaTableRowIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   TSchemaTableIndexRoute: TSchemaTableIndexRoute,
+  TSchemaTableRowIdRoute: TSchemaTableRowIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

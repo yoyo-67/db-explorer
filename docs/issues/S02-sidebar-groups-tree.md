@@ -2,6 +2,7 @@
 title: "S2: Sidebar with Groups tree and search"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

@@ -23,6 +23,7 @@ export interface ColumnInfo {
   name: string
   dataType: string
   isNullable: boolean
+  references?: { table: string; column: string }
 }
 
 export interface TableInfo {
@@ -38,8 +39,6 @@ export interface TableData {
   columns: ColumnInfo[]
   rows: Record<string, JsonValue>[]
 }
-
-export type AllTablesPreview = Record<string, TableData>
 
 export interface ForeignKey {
   fromTable: string

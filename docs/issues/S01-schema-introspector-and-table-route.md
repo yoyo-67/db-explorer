@@ -2,6 +2,7 @@
 title: "S1: Schema introspector + per-Table route"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

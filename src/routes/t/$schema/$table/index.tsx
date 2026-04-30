@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import { $getTablePreview, $introspect, $searchTable } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
+import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import type { TableData } from '#/lib/types'
 
 export const Route = createFileRoute('/t/$schema/$table/')({
@@ -42,7 +43,12 @@ function TablePage() {
 
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
   const otherTables = (introspectQuery.data?.tables ?? []).filter((t) => t.name !== table)
+  const fks = introspectQuery.data?.fks ?? []
   const displayData = searchResult ?? previewQuery.data
+  const enrichedColumns = useMemo(
+    () => (displayData ? enrichColumnsWithFks(displayData.columns, fks, table) : []),
+    [displayData, fks, table],
+  )
 
   const handleSearch = async (columnName: string, value: string) => {
     setIsSearching(true)
@@ -102,13 +108,14 @@ function TablePage() {
         {displayData && tableInfo && (
           <div className="island-shell overflow-visible rounded-xl">
             <DataTable
-              columns={displayData.columns}
+              columns={enrichedColumns}
               rows={displayData.rows}
               totalRows={tableInfo.rowCount}
               prettyJson={prettyJson}
               onSearch={handleSearch}
               onClearSearch={handleClearSearch}
               isSearching={isSearching}
+              schema={schema}
             />
           </div>
         )}

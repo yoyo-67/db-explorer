@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import type { ColumnInfo, JsonValue } from '#/lib/types'
 
 interface DataTableProps {
@@ -9,6 +10,7 @@ interface DataTableProps {
   onSearch?: (columnName: string, value: string) => void
   onClearSearch?: () => void
   isSearching?: boolean
+  schema?: string
 }
 
 type SortDir = 'asc' | 'desc' | null
@@ -21,6 +23,7 @@ export default function DataTable({
   onSearch,
   onClearSearch,
   isSearching = false,
+  schema,
 }: DataTableProps) {
   const [sortCol, setSortCol] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>(null)
@@ -139,7 +142,14 @@ export default function DataTable({
               </tr>
             ) : (
               sortedRows.map((row, i) => (
-                <ExpandableRow key={i} row={row} columns={columns} index={i} prettyJson={prettyJson} />
+                <ExpandableRow
+                  key={i}
+                  row={row}
+                  columns={columns}
+                  index={i}
+                  prettyJson={prettyJson}
+                  schema={schema}
+                />
               ))
             )}
           </tbody>
@@ -180,6 +190,15 @@ function ColumnHeader({
         <span className="rounded bg-[rgba(79,184,178,0.12)] px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]">
           {col.dataType}
         </span>
+
+        {col.references && (
+          <span
+            title={`References ${col.references.table}.${col.references.column}`}
+            className="rounded border border-[var(--lagoon)]/40 px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]"
+          >
+            → {col.references.table}
+          </span>
+        )}
 
         <button
           type="button"
@@ -274,12 +293,13 @@ function SortIcon({ dir }: { dir: SortDir }) {
 /* ── Expandable Row ───────────────────────────────────────── */
 
 function ExpandableRow({
-  row, columns, index, prettyJson,
+  row, columns, index, prettyJson, schema,
 }: {
   row: Record<string, JsonValue>
   columns: ColumnInfo[]
   index: number
   prettyJson: boolean
+  schema?: string
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -292,7 +312,12 @@ function ExpandableRow({
         }`}
       >
         {columns.map((col) => (
-          <HoverExpandCell key={col.name} value={row[col.name]} prettyJson={prettyJson} />
+          <HoverExpandCell
+            key={col.name}
+            value={row[col.name]}
+            prettyJson={prettyJson}
+            fkTarget={schema && col.references ? { schema, ...col.references } : undefined}
+          />
         ))}
       </tr>
       {expanded && (
@@ -334,12 +359,21 @@ function ExpandedField({ col, value, prettyJson }: { col: ColumnInfo; value: Jso
 
 /* ── Hover Expand Cell ────────────────────────────────────── */
 
-function HoverExpandCell({ value, prettyJson }: { value: JsonValue; prettyJson: boolean }) {
+function HoverExpandCell({
+  value,
+  prettyJson,
+  fkTarget,
+}: {
+  value: JsonValue
+  prettyJson: boolean
+  fkTarget?: { schema: string; table: string; column: string }
+}) {
   const [hovered, setHovered] = useState(false)
   const cellRef = useRef<HTMLTableCellElement>(null)
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
   const str = formatRaw(value)
   const isLong = str.length > 50
+  const isFkLinkable = !!fkTarget && value !== null && value !== undefined
 
   const showPopup = () => {
     if (!isLong || !cellRef.current) return
@@ -361,7 +395,23 @@ function HoverExpandCell({ value, prettyJson }: { value: JsonValue; prettyJson: 
       onMouseLeave={() => setHovered(false)}
     >
       <div className="max-w-[300px] truncate whitespace-nowrap">
-        <CellValue value={value} />
+        {isFkLinkable && fkTarget ? (
+          <Link
+            to="/t/$schema/$table/row/$id"
+            params={{
+              schema: fkTarget.schema,
+              table: fkTarget.table,
+              id: String(value),
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="text-[var(--lagoon-deep)] underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            title={`Open ${fkTarget.table}.${fkTarget.column} = ${str}`}
+          >
+            <CellValue value={value} />
+          </Link>
+        ) : (
+          <CellValue value={value} />
+        )}
       </div>
       {hovered && isLong && (
         <div

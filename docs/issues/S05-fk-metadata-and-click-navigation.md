@@ -2,6 +2,7 @@
 title: "S5: FK metadata + FK cell links + FK column badges"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

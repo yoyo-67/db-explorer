@@ -4,10 +4,10 @@ import type {
   TableInfo,
   TableData,
   ColumnInfo,
-  AllTablesPreview,
   ForeignKey,
-  DocumentConfig,
-  DocumentData,
+  IntrospectResult,
+  RowDetail,
+  RowChildGroup,
   JsonValue,
 } from '#/lib/types'
 
@@ -51,9 +51,11 @@ describe('TableData', () => {
   })
 })
 
-describe('AllTablesPreview', () => {
-  test('is a record keyed by table name', () => {
-    expectTypeOf<AllTablesPreview>().toEqualTypeOf<Record<string, TableData>>()
+describe('IntrospectResult', () => {
+  test('exposes schema, tables, fks', () => {
+    expectTypeOf<IntrospectResult['schema']>().toBeString()
+    expectTypeOf<IntrospectResult['tables']>().toEqualTypeOf<TableInfo[]>()
+    expectTypeOf<IntrospectResult['fks']>().toEqualTypeOf<ForeignKey[]>()
   })
 })
 
@@ -66,18 +68,22 @@ describe('ForeignKey', () => {
   })
 })
 
-describe('DocumentConfig', () => {
-  test('has rootTable and foreignKeys', () => {
-    expectTypeOf<DocumentConfig['rootTable']>().toBeString()
-    expectTypeOf<DocumentConfig['foreignKeys']>().toEqualTypeOf<ForeignKey[]>()
+describe('RowDetail', () => {
+  test('exposes schema, table, columns, root, children', () => {
+    expectTypeOf<RowDetail['schema']>().toBeString()
+    expectTypeOf<RowDetail['table']>().toBeString()
+    expectTypeOf<RowDetail['columns']>().toEqualTypeOf<ColumnInfo[]>()
+    expectTypeOf<RowDetail['root']>().toEqualTypeOf<Record<string, JsonValue> | null>()
+    expectTypeOf<RowDetail['children']>().toEqualTypeOf<RowChildGroup[]>()
   })
 })
 
-describe('DocumentData', () => {
-  test('has root row and related records', () => {
-    expectTypeOf<DocumentData['root']>().toEqualTypeOf<Record<string, JsonValue>>()
-    expectTypeOf<DocumentData['related']>().toEqualTypeOf<
-      Record<string, Record<string, JsonValue>[]>
-    >()
+describe('RowChildGroup', () => {
+  test('describes one child table grouping with rows + total', () => {
+    expectTypeOf<RowChildGroup['table']>().toBeString()
+    expectTypeOf<RowChildGroup['fkColumn']>().toBeString()
+    expectTypeOf<RowChildGroup['toColumn']>().toBeString()
+    expectTypeOf<RowChildGroup['rows']>().toEqualTypeOf<Record<string, JsonValue>[]>()
+    expectTypeOf<RowChildGroup['total']>().toBeNumber()
   })
 })

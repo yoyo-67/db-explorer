@@ -2,6 +2,7 @@
 title: "S3: Drop eager preview-all and delete /explorer/preview"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

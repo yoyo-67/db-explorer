@@ -2,6 +2,7 @@
 title: "S4: Row detail route + delete /explorer/documents"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
