@@ -11,6 +11,7 @@ import {
   getRowDetail,
   getRowChildren,
   introspect,
+  runReadOnlyQuery,
 } from '#/server/functions'
 import { resolvePresets } from '#/lib/preset-resolver'
 import type {
@@ -102,6 +103,12 @@ export const $getForeignKeys = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => {
     return getForeignKeys(data.schema)
+  })
+
+export const $runReadOnlyQuery = createServerFn({ method: 'POST' })
+  .inputValidator((data: { sql: string }) => data)
+  .handler(async ({ data }) => {
+    return runReadOnlyQuery(data.sql)
   })
 
 export const $getRowChildren = createServerFn({ method: 'GET' })

@@ -7,6 +7,7 @@ import type {
   ColumnInfo,
   TableData,
   ForeignKey,
+  ConsoleResult,
   IntrospectResult,
   JsonValue,
   RowDetail,
@@ -318,6 +319,39 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 
 const CHILD_PAGE_SIZE = 25
 const FALLBACK_PK = 'id'
+
+const CONSOLE_ROW_CAP = 500
+
+export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
+  const trimmed = sql.trim()
+  if (!trimmed) {
+    return { ok: false, error: 'Empty query' }
+  }
+  const started = Date.now()
+  try {
+    const result = await query(trimmed)
+    const fields = (result.fields ?? []) as Array<{ name: string; dataTypeID?: number }>
+    const columns: ColumnInfo[] = fields.map((f) => ({
+      name: f.name,
+      dataType: '',
+      isNullable: true,
+    }))
+    const allRows = sanitizeRows(result.rows as Record<string, unknown>[])
+    const rows = allRows.slice(0, CONSOLE_ROW_CAP)
+    return {
+      ok: true,
+      columns,
+      rows,
+      rowCount: allRows.length,
+      durationMs: Date.now() - started,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
 
 export async function getRowChildren(args: {
   schema?: string

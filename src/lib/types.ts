@@ -97,6 +97,16 @@ export interface TablePage {
   totalPages: number
 }
 
+export type ConsoleResult =
+  | {
+      ok: true
+      columns: ColumnInfo[]
+      rows: Record<string, JsonValue>[]
+      rowCount: number
+      durationMs: number
+    }
+  | { ok: false; error: string }
+
 export interface TableCatalogGroup {
   name: string
   description: string

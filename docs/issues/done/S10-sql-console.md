@@ -2,6 +2,7 @@
 title: "S10: SQL console at /console with localStorage history"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

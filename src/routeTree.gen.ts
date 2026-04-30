@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
 import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table/row/$id'
 
+const ConsoleRoute = ConsoleRouteImport.update({
+  id: '/console',
+  path: '/console',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,36 +37,56 @@ const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/console': typeof ConsoleRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/console': typeof ConsoleRoute
   '/t/$schema/$table': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/console': typeof ConsoleRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/t/$schema/$table/' | '/t/$schema/$table/row/$id'
+  fullPaths:
+    | '/'
+    | '/console'
+    | '/t/$schema/$table/'
+    | '/t/$schema/$table/row/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/t/$schema/$table' | '/t/$schema/$table/row/$id'
-  id: '__root__' | '/' | '/t/$schema/$table/' | '/t/$schema/$table/row/$id'
+  to: '/' | '/console' | '/t/$schema/$table' | '/t/$schema/$table/row/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/console'
+    | '/t/$schema/$table/'
+    | '/t/$schema/$table/row/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConsoleRoute: typeof ConsoleRoute
   TSchemaTableIndexRoute: typeof TSchemaTableIndexRoute
   TSchemaTableRowIdRoute: typeof TSchemaTableRowIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/console': {
+      id: '/console'
+      path: '/console'
+      fullPath: '/console'
+      preLoaderRoute: typeof ConsoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +113,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConsoleRoute: ConsoleRoute,
   TSchemaTableIndexRoute: TSchemaTableIndexRoute,
   TSchemaTableRowIdRoute: TSchemaTableRowIdRoute,
 }

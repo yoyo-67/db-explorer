@@ -31,6 +31,13 @@ export default function Header() {
           >
             Connect
           </Link>
+          <Link
+            to="/console"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+          >
+            Console
+          </Link>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
