@@ -23,7 +23,7 @@ function HomePage() {
     queryFn: () => $getPresets(),
   })
 
-  const handleConnect = async (config: ConnectionConfig) => {
+  const handleConnect = async (config: ConnectionConfig, presetName?: string) => {
     setIsLoading(true)
     setError(null)
 
@@ -34,7 +34,7 @@ function HomePage() {
         return
       }
 
-      await $connect({ data: config })
+      await $connect({ data: { config, presetName } })
       const schemas = await $getSchemas()
       const schema = schemas.includes('public') ? 'public' : schemas[0]
       if (!schema) {

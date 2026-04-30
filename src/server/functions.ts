@@ -1,6 +1,7 @@
 import format from 'pg-format'
-import { createConnection as dbConnect, query } from '#/server/db'
+import { createConnection as dbConnect, getPresetName, query } from '#/server/db'
 import { compileFilters } from '#/lib/filter-dsl'
+import { appendPerfEntry } from '#/server/perf-log'
 import type {
   ConnectionConfig,
   TableInfo,
@@ -349,7 +350,29 @@ export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
   const started = Date.now()
   try {
     await client.query('BEGIN READ ONLY')
-    const result = await client.query({ text: trimmed, values: [] })
+    const userStarted = Date.now()
+    let result
+    try {
+      result = await client.query({ text: trimmed, values: [] })
+      void appendPerfEntry({
+        ts: userStarted,
+        preset: getPresetName() ?? 'console',
+        sql: `[console] ${trimmed}`,
+        ms: Date.now() - userStarted,
+        ok: true,
+        rowCount: result.rowCount ?? undefined,
+      })
+    } catch (innerErr) {
+      void appendPerfEntry({
+        ts: userStarted,
+        preset: getPresetName() ?? 'console',
+        sql: `[console] ${trimmed}`,
+        ms: Date.now() - userStarted,
+        ok: false,
+        error: innerErr instanceof Error ? innerErr.message : String(innerErr),
+      })
+      throw innerErr
+    }
     await client.query('ROLLBACK')
     const fields = (result.fields ?? []) as Array<{ name: string; dataTypeID?: number }>
     const columns: ColumnInfo[] = fields.map((f) => ({

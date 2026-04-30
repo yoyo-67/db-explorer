@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ConnectionConfig, ConnectionPreset } from '#/lib/types'
 
 interface ConnectionFormProps {
-  onConnect: (config: ConnectionConfig) => Promise<void>
+  onConnect: (config: ConnectionConfig, presetName?: string) => Promise<void>
   isLoading: boolean
   error: string | null
   presets: ConnectionPreset[]
@@ -22,9 +22,11 @@ export default function ConnectionForm({
     password: '',
     ssl: false,
   })
+  const [selectedPresetName, setSelectedPresetName] = useState<string | undefined>()
 
   const update = (field: keyof ConnectionConfig, value: string | number | boolean) => {
     setConfig((prev) => ({ ...prev, [field]: value }))
+    setSelectedPresetName(undefined)
   }
 
   const applyPreset = (preset: ConnectionPreset) => {
@@ -36,6 +38,7 @@ export default function ConnectionForm({
       password: preset.password,
       ssl: preset.ssl,
     })
+    setSelectedPresetName(preset.name)
   }
 
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function ConnectionForm({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    onConnect(config)
+    onConnect(config, selectedPresetName)
   }
 
   return (

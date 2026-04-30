@@ -7,6 +7,13 @@ vi.mock('#/server/db', () => ({
   disconnect: vi.fn(),
   query: (...args: unknown[]) => mockQuery(...args),
   getConnection: () => ({}),
+  getPresetName: () => null,
+  setPresetName: vi.fn(),
+}))
+
+vi.mock('#/server/perf-log', () => ({
+  appendPerfEntry: vi.fn(),
+  readPerfLog: vi.fn(async () => []),
 }))
 
 const { getTablePage, EXACT_COUNT_THRESHOLD } = await import('#/server/functions')

@@ -119,7 +119,7 @@ function ConnectionSwitcher() {
         setError('error' in test ? test.error : 'Connection failed')
         return
       }
-      await $connect({ data: preset })
+      await $connect({ data: { config: preset, presetName: preset.name } })
       await queryClient.invalidateQueries()
       const schemas = await $getSchemas()
       const schema = schemas.includes('public') ? 'public' : schemas[0]

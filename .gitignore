@@ -14,3 +14,6 @@ todos.json
 
 # Connection presets (contains credentials)
 presets.json
+
+# Local query perf instrumentation
+perf-log.jsonl

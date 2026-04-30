@@ -1,10 +1,27 @@
 import pg from 'pg'
 import type { ConnectionConfig } from '#/lib/types'
+import { appendPerfEntry } from '#/server/perf-log'
 
 // Use globalThis to survive HMR reloads in dev
 const g = globalThis as unknown as {
   __dbPool?: pg.Pool | null
   __dbLastConfig?: ConnectionConfig | null
+  __dbPresetName?: string | null
+}
+
+function presetLabel(): string {
+  if (g.__dbPresetName) return g.__dbPresetName
+  const c = g.__dbLastConfig
+  if (!c) return 'unknown'
+  return `adhoc:${c.user}@${c.host}/${c.database}`
+}
+
+export function setPresetName(name: string | null): void {
+  g.__dbPresetName = name
+}
+
+export function getPresetName(): string | null {
+  return g.__dbPresetName ?? null
 }
 
 function getPool(): pg.Pool | null {
@@ -77,5 +94,27 @@ export async function query(sql: string, params?: unknown[]): Promise<pg.QueryRe
   if (!pool) {
     throw new Error('Not connected to database')
   }
-  return pool.query(sql, params)
+  const started = Date.now()
+  try {
+    const result = await pool.query(sql, params)
+    void appendPerfEntry({
+      ts: started,
+      preset: presetLabel(),
+      sql,
+      ms: Date.now() - started,
+      ok: true,
+      rowCount: result.rowCount ?? undefined,
+    })
+    return result
+  } catch (err) {
+    void appendPerfEntry({
+      ts: started,
+      preset: presetLabel(),
+      sql,
+      ms: Date.now() - started,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    throw err
+  }
 }

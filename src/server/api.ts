@@ -56,10 +56,11 @@ export const $testConnection = createServerFn({ method: 'POST' })
   })
 
 export const $connect = createServerFn({ method: 'POST' })
-  .inputValidator((data: ConnectionConfig) => data)
+  .inputValidator((data: { config: ConnectionConfig; presetName?: string }) => data)
   .handler(async ({ data }) => {
-    const { createConnection } = await import('#/server/db')
-    await createConnection(data)
+    const { createConnection, setPresetName } = await import('#/server/db')
+    await createConnection(data.config)
+    setPresetName(data.presetName ?? null)
     return { success: true as const }
   })
 

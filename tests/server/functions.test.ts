@@ -10,6 +10,13 @@ vi.mock('#/server/db', () => ({
   disconnect: (...args: unknown[]) => mockDisconnect(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   getConnection: () => ({}),
+  getPresetName: () => null,
+  setPresetName: vi.fn(),
+}))
+
+vi.mock('#/server/perf-log', () => ({
+  appendPerfEntry: vi.fn(),
+  readPerfLog: vi.fn(async () => []),
 }))
 
 const {
