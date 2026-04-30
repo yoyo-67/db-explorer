@@ -1,6 +1,13 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { $getSchemas, $getTables } from '#/server/api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import {
+  $connect,
+  $getPresets,
+  $getSchemas,
+  $getTables,
+  $testConnection,
+} from '#/server/api'
 import ThemeToggle from './ThemeToggle'
 
 export default function Header() {
@@ -27,6 +34,7 @@ export default function Header() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <ConnectionSwitcher />
           <SchemaPicker />
           <ThemeToggle />
         </div>
@@ -74,5 +82,81 @@ function SchemaPicker() {
         </option>
       ))}
     </select>
+  )
+}
+
+function ConnectionSwitcher() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [switching, setSwitching] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const presetsQuery = useQuery({
+    queryKey: ['presets'],
+    queryFn: () => $getPresets(),
+    staleTime: 60_000,
+  })
+
+  const presets = presetsQuery.data?.presets ?? []
+  if (presets.length === 0) return null
+
+  const handleSelect = async (name: string) => {
+    if (!name) return
+    const preset = presets.find((p) => p.name === name)
+    if (!preset) return
+    setSwitching(name)
+    setError(null)
+    try {
+      const test = await $testConnection({ data: preset })
+      if (!test.success) {
+        setError('error' in test ? test.error : 'Connection failed')
+        return
+      }
+      await $connect({ data: preset })
+      await queryClient.invalidateQueries()
+      const schemas = await $getSchemas()
+      const schema = schemas.includes('public') ? 'public' : schemas[0]
+      if (!schema) {
+        setError('Connected but no schemas were found')
+        return
+      }
+      const tables = await $getTables({ data: { schema } })
+      if (tables.length === 0) {
+        navigate({ to: '/' })
+        return
+      }
+      navigate({
+        to: '/t/$schema/$table',
+        params: { schema, table: tables[0].name },
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value=""
+        disabled={switching !== null}
+        onChange={(e) => handleSelect(e.target.value)}
+        className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
+        title="Switch connection"
+      >
+        <option value="">{switching ? `Switching to ${switching}...` : 'Switch DB...'}</option>
+        {presets.map((p) => (
+          <option key={p.name} value={p.name}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span title={error} className="text-xs text-red-500">
+          ⚠
+        </span>
+      )}
+    </div>
   )
 }

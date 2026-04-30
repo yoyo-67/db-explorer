@@ -2,6 +2,7 @@
 title: "S12: Connection switcher in header"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
