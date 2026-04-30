@@ -2,7 +2,13 @@
 title: "S9: Adopt shadcn primitives (Sheet, Sidebar, Command, Dialog, Button, Input, Select)"
 labels: needs-triage
 type: HITL
+status: wontfix
 ---
+
+> **Closed as won't-fix (2026-04-30).** The custom palette + ad-hoc
+> components are working well. shadcn migration would add churn that
+> doesn't pay back; tokens already drive the look. Re-open if a feature
+> later requires shadcn-only primitives (e.g. Command palette).
 
 ## Parent
 
