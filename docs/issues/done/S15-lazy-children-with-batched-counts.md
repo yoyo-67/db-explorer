@@ -2,6 +2,7 @@
 title: "S15: Lazy children on row detail + batched counts upfront"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

@@ -9,6 +9,7 @@ import {
   getTablePreview,
   getForeignKeys,
   getRowDetail,
+  getRowChildren,
   introspect,
 } from '#/server/functions'
 import { resolvePresets } from '#/lib/preset-resolver'
@@ -101,6 +102,21 @@ export const $getForeignKeys = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => {
     return getForeignKeys(data.schema)
+  })
+
+export const $getRowChildren = createServerFn({ method: 'GET' })
+  .inputValidator(
+    (data: {
+      schema?: string
+      childTable: string
+      fkColumn: string
+      parentValue: string
+      limit?: number
+      offset?: number
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    return getRowChildren(data)
   })
 
 export const $getRowDetail = createServerFn({ method: 'GET' })

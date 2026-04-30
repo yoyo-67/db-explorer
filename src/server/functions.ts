@@ -319,6 +319,32 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 const CHILD_PAGE_SIZE = 25
 const FALLBACK_PK = 'id'
 
+export async function getRowChildren(args: {
+  schema?: string
+  childTable: string
+  fkColumn: string
+  parentValue: string
+  limit?: number
+  offset?: number
+}): Promise<{ rows: Row[]; columns: ColumnInfo[] }> {
+  const schema = args.schema || DEFAULT_SCHEMA
+  const limit = Math.max(1, Math.min(500, args.limit ?? CHILD_PAGE_SIZE))
+  const offset = Math.max(0, args.offset ?? 0)
+
+  const columns = await fetchColumns(schema, args.childTable)
+  const dataQuery = format(
+    'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT %s OFFSET %s',
+    schema,
+    args.childTable,
+    args.fkColumn,
+    args.parentValue,
+    limit,
+    offset,
+  )
+  const result = await query(dataQuery)
+  return { rows: sanitizeRows(result.rows), columns }
+}
+
 async function resolvePrimaryKey(schema: string, table: string): Promise<string | null> {
   const result = await query(
     `
@@ -343,7 +369,7 @@ export async function getRowDetail(
   schema: string,
   table: string,
   rowId: string,
-  childLimit: number = CHILD_PAGE_SIZE,
+  _childLimit: number = CHILD_PAGE_SIZE,
   lookupColumn?: string,
 ): Promise<RowDetail> {
   const columnsResult = await query(
@@ -387,36 +413,42 @@ export async function getRowDetail(
   const fks = await getForeignKeys(schema)
   const incoming = fks.filter((fk) => fk.toTable === table)
 
-  const children: RowChildGroup[] = await Promise.all(
-    incoming.map(async (fk) => {
-      const rowsQuery = format(
-        'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT %s',
-        schema,
-        fk.fromTable,
-        fk.fromColumn,
-        rowId,
-        childLimit,
-      )
-      const countQuery = format(
-        'SELECT COUNT(*)::bigint AS c FROM %I.%I WHERE %I::text = %L',
-        schema,
-        fk.fromTable,
-        fk.fromColumn,
-        rowId,
-      )
-      const [rowsResult, countResult] = await Promise.all([
-        query(rowsQuery),
-        query(countQuery),
-      ])
-      return {
-        table: fk.fromTable,
-        fkColumn: fk.fromColumn,
-        toColumn: fk.toColumn,
-        rows: sanitizeRows(rowsResult.rows),
-        total: Number(countResult.rows[0]?.c ?? 0),
+  // Phase 1: a single batched UNION-ALL count query covers every incoming FK.
+  // Rows themselves are fetched lazily by getRowChildren when the user expands.
+  let children: RowChildGroup[] = []
+  if (root && incoming.length > 0) {
+    const fragments = incoming
+      .map((fk) => {
+        const parentValue = root[fk.toColumn]
+        if (parentValue === null || parentValue === undefined) return null
+        return format(
+          'SELECT %L AS k, COUNT(*)::bigint AS c FROM %I.%I WHERE %I::text = %L',
+          `${fk.fromTable}.${fk.fromColumn}`,
+          schema,
+          fk.fromTable,
+          fk.fromColumn,
+          String(parentValue),
+        )
+      })
+      .filter((f): f is string => f !== null)
+
+    const counts = new Map<string, number>()
+    if (fragments.length > 0) {
+      const batched = fragments.join(' UNION ALL ')
+      const result = await query(batched)
+      for (const row of result.rows) {
+        counts.set(String(row.k), Number(row.c))
       }
-    }),
-  )
+    }
+
+    children = incoming.map((fk) => ({
+      table: fk.fromTable,
+      fkColumn: fk.fromColumn,
+      toColumn: fk.toColumn,
+      rows: [],
+      total: counts.get(`${fk.fromTable}.${fk.fromColumn}`) ?? 0,
+    }))
+  }
 
   return { schema, table, columns, root, children }
 }

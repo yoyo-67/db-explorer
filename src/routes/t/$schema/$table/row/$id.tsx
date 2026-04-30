@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { $getRowDetail, $introspect } from '#/server/api'
+import { useMemo, useState } from 'react'
+import { $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { getRowLabel } from '#/lib/row-label'
 import type { ColumnInfo, JsonValue, RowChildGroup } from '#/lib/types'
@@ -22,6 +22,7 @@ function RowDetailPage() {
   const { col } = Route.useSearch()
   const { isChecking, isConnected } = useConnectionGuard()
   const [prettyJson, setPrettyJson] = useState(true)
+  const [showEmpty, setShowEmpty] = useState(false)
 
   const detailQuery = useQuery({
     queryKey: ['rowDetail', schema, table, id, col ?? ''],
@@ -38,6 +39,16 @@ function RowDetailPage() {
     staleTime: Infinity,
   })
 
+  const detail = detailQuery.data
+  const fks = introspectQuery.data?.fks ?? []
+  const root = detail?.root ?? null
+  const label = root ? getRowLabel(root, detail?.columns ?? [], fks, table) : null
+  const visibleChildren = useMemo(() => {
+    const all = detail?.children ?? []
+    return showEmpty ? all : all.filter((c) => c.total > 0)
+  }, [detail, showEmpty])
+  const hiddenEmpty = (detail?.children.length ?? 0) - visibleChildren.length
+
   if (isChecking) {
     return (
       <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">
@@ -46,11 +57,6 @@ function RowDetailPage() {
     )
   }
   if (!isConnected) return null
-
-  const detail = detailQuery.data
-  const fks = introspectQuery.data?.fks ?? []
-  const root = detail?.root ?? null
-  const label = root ? getRowLabel(root, detail?.columns ?? [], fks, table) : null
 
   return (
     <main className="px-4 pb-8 pt-6">
@@ -113,12 +119,42 @@ function RowDetailPage() {
 
         {detail && detail.children.length > 0 && (
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-[var(--sea-ink)]">
-              Incoming references
-            </h2>
-            {detail.children.map((child) => (
-              <ChildGroup key={child.table + child.fkColumn} schema={schema} child={child} prettyJson={prettyJson} />
-            ))}
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-[var(--sea-ink)]">
+                Incoming references
+              </h2>
+              <span className="text-xs text-[var(--sea-ink-soft)]">
+                {visibleChildren.length} non-empty
+                {hiddenEmpty > 0 && ` · ${hiddenEmpty} empty hidden`}
+              </span>
+              {hiddenEmpty > 0 && (
+                <label className="ml-auto flex items-center gap-1.5 text-xs text-[var(--sea-ink-soft)]">
+                  <input
+                    type="checkbox"
+                    checked={showEmpty}
+                    onChange={(e) => setShowEmpty(e.target.checked)}
+                    className="rounded border-[var(--line)]"
+                  />
+                  Show empty references
+                </label>
+              )}
+            </div>
+            {visibleChildren.length === 0 ? (
+              <p className="text-xs text-[var(--sea-ink-soft)]">No related rows in any child table.</p>
+            ) : (
+              visibleChildren.map((child) => {
+                const parentValue = root ? root[child.toColumn] : null
+                return (
+                  <ChildGroup
+                    key={child.table + child.fkColumn}
+                    schema={schema}
+                    child={child}
+                    parentValue={parentValue}
+                    prettyJson={prettyJson}
+                  />
+                )
+              })
+            )}
           </section>
         )}
       </div>
@@ -173,17 +209,57 @@ function Cell({ value, prettyJson }: { value: JsonValue | undefined; prettyJson:
   return <>{String(value)}</>
 }
 
+const CHILD_PAGE_SIZE = 25
+
 function ChildGroup({
   schema,
   child,
+  parentValue,
   prettyJson,
 }: {
   schema: string
   child: RowChildGroup
+  parentValue: JsonValue | null
   prettyJson: boolean
 }) {
-  const [expanded, setExpanded] = useState(true)
-  const hidden = Math.max(0, child.total - child.rows.length)
+  const [expanded, setExpanded] = useState(false)
+  const [page, setPage] = useState(1)
+  const offset = (page - 1) * CHILD_PAGE_SIZE
+  const totalPages = Math.max(1, Math.ceil(child.total / CHILD_PAGE_SIZE))
+  const canFetch =
+    expanded &&
+    child.total > 0 &&
+    parentValue !== null &&
+    parentValue !== undefined
+
+  const rowsQuery = useQuery({
+    queryKey: [
+      'rowChildren',
+      schema,
+      child.table,
+      child.fkColumn,
+      String(parentValue ?? ''),
+      page,
+      CHILD_PAGE_SIZE,
+    ],
+    queryFn: () =>
+      $getRowChildren({
+        data: {
+          schema,
+          childTable: child.table,
+          fkColumn: child.fkColumn,
+          parentValue: String(parentValue ?? ''),
+          limit: CHILD_PAGE_SIZE,
+          offset,
+        },
+      }),
+    enabled: canFetch,
+    staleTime: 30_000,
+  })
+
+  const rows = rowsQuery.data?.rows ?? []
+  const start = child.total === 0 ? 0 : offset + 1
+  const end = Math.min(child.total, offset + rows.length)
 
   return (
     <div className="island-shell rounded-xl">
@@ -215,17 +291,50 @@ function ChildGroup({
 
       {expanded && (
         <div className="space-y-2 border-t border-[var(--line)] p-3">
-          {child.rows.length === 0 ? (
+          {child.total === 0 ? (
             <p className="px-2 py-2 text-xs text-[var(--sea-ink-soft)]">No related rows.</p>
+          ) : rowsQuery.isLoading ? (
+            <p className="px-2 py-2 text-xs text-[var(--sea-ink-soft)]">Loading rows...</p>
+          ) : rowsQuery.error ? (
+            <p className="px-2 py-2 text-xs text-red-500">
+              Failed to load rows: {String(rowsQuery.error)}
+            </p>
           ) : (
-            child.rows.map((row, i) => (
-              <ChildRow key={i} schema={schema} table={child.table} row={row} prettyJson={prettyJson} />
+            rows.map((row, i) => (
+              <ChildRow
+                key={offset + i}
+                schema={schema}
+                table={child.table}
+                row={row}
+                prettyJson={prettyJson}
+              />
             ))
           )}
-          {hidden > 0 && (
-            <p className="px-2 py-1 text-[11px] text-[var(--sea-ink-soft)]">
-              + {hidden} more not shown
-            </p>
+          {child.total > CHILD_PAGE_SIZE && (
+            <div className="flex items-center justify-end gap-2 px-2 pt-1 text-[11px] text-[var(--sea-ink-soft)]">
+              <span>
+                {start}–{end} of {child.total}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || rowsQuery.isFetching}
+                className="rounded border border-[var(--line)] px-1.5 py-0.5 hover:bg-[var(--surface-strong)] disabled:opacity-30"
+              >
+                ‹
+              </button>
+              <span className="tabular-nums">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || rowsQuery.isFetching}
+                className="rounded border border-[var(--line)] px-1.5 py-0.5 hover:bg-[var(--surface-strong)] disabled:opacity-30"
+              >
+                ›
+              </button>
+            </div>
           )}
         </div>
       )}
