@@ -1,10 +1,18 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import LinkableValue from '#/components/LinkableValue'
 import { $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
+import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { getRowLabel } from '#/lib/row-label'
-import type { ColumnInfo, JsonValue, RowChildGroup } from '#/lib/types'
+import type {
+  ColumnInfo,
+  ForeignKey,
+  JsonValue,
+  RowChildGroup,
+  TableInfo,
+} from '#/lib/types'
 
 interface RowDetailSearch {
   col?: string
@@ -43,6 +51,8 @@ function RowDetailPage() {
   const fks = introspectQuery.data?.fks ?? []
   const root = detail?.root ?? null
   const label = root ? getRowLabel(root, detail?.columns ?? [], fks, table) : null
+  const rootTableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
+  const rootPkColumn = rootTableInfo?.pkColumn ?? null
   const visibleChildren = useMemo(() => {
     const all = detail?.children ?? []
     return showEmpty ? all : all.filter((c) => c.total > 0)
@@ -110,9 +120,23 @@ function RowDetailPage() {
         {detail && root && (
           <section className="island-shell rounded-xl">
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-5 py-4 font-mono text-[13px]">
-              {detail.columns.map((col) => (
-                <FieldRow key={col.name} col={col} value={root[col.name]} prettyJson={prettyJson} />
-              ))}
+              {enrichColumnsWithFks(detail.columns, fks, table).map((col) => {
+                const isPk = !!rootPkColumn && col.name === rootPkColumn
+                const target = col.references
+                  ? { schema, ...col.references }
+                  : undefined
+                const variant: 'fk' | 'self-pk' = isPk ? 'self-pk' : 'fk'
+                return (
+                  <FieldRow
+                    key={col.name}
+                    col={col}
+                    value={root[col.name]}
+                    prettyJson={prettyJson}
+                    target={target}
+                    variant={variant}
+                  />
+                )
+              })}
             </div>
           </section>
         )}
@@ -144,6 +168,9 @@ function RowDetailPage() {
             ) : (
               visibleChildren.map((child) => {
                 const parentValue = root ? root[child.toColumn] : null
+                const childTableInfo = introspectQuery.data?.tables.find(
+                  (t) => t.name === child.table,
+                )
                 return (
                   <ChildGroup
                     key={child.table + child.fkColumn}
@@ -151,6 +178,8 @@ function RowDetailPage() {
                     child={child}
                     parentValue={parentValue}
                     prettyJson={prettyJson}
+                    childTableInfo={childTableInfo}
+                    fks={fks}
                   />
                 )
               })
@@ -166,10 +195,14 @@ function FieldRow({
   col,
   value,
   prettyJson,
+  target,
+  variant = 'fk',
 }: {
   col: ColumnInfo
   value: JsonValue | undefined
   prettyJson: boolean
+  target?: { schema: string; table: string; column: string }
+  variant?: 'fk' | 'pk' | 'self-pk'
 }) {
   const isJson = value !== null && value !== undefined && typeof value === 'object'
   return (
@@ -181,7 +214,12 @@ function FieldRow({
         </span>
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
-        <Cell value={value} prettyJson={prettyJson} />
+        <LinkableValue
+          value={value}
+          prettyJson={prettyJson}
+          target={target}
+          variant={variant}
+        />
         {isJson && prettyJson && (
           <pre className="mt-1 overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
             {JSON.stringify(value, null, 2)}
@@ -192,23 +230,6 @@ function FieldRow({
   )
 }
 
-function Cell({ value, prettyJson }: { value: JsonValue | undefined; prettyJson: boolean }) {
-  if (value === null || value === undefined) {
-    return <span className="italic text-[var(--sea-ink-soft)]/50">NULL</span>
-  }
-  if (typeof value === 'boolean') {
-    return <span className={value ? 'text-green-600' : 'text-red-500'}>{String(value)}</span>
-  }
-  if (typeof value === 'number') {
-    return <span className="tabular-nums text-[var(--lagoon-deep)]">{value}</span>
-  }
-  if (typeof value === 'object') {
-    if (prettyJson) return null
-    return <span className="text-[var(--sea-ink-soft)]">{JSON.stringify(value)}</span>
-  }
-  return <>{String(value)}</>
-}
-
 const CHILD_PAGE_SIZE = 25
 
 function ChildGroup({
@@ -216,11 +237,15 @@ function ChildGroup({
   child,
   parentValue,
   prettyJson,
+  childTableInfo,
+  fks,
 }: {
   schema: string
   child: RowChildGroup
   parentValue: JsonValue | null
   prettyJson: boolean
+  childTableInfo?: TableInfo
+  fks: ForeignKey[]
 }) {
   const [expanded, setExpanded] = useState(false)
   const [page, setPage] = useState(1)
@@ -258,6 +283,12 @@ function ChildGroup({
   })
 
   const rows = rowsQuery.data?.rows ?? []
+  const childColumns = rowsQuery.data?.columns ?? childTableInfo?.columns ?? []
+  const enrichedChildColumns = useMemo(
+    () => enrichColumnsWithFks(childColumns, fks, child.table),
+    [childColumns, fks, child.table],
+  )
+  const childPkColumn = childTableInfo?.pkColumn ?? null
   const start = child.total === 0 ? 0 : offset + 1
   const end = Math.min(child.total, offset + rows.length)
 
@@ -307,6 +338,8 @@ function ChildGroup({
                 table={child.table}
                 row={row}
                 prettyJson={prettyJson}
+                columns={enrichedChildColumns}
+                pkColumn={childPkColumn}
               />
             ))
           )}
@@ -347,35 +380,57 @@ function ChildRow({
   table,
   row,
   prettyJson,
+  columns,
+  pkColumn,
 }: {
   schema: string
   table: string
   row: Record<string, JsonValue>
   prettyJson: boolean
+  columns: ColumnInfo[]
+  pkColumn: string | null
 }) {
-  const id = row['id']
+  const renderableColumns =
+    columns.length > 0
+      ? columns
+      : Object.keys(row).map(
+          (name): ColumnInfo => ({ name, dataType: '', isNullable: true }),
+        )
+  const pkValue = pkColumn ? row[pkColumn] : undefined
   return (
     <div className="rounded-lg bg-[rgba(0,0,0,0.02)] px-3 py-2 dark:bg-[rgba(255,255,255,0.03)]">
-      {id !== undefined && id !== null && (
+      {pkColumn && pkValue !== undefined && pkValue !== null && (
         <div className="mb-1 text-[11px] text-[var(--sea-ink-soft)]">
           <Link
             to="/t/$schema/$table/row/$id"
-            params={{ schema, table, id: String(id) }}
+            params={{ schema, table, id: String(pkValue) }}
+            search={pkColumn !== 'id' ? { col: pkColumn } : {}}
             className="font-mono text-[var(--lagoon-deep)] hover:underline"
           >
-            #{String(id)}
+            #{String(pkValue)}
           </Link>
         </div>
       )}
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 font-mono text-[12px]">
-        {Object.entries(row).map(([key, value]) => (
-          <FieldRow
-            key={key}
-            col={{ name: key, dataType: '', isNullable: true }}
-            value={value}
-            prettyJson={prettyJson}
-          />
-        ))}
+        {renderableColumns.map((col) => {
+          const isPk = !!pkColumn && col.name === pkColumn
+          const target = col.references
+            ? { schema, ...col.references }
+            : isPk
+              ? { schema, table, column: col.name }
+              : undefined
+          const variant: 'fk' | 'pk' = isPk ? 'pk' : 'fk'
+          return (
+            <FieldRow
+              key={col.name}
+              col={col}
+              value={row[col.name]}
+              prettyJson={prettyJson}
+              target={target}
+              variant={variant}
+            />
+          )
+        })}
       </div>
     </div>
   )

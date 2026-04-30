@@ -2,6 +2,7 @@
 title: "S16: FK + PK links wherever row data is rendered"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
