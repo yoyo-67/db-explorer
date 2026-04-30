@@ -8,6 +8,8 @@ interface DataTableProps {
   totalRows: number
   prettyJson?: boolean
   schema?: string
+  table?: string
+  pkColumn?: string | null
   sort?: TableSort | null
   onSortChange?: (sort: TableSort | null) => void
   filter?: Record<string, string>
@@ -20,6 +22,8 @@ export default function DataTable({
   totalRows,
   prettyJson = false,
   schema,
+  table,
+  pkColumn,
   sort = null,
   onSortChange,
   filter = {},
@@ -106,6 +110,8 @@ export default function DataTable({
                   index={i}
                   prettyJson={prettyJson}
                   schema={schema}
+                  table={table}
+                  pkColumn={pkColumn ?? null}
                 />
               ))
             )}
@@ -245,13 +251,15 @@ function SortIcon({ dir }: { dir: SortDir }) {
 }
 
 function ExpandableRow({
-  row, columns, index, prettyJson, schema,
+  row, columns, index, prettyJson, schema, table, pkColumn,
 }: {
   row: Record<string, JsonValue>
   columns: ColumnInfo[]
   index: number
   prettyJson: boolean
   schema?: string
+  table?: string
+  pkColumn: string | null
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -263,14 +271,25 @@ function ExpandableRow({
           index % 2 === 0 ? '' : 'bg-[rgba(0,0,0,0.02)] dark:bg-[rgba(255,255,255,0.02)]'
         }`}
       >
-        {columns.map((col) => (
-          <HoverExpandCell
-            key={col.name}
-            value={row[col.name]}
-            prettyJson={prettyJson}
-            fkTarget={schema && col.references ? { schema, ...col.references } : undefined}
-          />
-        ))}
+        {columns.map((col) => {
+          const isPkCell =
+            !!schema && !!table && !!pkColumn && col.name === pkColumn
+          const fkTarget =
+            schema && col.references ? { schema, ...col.references } : undefined
+          const pkTarget =
+            isPkCell && schema && table
+              ? { schema, table, column: pkColumn ?? 'id' }
+              : undefined
+          return (
+            <HoverExpandCell
+              key={col.name}
+              value={row[col.name]}
+              prettyJson={prettyJson}
+              fkTarget={fkTarget ?? pkTarget}
+              isPk={isPkCell}
+            />
+          )
+        })}
       </tr>
       {expanded && (
         <tr>
@@ -311,10 +330,12 @@ function HoverExpandCell({
   value,
   prettyJson,
   fkTarget,
+  isPk = false,
 }: {
   value: JsonValue
   prettyJson: boolean
   fkTarget?: { schema: string; table: string; column: string }
+  isPk?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
   const cellRef = useRef<HTMLTableCellElement>(null)
@@ -353,8 +374,16 @@ function HoverExpandCell({
             }}
             search={fkTarget.column !== 'id' ? { col: fkTarget.column } : {}}
             onClick={(e) => e.stopPropagation()}
-            className="text-[var(--lagoon-deep)] underline decoration-dotted underline-offset-2 hover:decoration-solid"
-            title={`Open ${fkTarget.table}.${fkTarget.column} = ${str}`}
+            className={
+              isPk
+                ? 'font-semibold text-[var(--lagoon-deep)] hover:underline'
+                : 'text-[var(--lagoon-deep)] underline decoration-dotted underline-offset-2 hover:decoration-solid'
+            }
+            title={
+              isPk
+                ? `Open row #${str}`
+                : `Open ${fkTarget.table}.${fkTarget.column} = ${str}`
+            }
           >
             <CellValue value={value} />
           </Link>

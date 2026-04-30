@@ -13,6 +13,7 @@ function table(name: string, rowCount = 0): TableInfo {
     rowCount,
     lastModified: null,
     columns: [],
+    pkColumn: null,
   }
 }
 

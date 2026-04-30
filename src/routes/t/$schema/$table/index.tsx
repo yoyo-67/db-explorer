@@ -241,6 +241,8 @@ function TablePage() {
               totalRows={totalRows}
               prettyJson={prettyJson}
               schema={schema}
+              table={table}
+              pkColumn={tableInfo?.pkColumn ?? null}
               sort={sort}
               onSortChange={handleSortChange}
               filter={filterDraft}

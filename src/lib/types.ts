@@ -32,6 +32,7 @@ export interface TableInfo {
   rowCount: number
   lastModified: string | null
   columns: ColumnInfo[]
+  pkColumn: string | null
 }
 
 export interface TableData {

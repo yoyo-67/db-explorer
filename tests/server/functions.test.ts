@@ -91,6 +91,13 @@ describe('getTables', () => {
         },
       ],
     })
+    // Third query: primary keys
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { table_name: 'users', column_name: 'id' },
+        { table_name: 'posts', column_name: 'id' },
+      ],
+    })
 
     const result = await getTables()
 
@@ -104,12 +111,15 @@ describe('getTables', () => {
         { name: 'id', dataType: 'integer', isNullable: false },
         { name: 'email', dataType: 'character varying', isNullable: false },
       ],
+      pkColumn: 'id',
     })
     expect(result[1].name).toBe('posts')
     expect(result[1].columns).toHaveLength(2)
+    expect(result[1].pkColumn).toBe('id')
   })
 
   it('returns empty array when no tables', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
     mockQuery.mockResolvedValueOnce({ rows: [] })
     mockQuery.mockResolvedValueOnce({ rows: [] })
 

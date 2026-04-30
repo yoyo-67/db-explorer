@@ -105,6 +105,28 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
     [schema],
   )
 
+  const pkResult = await query(
+    `
+    SELECT kcu.table_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+    WHERE tc.constraint_type = 'PRIMARY KEY'
+      AND tc.table_schema = $1
+    ORDER BY kcu.table_name, kcu.ordinal_position
+  `,
+    [schema],
+  )
+
+  const pkByTable = new Map<string, string>()
+  for (const row of pkResult.rows) {
+    if (!pkByTable.has(row.table_name)) {
+      pkByTable.set(row.table_name, row.column_name)
+    }
+  }
+
   const columnsByTable = new Map<string, ColumnInfo[]>()
   for (const row of columnsResult.rows) {
     const cols = columnsByTable.get(row.table_name) ?? []
@@ -122,6 +144,7 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
     rowCount: Number(row.row_count),
     lastModified: row.last_modified ? new Date(row.last_modified).toISOString() : null,
     columns: columnsByTable.get(row.table_name) ?? [],
+    pkColumn: pkByTable.get(row.table_name) ?? null,
   }))
 }
 

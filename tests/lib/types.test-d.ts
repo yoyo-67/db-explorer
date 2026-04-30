@@ -34,12 +34,13 @@ describe('ColumnInfo', () => {
 })
 
 describe('TableInfo', () => {
-  test('has name, schema, rowCount, lastModified, columns', () => {
+  test('has name, schema, rowCount, lastModified, columns, pkColumn', () => {
     expectTypeOf<TableInfo['name']>().toBeString()
     expectTypeOf<TableInfo['schema']>().toBeString()
     expectTypeOf<TableInfo['rowCount']>().toBeNumber()
     expectTypeOf<TableInfo['lastModified']>().toEqualTypeOf<string | null>()
     expectTypeOf<TableInfo['columns']>().toEqualTypeOf<ColumnInfo[]>()
+    expectTypeOf<TableInfo['pkColumn']>().toEqualTypeOf<string | null>()
   })
 })
 
