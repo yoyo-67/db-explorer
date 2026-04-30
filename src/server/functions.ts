@@ -10,6 +10,8 @@ import type {
   JsonValue,
   RowDetail,
   RowChildGroup,
+  TablePage,
+  TablePageRequest,
 } from '#/lib/types'
 
 type Row = Record<string, JsonValue>
@@ -228,6 +230,82 @@ export async function introspect(
 ): Promise<IntrospectResult> {
   const [tables, fks] = await Promise.all([getTables(schema), getForeignKeys(schema)])
   return { schema, tables, fks }
+}
+
+export const DEFAULT_PAGE_SIZE = 50
+export const EXACT_COUNT_THRESHOLD = 100_000
+
+async function fetchColumns(schema: string, table: string): Promise<ColumnInfo[]> {
+  const result = await query(
+    `
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = $1 AND table_name = $2
+    ORDER BY ordinal_position
+  `,
+    [schema, table],
+  )
+  return result.rows.map((row) => ({
+    name: row.column_name,
+    dataType: row.data_type,
+    isNullable: row.is_nullable === 'YES',
+  }))
+}
+
+async function fetchApproxRowCount(schema: string, table: string): Promise<number> {
+  const result = await query(
+    `
+    SELECT COALESCE(s.n_live_tup, 0)::bigint AS row_count
+    FROM pg_stat_user_tables s
+    WHERE s.schemaname = $1 AND s.relname = $2
+  `,
+    [schema, table],
+  )
+  return Number(result.rows[0]?.row_count ?? 0)
+}
+
+export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
+  const schema = req.schema || DEFAULT_SCHEMA
+  const { table } = req
+  const page = Math.max(1, req.page ?? 1)
+  const pageSize = Math.max(1, Math.min(500, req.pageSize ?? DEFAULT_PAGE_SIZE))
+  const offset = (page - 1) * pageSize
+
+  const columns = await fetchColumns(schema, table)
+
+  const dataQuery = format(
+    'SELECT * FROM %I.%I LIMIT %s OFFSET %s',
+    schema,
+    table,
+    pageSize,
+    offset,
+  )
+  const dataResult = await query(dataQuery)
+
+  const approx = await fetchApproxRowCount(schema, table)
+  const wantExact = req.exactCount === true || approx < EXACT_COUNT_THRESHOLD
+  let count = approx
+  let isCountApproximate = true
+  if (wantExact) {
+    const countQuery = format('SELECT COUNT(*)::bigint AS c FROM %I.%I', schema, table)
+    const countResult = await query(countQuery)
+    count = Number(countResult.rows[0]?.c ?? 0)
+    isCountApproximate = false
+  }
+
+  const totalPages = Math.max(1, Math.ceil(count / pageSize))
+
+  return {
+    schema,
+    table,
+    columns,
+    rows: sanitizeRows(dataResult.rows),
+    page,
+    pageSize,
+    count,
+    isCountApproximate,
+    totalPages,
+  }
 }
 
 const CHILD_PAGE_SIZE = 25

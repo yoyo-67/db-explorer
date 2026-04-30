@@ -1,18 +1,36 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import DataTable from '#/components/DataTable'
-import { $getTablePreview, $introspect, $searchTable } from '#/server/api'
+import Pager from '#/components/Pager'
+import { $getTablePage, $introspect, $searchTable } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import type { TableData } from '#/lib/types'
 
+interface TableSearch {
+  p?: number
+  exact?: boolean
+}
+
 export const Route = createFileRoute('/t/$schema/$table/')({
   component: TablePage,
+  validateSearch: (search: Record<string, unknown>): TableSearch => {
+    const rawP = Number(search.p)
+    const p = Number.isFinite(rawP) && rawP >= 1 ? Math.floor(rawP) : undefined
+    const exact =
+      search.exact === true || search.exact === 'true' ? true : undefined
+    return { p, exact }
+  },
 })
+
+const PAGE_SIZE = 50
 
 function TablePage() {
   const { schema, table } = Route.useParams()
+  const { p: pParam, exact } = Route.useSearch()
+  const page = pParam ?? 1
+  const navigate = useNavigate()
   const { isChecking, isConnected } = useConnectionGuard()
   const [prettyJson, setPrettyJson] = useState(true)
   const [searchResult, setSearchResult] = useState<TableData | null>(null)
@@ -25,11 +43,20 @@ function TablePage() {
     staleTime: Infinity,
   })
 
-  const previewQuery = useQuery({
-    queryKey: ['tablePreview', schema, table],
-    queryFn: () => $getTablePreview({ data: { schema, tableName: table, limit: 50 } }),
+  const pageQuery = useQuery({
+    queryKey: ['tablePage', schema, table, page, PAGE_SIZE, exact ?? false],
+    queryFn: () =>
+      $getTablePage({
+        data: {
+          schema,
+          table,
+          page,
+          pageSize: PAGE_SIZE,
+          exactCount: exact === true ? true : undefined,
+        },
+      }),
     enabled: isConnected,
-    staleTime: Infinity,
+    staleTime: 30_000,
   })
 
   if (isChecking) {
@@ -44,10 +71,12 @@ function TablePage() {
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
   const otherTables = (introspectQuery.data?.tables ?? []).filter((t) => t.name !== table)
   const fks = introspectQuery.data?.fks ?? []
-  const displayData = searchResult ?? previewQuery.data
+  const pageData = pageQuery.data
+  const displayColumns = searchResult?.columns ?? pageData?.columns ?? []
+  const displayRows = searchResult?.rows ?? pageData?.rows ?? []
   const enrichedColumns = useMemo(
-    () => (displayData ? enrichColumnsWithFks(displayData.columns, fks, table) : []),
-    [displayData, fks, table],
+    () => enrichColumnsWithFks(displayColumns, fks, table),
+    [displayColumns, fks, table],
   )
 
   const handleSearch = async (columnName: string, value: string) => {
@@ -66,6 +95,24 @@ function TablePage() {
     setSearchResult(null)
   }
 
+  const goToPage = (p: number) => {
+    navigate({
+      to: '/t/$schema/$table',
+      params: { schema, table },
+      search: (prev) => ({ ...prev, p }),
+    })
+  }
+
+  const requestExactCount = () => {
+    navigate({
+      to: '/t/$schema/$table',
+      params: { schema, table },
+      search: (prev) => ({ ...prev, exact: true }),
+    })
+  }
+
+  const totalRows = pageData?.count ?? tableInfo?.rowCount ?? 0
+
   return (
     <main className="px-4 pb-8 pt-6">
       <div className="space-y-4">
@@ -75,14 +122,9 @@ function TablePage() {
             {table}
           </h1>
           {tableInfo && (
-            <>
-              <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs font-medium text-[var(--lagoon-deep)]">
-                ≈ {tableInfo.rowCount.toLocaleString()} rows
-              </span>
-              <span className="text-xs text-[var(--sea-ink-soft)]">
-                {tableInfo.columns.length} cols
-              </span>
-            </>
+            <span className="text-xs text-[var(--sea-ink-soft)]">
+              {tableInfo.columns.length} cols
+            </span>
           )}
           <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
             <input
@@ -95,22 +137,35 @@ function TablePage() {
           </label>
         </div>
 
-        {previewQuery.error && (
+        {pageQuery.error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-            Failed to load table: {String(previewQuery.error)}
+            Failed to load table: {String(pageQuery.error)}
           </div>
         )}
 
-        {previewQuery.isLoading && !displayData && (
+        {pageData && !searchResult && (
+          <Pager
+            page={pageData.page}
+            pageSize={pageData.pageSize}
+            count={pageData.count}
+            totalPages={pageData.totalPages}
+            isCountApproximate={pageData.isCountApproximate}
+            onPageChange={goToPage}
+            onRequestExactCount={requestExactCount}
+            isExactLoading={pageQuery.isFetching && exact === true}
+          />
+        )}
+
+        {pageQuery.isLoading && !pageData && (
           <div className="island-shell h-32 animate-pulse rounded-xl" />
         )}
 
-        {displayData && tableInfo && (
+        {(pageData || searchResult) && (
           <div className="island-shell overflow-visible rounded-xl">
             <DataTable
               columns={enrichedColumns}
-              rows={displayData.rows}
-              totalRows={tableInfo.rowCount}
+              rows={displayRows}
+              totalRows={totalRows}
               prettyJson={prettyJson}
               onSearch={handleSearch}
               onClearSearch={handleClearSearch}

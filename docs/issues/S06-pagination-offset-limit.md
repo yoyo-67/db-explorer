@@ -2,6 +2,7 @@
 title: "S6: Offset/limit pagination + page jumper"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent

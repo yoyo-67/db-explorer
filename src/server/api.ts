@@ -5,13 +5,19 @@ import {
   testConnection,
   getSchemas,
   getTables,
+  getTablePage,
   getTablePreview,
   getForeignKeys,
   getRowDetail,
   introspect,
   searchTable,
 } from '#/server/functions'
-import type { ConnectionConfig, ConnectionPreset, TableCatalog } from '#/lib/types'
+import type {
+  ConnectionConfig,
+  ConnectionPreset,
+  TableCatalog,
+  TablePageRequest,
+} from '#/lib/types'
 
 export const $isConnected = createServerFn({ method: 'GET' }).handler(
   async () => {
@@ -83,6 +89,12 @@ export const $getTablePreview = createServerFn({ method: 'GET' })
   .inputValidator((data: { tableName: string; limit?: number; schema?: string }) => data)
   .handler(async ({ data }) => {
     return getTablePreview(data.tableName, data.limit, data.schema)
+  })
+
+export const $getTablePage = createServerFn({ method: 'GET' })
+  .inputValidator((data: TablePageRequest) => data)
+  .handler(async ({ data }) => {
+    return getTablePage(data)
   })
 
 export const $getForeignKeys = createServerFn({ method: 'GET' })

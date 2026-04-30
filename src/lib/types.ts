@@ -69,6 +69,26 @@ export interface RowDetail {
   children: RowChildGroup[]
 }
 
+export interface TablePageRequest {
+  schema: string
+  table: string
+  page?: number
+  pageSize?: number
+  exactCount?: boolean
+}
+
+export interface TablePage {
+  schema: string
+  table: string
+  columns: ColumnInfo[]
+  rows: Record<string, JsonValue>[]
+  page: number
+  pageSize: number
+  count: number
+  isCountApproximate: boolean
+  totalPages: number
+}
+
 export interface TableCatalogGroup {
   name: string
   description: string

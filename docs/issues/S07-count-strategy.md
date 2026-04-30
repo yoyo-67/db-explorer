@@ -2,6 +2,7 @@
 title: "S7: Filtered count strategy (exact <100k, approx + button)"
 labels: needs-triage
 type: AFK
+status: done
 ---
 
 ## Parent
