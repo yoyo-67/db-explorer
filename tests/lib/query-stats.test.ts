@@ -4,6 +4,7 @@ import {
   groupBursts,
   lastAction,
   sessionStats,
+  shapeBreakdown,
 } from '#/lib/query-stats'
 import type { PerfLogEntry } from '#/server/perf-log'
 
@@ -87,5 +88,24 @@ describe('sessionStats', () => {
     expect(s.p95Ms).toBe(200)
     expect(s.errorCount).toBe(1)
     expect(s.slowest?.sql).toBe('c')
+  })
+})
+
+describe('shapeBreakdown', () => {
+  it('groups by normalized SQL shape, sorted by totalMs desc', () => {
+    const e: PerfLogEntry[] = [
+      { ts: 1, preset: 'p', sql: "SELECT * FROM t WHERE id = '1'", ms: 10, ok: true },
+      { ts: 2, preset: 'p', sql: "SELECT * FROM t WHERE id = '2'", ms: 30, ok: true },
+      { ts: 3, preset: 'p', sql: 'SELECT count(*) FROM t', ms: 5, ok: true },
+    ]
+    const rows = shapeBreakdown(e)
+    expect(rows).toEqual([
+      { shape: 'SELECT * FROM t WHERE id = ?', count: 2, totalMs: 40, avgMs: 20 },
+      { shape: 'SELECT count(*) FROM t', count: 1, totalMs: 5, avgMs: 5 },
+    ])
+  })
+
+  it('returns [] for empty input', () => {
+    expect(shapeBreakdown([])).toEqual([])
   })
 })

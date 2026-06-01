@@ -56,3 +56,29 @@ export function sessionStats(entries: PerfLogEntry[]): SessionStats {
     slowest,
   }
 }
+
+export interface ShapeRow {
+  shape: string
+  count: number
+  totalMs: number
+  avgMs: number
+}
+
+export function shapeBreakdown(entries: PerfLogEntry[]): ShapeRow[] {
+  const groups = new Map<string, { count: number; totalMs: number }>()
+  for (const e of entries) {
+    const shape = normalizeSql(e.sql)
+    const g = groups.get(shape) ?? { count: 0, totalMs: 0 }
+    g.count += 1
+    g.totalMs += e.ms
+    groups.set(shape, g)
+  }
+  return [...groups.entries()]
+    .map(([shape, g]) => ({
+      shape,
+      count: g.count,
+      totalMs: g.totalMs,
+      avgMs: Math.round(g.totalMs / g.count),
+    }))
+    .sort((a, b) => b.totalMs - a.totalMs)
+}
