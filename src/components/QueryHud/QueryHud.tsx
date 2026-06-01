@@ -12,13 +12,19 @@ import type { PerfLogEntry } from '#/server/perf-log'
 const POLL_MS = 1000
 const BURST_GAP_MS = 750
 const BUFFER_CAP = 1000
+const CURSOR_KEY = 'queryHudCursor'
+
+function initialCursor(): number {
+  if (typeof window === 'undefined') return 0
+  return Number(window.localStorage.getItem(CURSOR_KEY)) || 0
+}
 
 export default function QueryHud() {
   const [entries, setEntries] = useState<PerfLogEntry[]>([])
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [tab, setTab] = useState<'action' | 'session'>('action')
-  const cursorRef = useRef<number>(0)
+  const cursorRef = useRef<number>(initialCursor())
 
   useEffect(() => setMounted(true), [])
 
@@ -50,7 +56,11 @@ export default function QueryHud() {
 
   const clear = () => {
     setEntries([])
-    cursorRef.current = Date.now()
+    const now = Date.now()
+    cursorRef.current = now
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CURSOR_KEY, String(now))
+    }
   }
 
   return (
