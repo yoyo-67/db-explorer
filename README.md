@@ -1,202 +1,95 @@
-Welcome to your new TanStack Start app! 
+# db-explorer
 
-# Getting Started
+A lightweight, **read-only** PostgreSQL schema and data explorer. Connect to a
+database, browse tables grouped by domain, page through rows, follow foreign
+keys, run read-only SQL in a console, and watch query performance live.
 
-To run this application:
+Built with [TanStack Start](https://tanstack.com/start) (React + server
+functions), TypeScript, and Tailwind.
+
+## Features
+
+- **Browse** tables and schemas, grouped via an optional catalog.
+- **Paginated rows** with filtering and sorting; smart row-count estimation for
+  huge tables (uses planner stats instead of `COUNT(*)` seqscans).
+- **Foreign-key navigation** — click a value to jump to the related row; lazy
+  child counts.
+- **SQL console** — every statement runs inside a `BEGIN READ ONLY`
+  transaction, so the connection can never write.
+- **Query HUD** — a badge in the navbar shows how many queries the last action
+  fired, with per-query timings and session stats.
+- **Connection presets** with `${ENV_VAR}` substitution, so you never commit
+  credentials.
+
+> Everything is read-only: the pool is opened with
+> `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` and user SQL is wrapped
+> in a read-only transaction.
+
+## Requirements
+
+- Node.js 20+
+- A reachable PostgreSQL database
+
+## Setup
 
 ```bash
 npm install
-npm run dev
+
+# create your local presets from the example
+cp presets.example.json presets.json
 ```
 
-# Building For Production
+Edit `presets.json` with your connection(s). Keep secrets out of the file by
+referencing environment variables:
 
-To build this application for production:
+```json
+[
+  {
+    "name": "Local Postgres",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "database": "postgres",
+    "user": "postgres",
+    "password": "${POSTGRES_PASSWORD}"
+  }
+]
+```
+
+`${VAR}` references are resolved from the process environment at runtime; a
+missing variable is reported rather than silently blanked.
+
+`presets.json`, `perf-log.jsonl`, and `table-catalog.json` are gitignored — they
+hold local/credential/schema data and are never committed.
+
+## Run
 
 ```bash
-npm run build
+POSTGRES_PASSWORD=yourpassword npm run dev
 ```
 
-## Testing
+Open http://localhost:3000, pick a preset (or type connection details), and
+connect.
 
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+## Optional: table catalog
 
-```bash
-npm run test
-```
+Drop a `table-catalog.json` at the project root to group tables and add
+descriptions in the sidebar. Shape:
 
-## Styling
-
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
-
-### Removing Tailwind CSS
-
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `npm install @tailwindcss/vite tailwindcss -D`
-
-
-## Shadcn
-
-Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
-
-```bash
-pnpm dlx shadcn@latest add button
-```
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
+```json
+{
+  "groups": [
+    { "name": "Users", "description": "...", "order": 1, "tables": ["users"] }
+  ],
+  "tables": { "users": "User accounts" }
 }
 ```
 
-## API Routes
+Without it, tables are listed flat.
 
-You can create API routes by using the `server` property in your route definitions:
+## Scripts
 
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
+```bash
+npm run dev      # dev server on :3000
+npm run build    # production build
+npm run test     # run the Vitest suite
 ```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).

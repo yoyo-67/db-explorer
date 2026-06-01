@@ -17,3 +17,6 @@ presets.json
 
 # Local query perf instrumentation
 perf-log.jsonl
+
+# Local table catalog (internal schema — do not commit)
+table-catalog.json
