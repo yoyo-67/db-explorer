@@ -13,6 +13,7 @@ import {
   introspect,
   runReadOnlyQuery,
 } from '#/server/functions'
+import { readPerfLog } from '#/server/perf-log'
 import { resolvePresets } from '#/lib/preset-resolver'
 import type {
   ConnectionConfig,
@@ -168,6 +169,14 @@ export const $getPresets = createServerFn({ method: 'GET' }).handler(
     }
   },
 )
+
+export const $getPerfLog = createServerFn({ method: 'GET' })
+  .inputValidator((data: { sinceTs?: number; limit?: number } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    const entries = await readPerfLog(data.limit ?? 500)
+    const sinceTs = data.sinceTs
+    return sinceTs == null ? entries : entries.filter((e) => e.ts > sinceTs)
+  })
 
 export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
   async () => {
