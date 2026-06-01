@@ -9,6 +9,7 @@ import {
   $testConnection,
 } from '#/server/api'
 import ThemeToggle from './ThemeToggle'
+import QueryHud from './QueryHud/QueryHud'
 
 export default function Header() {
   return (
@@ -41,6 +42,7 @@ export default function Header() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <QueryHud />
           <ConnectionSwitcher />
           <SchemaPicker />
           <ThemeToggle />
