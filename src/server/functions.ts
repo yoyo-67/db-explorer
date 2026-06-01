@@ -239,10 +239,15 @@ async function fetchColumns(schema: string, table: string): Promise<ColumnInfo[]
 }
 
 async function fetchApproxRowCount(schema: string, table: string): Promise<number> {
+  // n_live_tup is 0 for tables that have never been (auto)analyzed — common for
+  // freshly restored aggregate tables. Fall back to pg_class.reltuples so a huge
+  // unanalyzed table is not mistaken for an empty one (which would trigger an
+  // exact COUNT(*) seqscan over tens of millions of rows).
   const result = await query(
     `
-    SELECT COALESCE(s.n_live_tup, 0)::bigint AS row_count
+    SELECT GREATEST(COALESCE(s.n_live_tup, 0), COALESCE(c.reltuples, 0))::bigint AS row_count
     FROM pg_stat_user_tables s
+    JOIN pg_class c ON c.oid = s.relid
     WHERE s.schemaname = $1 AND s.relname = $2
   `,
     [schema, table],
@@ -423,7 +428,7 @@ export async function getRowChildren(args: {
     )
   }
   const dataQuery = format(
-    'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT %s OFFSET %s',
+    'SELECT * FROM %I.%I WHERE %I = %L LIMIT %s OFFSET %s',
     schema,
     args.childTable,
     args.fkColumn,
@@ -489,7 +494,7 @@ export async function getRowDetail(
   const root = column
     ? await (async () => {
         const rootQuery = format(
-          'SELECT * FROM %I.%I WHERE %I::text = %L LIMIT 1',
+          'SELECT * FROM %I.%I WHERE %I = %L LIMIT 1',
           schema,
           table,
           column,
@@ -512,7 +517,7 @@ export async function getRowDetail(
         const parentValue = root[fk.toColumn]
         if (parentValue === null || parentValue === undefined) return null
         return format(
-          'SELECT %L AS k, COUNT(*)::bigint AS c FROM %I.%I WHERE %I::text = %L',
+          'SELECT %L AS k, COUNT(*)::bigint AS c FROM %I.%I WHERE %I = %L',
           `${fk.fromTable}.${fk.fromColumn}`,
           schema,
           fk.fromTable,

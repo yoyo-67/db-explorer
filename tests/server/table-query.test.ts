@@ -16,7 +16,8 @@ vi.mock('#/server/perf-log', () => ({
   readPerfLog: vi.fn(async () => []),
 }))
 
-const { getTablePage, EXACT_COUNT_THRESHOLD } = await import('#/server/functions')
+const { getTablePage, getRowChildren, getRowDetail, EXACT_COUNT_THRESHOLD } =
+  await import('#/server/functions')
 
 beforeEach(() => {
   mockQuery.mockReset()
@@ -144,5 +145,53 @@ describe('getTablePage SQL builder', () => {
 
     const dataSql = mockQuery.mock.calls[1][0] as string
     expect(dataSql).not.toContain('ORDER BY')
+  })
+
+  // Bug 1: tables never analyzed report n_live_tup=0, which falsely tripped an
+  // exact COUNT(*) seqscan on multi-million-row tables. The approx query must
+  // fall back to pg_class.reltuples so unanalyzed-but-huge tables stay approximate.
+  it('approx row count falls back to reltuples so zero n_live_tup never triggers an exact count', async () => {
+    mockColumns(['id'])
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // data
+    mockApprox(EXACT_COUNT_THRESHOLD) // approx (>= threshold => no exact count)
+
+    await getTablePage({ schema: 'public', table: 'big' })
+
+    const approxSql = mockQuery.mock.calls[2][0] as string
+    expect(approxSql).toMatch(/reltuples/)
+    expect(approxSql).toMatch(/GREATEST/)
+  })
+})
+
+describe('foreign-key lookups use native typed comparison (index-friendly)', () => {
+  // Bug 2: WHERE col::text = '...' casts the indexed PK/FK column to text,
+  // forcing a seqscan. Compare natively so the index is used.
+  it('getRowChildren matches the FK column without a ::text cast', async () => {
+    mockColumns(['id', 'parent_id']) // fetchColumns for the child table
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // data
+
+    await getRowChildren({
+      schema: 'public',
+      childTable: 'child',
+      fkColumn: 'parent_id',
+      parentValue: 'abc',
+    })
+
+    const sql = mockQuery.mock.calls[1][0] as string
+    expect(sql).not.toContain('::text')
+    expect(sql).toContain("WHERE parent_id = 'abc'")
+  })
+
+  it('getRowDetail looks up the root row without a ::text cast', async () => {
+    mockColumns(['id']) // columns query
+    mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] }) // resolvePrimaryKey
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'abc' }] }) // root row
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // getForeignKeys -> no incoming
+
+    await getRowDetail('public', 'parent', 'abc')
+
+    const rootSql = mockQuery.mock.calls[2][0] as string
+    expect(rootSql).not.toContain('::text')
+    expect(rootSql).toContain("WHERE id = 'abc'")
   })
 })
