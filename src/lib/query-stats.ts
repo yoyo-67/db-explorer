@@ -28,3 +28,31 @@ export function lastAction(entries: PerfLogEntry[], gapMs: number): PerfLogEntry
   const bursts = groupBursts(entries, gapMs)
   return bursts.length === 0 ? [] : bursts[bursts.length - 1]
 }
+
+export interface SessionStats {
+  count: number
+  totalMs: number
+  avgMs: number
+  p95Ms: number
+  errorCount: number
+  slowest: PerfLogEntry | null
+}
+
+export function sessionStats(entries: PerfLogEntry[]): SessionStats {
+  if (entries.length === 0) {
+    return { count: 0, totalMs: 0, avgMs: 0, p95Ms: 0, errorCount: 0, slowest: null }
+  }
+  const totalMs = entries.reduce((sum, e) => sum + e.ms, 0)
+  const errorCount = entries.filter((e) => !e.ok).length
+  const slowest = entries.reduce((max, e) => (e.ms > max.ms ? e : max), entries[0])
+  const sortedMs = entries.map((e) => e.ms).sort((a, b) => a - b)
+  const p95Index = Math.ceil(0.95 * sortedMs.length) - 1
+  return {
+    count: entries.length,
+    totalMs,
+    avgMs: Math.round(totalMs / entries.length),
+    p95Ms: sortedMs[p95Index],
+    errorCount,
+    slowest,
+  }
+}

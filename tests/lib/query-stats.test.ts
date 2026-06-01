@@ -3,6 +3,7 @@ import {
   normalizeSql,
   groupBursts,
   lastAction,
+  sessionStats,
 } from '#/lib/query-stats'
 import type { PerfLogEntry } from '#/server/perf-log'
 
@@ -58,5 +59,33 @@ describe('lastAction', () => {
 
   it('returns [] for no entries', () => {
     expect(lastAction([], 750)).toEqual([])
+  })
+})
+
+describe('sessionStats', () => {
+  it('returns zeros for empty input', () => {
+    expect(sessionStats([])).toEqual({
+      count: 0,
+      totalMs: 0,
+      avgMs: 0,
+      p95Ms: 0,
+      errorCount: 0,
+      slowest: null,
+    })
+  })
+
+  it('computes count, totals, avg, p95, errors, slowest', () => {
+    const e: PerfLogEntry[] = [
+      { ts: 1, preset: 'p', sql: 'a', ms: 10, ok: true },
+      { ts: 2, preset: 'p', sql: 'b', ms: 30, ok: false, error: 'x' },
+      { ts: 3, preset: 'p', sql: 'c', ms: 200, ok: true },
+    ]
+    const s = sessionStats(e)
+    expect(s.count).toBe(3)
+    expect(s.totalMs).toBe(240)
+    expect(s.avgMs).toBe(80)
+    expect(s.p95Ms).toBe(200)
+    expect(s.errorCount).toBe(1)
+    expect(s.slowest?.sql).toBe('c')
   })
 })
