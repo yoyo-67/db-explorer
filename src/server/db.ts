@@ -99,8 +99,15 @@ export function getConnection(): pg.Pool | null {
   return getPool()
 }
 
+/**
+ * Log out, not just drop the socket. The last config is what `reconnect()`
+ * revives on the next guarded page, so leaving it behind would make an explicit
+ * disconnect undo itself a moment later.
+ */
 export async function disconnect(): Promise<void> {
   const pool = getPool()
+  setLastConfig(null)
+  setPresetName(null)
   if (pool) {
     setPool(null)
     await endPoolSafe(pool)

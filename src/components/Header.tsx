@@ -3,11 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
   $connect,
+  $disconnect,
   $getPresets,
   $getSchemas,
   $getTables,
   $testConnection,
 } from '#/server/api'
+import { connectionStatusKey, useConnectionStatus } from '#/hooks/useConnectionStatus'
 import { parseLensPath, schemaFromPathname } from '#/lib/lens-links'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
@@ -25,14 +27,7 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-x-3 text-xs font-medium">
-          <Link
-            to="/"
-            className="nav-link"
-            activeProps={{ className: 'nav-link is-active' }}
-            activeOptions={{ exact: true }}
-          >
-            Connect
-          </Link>
+          <ConnectionAction />
           <Link
             to="/console"
             className="nav-link"
@@ -51,6 +46,57 @@ export default function Header() {
         </div>
       </nav>
     </header>
+  )
+}
+
+/**
+ * Connect while disconnected, Disconnect while connected — never a Connect link
+ * that does nothing because you already are. Disconnecting is a real logout: the
+ * server drops the pool and forgets the config, so nothing silently reconnects.
+ */
+function ConnectionAction() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const status = useConnectionStatus()
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  if (!status.data?.connected) {
+    return (
+      <Link
+        to="/"
+        className="nav-link"
+        activeProps={{ className: 'nav-link is-active' }}
+        activeOptions={{ exact: true }}
+      >
+        Connect
+      </Link>
+    )
+  }
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true)
+    try {
+      await $disconnect()
+      // The cached schemas, tables and rows all belong to the connection that
+      // just went away, so they go with it rather than flashing on the next one.
+      queryClient.clear()
+      queryClient.setQueryData(connectionStatusKey, { connected: false })
+      navigate({ to: '/' })
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleDisconnect}
+      disabled={disconnecting}
+      className="nav-link cursor-pointer disabled:opacity-50"
+      title="Disconnect and forget this connection"
+    >
+      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+    </button>
   )
 }
 
