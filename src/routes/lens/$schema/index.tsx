@@ -30,6 +30,9 @@ function MatrixPage() {
   const { isChecking, isConnected } = useConnectionGuard()
   const [expandDerived, setExpandDerived] = useState(false)
   const [selected, setSelected] = useState<{ from: string; to: string } | null>(null)
+  /** Row/column of the cell under the pointer — a 19×19 grid with vertical column
+   *  headers is unreadable without a crosshair back to the two names. */
+  const [hover, setHover] = useState<{ i: number; j: number } | null>(null)
 
   const lens = useLensGraph(schema, {
     enabled: isConnected,
@@ -143,17 +146,22 @@ function MatrixPage() {
         {lens.graph && matrix.groups.length > 0 && (
           <>
             <div className="island-shell overflow-auto rounded-xl p-3">
-              <table className="border-collapse text-[11px]">
+              <table
+                className="border-collapse text-[11px]"
+                onMouseLeave={() => setHover(null)}
+              >
                 <thead>
                   <tr>
                     <th className="sticky left-0 z-10 bg-[var(--surface-strong)]" />
-                    {matrix.groups.map((g) => (
+                    {matrix.groups.map((g, j) => (
                       <th
                         key={g}
                         className={`h-[132px] border border-[var(--line)] px-1 align-bottom font-medium ${
-                          lens.dampedGroups.has(g)
-                            ? 'text-[var(--sea-ink-soft)]/50'
-                            : 'text-[var(--sea-ink-soft)]'
+                          hover?.j === j
+                            ? 'bg-[var(--chip-bg)] text-[var(--sea-ink)]'
+                            : lens.dampedGroups.has(g)
+                              ? 'text-[var(--sea-ink-soft)]/50'
+                              : 'text-[var(--sea-ink-soft)]'
                         }`}
                         title={g}
                       >
@@ -168,10 +176,14 @@ function MatrixPage() {
                   {matrix.groups.map((from, i) => (
                     <tr key={from}>
                       <th
-                        className={`sticky left-0 z-10 max-w-[190px] truncate border border-[var(--line)] bg-[var(--surface-strong)] px-1.5 py-0.5 text-right font-medium ${
-                          lens.dampedGroups.has(from)
-                            ? 'text-[var(--sea-ink-soft)]/50'
-                            : 'text-[var(--sea-ink-soft)]'
+                        className={`sticky left-0 z-10 max-w-[190px] truncate border border-[var(--line)] px-1.5 py-0.5 text-right font-medium ${
+                          hover?.i === i
+                            ? 'bg-[var(--chip-bg)] text-[var(--sea-ink)]'
+                            : `bg-[var(--surface-strong)] ${
+                                lens.dampedGroups.has(from)
+                                  ? 'text-[var(--sea-ink-soft)]/50'
+                                  : 'text-[var(--sea-ink-soft)]'
+                              }`
                         }`}
                         title={from}
                       >
@@ -185,16 +197,24 @@ function MatrixPage() {
                         const alpha = cellIntensity(count, scaleMax)
                         const dimmed =
                           lens.dampedGroups.has(from) || lens.dampedGroups.has(to)
+                        const isHovered = hover?.i === i && hover?.j === j
+                        const onCrosshair = hover?.i === i || hover?.j === j
+                        // The transpose is the same pair read the other way, so it
+                        // is worth pointing at while you are on a cell.
+                        const isMirror = hover?.i === j && hover?.j === i
                         return (
                           <td
                             key={to}
+                            onMouseEnter={() => setHover({ i, j })}
                             className={`border px-1 py-0.5 text-center tabular-nums ${
-                              isSelected
+                              isHovered || isSelected
                                 ? 'border-[var(--lagoon-deep)]'
-                                : 'border-[var(--line)]'
+                                : isMirror
+                                  ? 'border-[var(--lagoon-deep)]/40'
+                                  : 'border-[var(--line)]'
                             } ${count > 0 ? 'cursor-pointer' : 'text-[var(--sea-ink-soft)]/25'}`}
-                            style={
-                              count > 0
+                            style={{
+                              ...(count > 0
                                 ? {
                                     // Cohesion (diagonal) reads in a different hue
                                     // from coupling, so the two are never confused.
@@ -204,8 +224,15 @@ function MatrixPage() {
                                     color: 'var(--sea-ink)',
                                     fontWeight: 500,
                                   }
-                                : undefined
-                            }
+                                : undefined),
+                              // The band is drawn on top of the count colour so the
+                              // crosshair reads over an empty cell and a dense one.
+                              boxShadow: isHovered
+                                ? 'inset 0 0 0 2px var(--lagoon-deep)'
+                                : onCrosshair
+                                  ? 'inset 0 0 0 999px rgba(79, 184, 178, 0.1)'
+                                  : undefined,
+                            }}
                             title={
                               count > 0
                                 ? `${from} → ${to}: ${count} edge${count === 1 ? '' : 's'}`
