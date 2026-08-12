@@ -20,3 +20,4 @@ perf-log.jsonl
 
 # Local table catalog (internal schema — do not commit)
 table-catalog.json
+fk-overrides.json

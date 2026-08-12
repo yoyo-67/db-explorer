@@ -11,6 +11,7 @@ import type {
   ForeignKey,
   JsonValue,
   RowChildGroup,
+  RowDetail,
   TableInfo,
 } from '#/lib/types'
 
@@ -90,15 +91,26 @@ function RowDetailPage() {
           <span className="text-xs text-[var(--sea-ink-soft)]">
             {schema}.{table}
           </span>
-          <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
-            <input
-              type="checkbox"
-              checked={prettyJson}
-              onChange={(e) => setPrettyJson(e.target.checked)}
-              className="rounded border-[var(--line)]"
-            />
-            Pretty JSON
-          </label>
+          <div className="ml-auto flex items-center gap-3">
+            {detail && (
+              <CopyPageButton
+                detail={detail}
+                schema={schema}
+                table={table}
+                id={id}
+                label={label}
+              />
+            )}
+            <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
+              <input
+                type="checkbox"
+                checked={prettyJson}
+                onChange={(e) => setPrettyJson(e.target.checked)}
+                className="rounded border-[var(--line)]"
+              />
+              Pretty JSON
+            </label>
+          </div>
         </header>
 
         {detailQuery.error && (
@@ -227,6 +239,125 @@ function FieldRow({
         )}
       </span>
     </>
+  )
+}
+
+/** Long values (e.g. bytea hex, big JSON) are truncated so the dump stays
+ *  readable when pasted into an LLM. */
+const MAX_VALUE_CHARS = 300
+/** Max reference rows fetched per child table for the dump. */
+const MAX_REF_ROWS = 50
+
+/** Serialize a single value for the LLM-friendly text dump. */
+function fmtValue(value: JsonValue | undefined): string {
+  if (value === null || value === undefined) return 'NULL'
+  const s = typeof value === 'object' ? JSON.stringify(value) : String(value)
+  if (s.length > MAX_VALUE_CHARS) {
+    return `${s.slice(0, MAX_VALUE_CHARS)}…[+${s.length - MAX_VALUE_CHARS} chars]`
+  }
+  return s
+}
+
+function fmtRow(columns: ColumnInfo[], row: Record<string, JsonValue>, indent = ''): string[] {
+  const cols = columns.length > 0 ? columns : Object.keys(row).map((name) => ({ name, dataType: '' }) as ColumnInfo)
+  return cols.map((c) => `${indent}${c.name} (${c.dataType}): ${fmtValue(row[c.name])}`)
+}
+
+/**
+ * Build a plain-text dump of the row detail page for pasting into an LLM:
+ * root row fields plus every non-empty incoming reference. Reference rows are
+ * fetched on demand (they lazy-load per group in the UI), capped per table.
+ */
+async function buildRowText(
+  detail: RowDetail,
+  schema: string,
+  table: string,
+  id: string,
+  label: string | null,
+): Promise<string> {
+  const lines: string[] = []
+  lines.push(`# ${schema}.${table} — row ${id}`)
+  if (label) lines.push(`label: ${label}`)
+  lines.push('', '## Row')
+  if (detail.root) {
+    lines.push(...fmtRow(detail.columns, detail.root))
+  } else {
+    lines.push('(no row found)')
+    return lines.join('\n')
+  }
+
+  const refs = detail.children.filter((c) => c.total > 0)
+  if (refs.length > 0) {
+    lines.push('', '## Incoming references')
+    for (const c of refs) {
+      const parentValue = detail.root[c.toColumn]
+      const limit = Math.min(c.total, MAX_REF_ROWS)
+      const header = `### ${c.table} (${c.total}) via ${c.fkColumn} → ${c.toColumn}`
+      if (parentValue === null || parentValue === undefined) {
+        lines.push('', header, '(parent value null — skipped)')
+        continue
+      }
+      let res
+      try {
+        res = await $getRowChildren({
+          data: {
+            schema,
+            childTable: c.table,
+            fkColumn: c.fkColumn,
+            parentValue: String(parentValue),
+            limit,
+            offset: 0,
+          },
+        })
+      } catch {
+        lines.push('', header, '(failed to load rows)')
+        continue
+      }
+      lines.push('', header)
+      if (c.total > limit) lines.push(`(showing first ${limit} of ${c.total})`)
+      res.rows.forEach((row, i) => {
+        lines.push(`- [${i + 1}]`)
+        lines.push(...fmtRow(res.columns ?? [], row, '  '))
+      })
+    }
+  }
+  return lines.join('\n')
+}
+
+function CopyPageButton({
+  detail,
+  schema,
+  table,
+  id,
+  label,
+}: {
+  detail: RowDetail
+  schema: string
+  table: string
+  id: string
+  label: string | null
+}) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle')
+  return (
+    <button
+      type="button"
+      disabled={state === 'busy'}
+      onClick={async () => {
+        setState('busy')
+        try {
+          const text = await buildRowText(detail, schema, table, id, label)
+          await navigator.clipboard.writeText(text)
+          setState('done')
+          setTimeout(() => setState('idle'), 1500)
+        } catch {
+          setState('idle')
+        }
+      }}
+      className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1 text-xs text-[var(--sea-ink)] transition hover:bg-[var(--surface)] disabled:opacity-50"
+      title="Copy row + references as text for pasting into an LLM"
+    >
+      {state === 'busy' ? 'Copying…' : state === 'done' ? 'Copied ✓' : 'Copy for LLM'}
+    </button>
   )
 }
 

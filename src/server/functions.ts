@@ -269,7 +269,8 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
   for (const [col, input] of Object.entries(req.filter ?? {})) {
     if (validColumnNames.has(col)) safeFilter[col] = input
   }
-  const whereBody = compileFilters(safeFilter)
+  const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
+  const whereBody = compileFilters(safeFilter, columnTypes)
   const whereClause = whereBody ? `WHERE ${whereBody}` : ''
 
   const sort =

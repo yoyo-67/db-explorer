@@ -40,12 +40,24 @@ function setLastConfig(config: ConnectionConfig | null) {
   g.__dbLastConfig = config
 }
 
+/** End a pool, tolerating a concurrent/duplicate end ("Called end on pool
+ *  more than once") so racing callers don't crash. */
+async function endPoolSafe(pool: pg.Pool): Promise<void> {
+  try {
+    await pool.end()
+  } catch {
+    /* already ended by a concurrent caller — ignore */
+  }
+}
+
 export async function createConnection(config: ConnectionConfig): Promise<void> {
-  // Clean up existing connection
+  // Clean up existing connection. Clear the pointer BEFORE awaiting end so a
+  // concurrent createConnection/disconnect can't grab the same pool and end
+  // it twice.
   const existing = getPool()
   if (existing) {
-    await existing.end()
     setPool(null)
+    await endPoolSafe(existing)
   }
 
   const newPool = new pg.Pool({
@@ -55,20 +67,26 @@ export async function createConnection(config: ConnectionConfig): Promise<void> 
     user: config.user,
     password: config.password,
     ssl: config.ssl ? { rejectUnauthorized: false } : undefined,
+    max: 10,
   })
 
-  // Test the connection and set read-only
+  // Mark EVERY physical connection read-only as it is created — the pool may
+  // open up to `max` of them lazily, not just the one we test below.
+  newPool.on('connect', (c) => {
+    void c.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')
+  })
+
+  // Test the connection (the 'connect' handler above sets it read-only).
   const client = await newPool.connect().catch(async (err) => {
-    await newPool.end()
+    await endPoolSafe(newPool)
     throw err
   })
 
   try {
-    await client.query('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')
     await client.query('SELECT 1')
   } catch (err) {
     client.release()
-    await newPool.end()
+    await endPoolSafe(newPool)
     throw err
   }
 
@@ -84,8 +102,8 @@ export function getConnection(): pg.Pool | null {
 export async function disconnect(): Promise<void> {
   const pool = getPool()
   if (pool) {
-    await pool.end()
     setPool(null)
+    await endPoolSafe(pool)
   }
 }
 
