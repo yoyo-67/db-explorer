@@ -18,13 +18,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-4 backdrop-blur-lg">
       <nav className="page-wrap flex items-center gap-x-3 py-2">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sea-ink)] no-underline"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--lagoon)]" />
-          DB Explorer
-        </Link>
+        <HomeLink />
 
         <div className="flex items-center gap-x-3 text-xs font-medium">
           <ConnectionAction />
@@ -47,6 +41,64 @@ export default function Header() {
       </nav>
     </header>
   )
+}
+
+const WORDMARK = (
+  <>
+    <span className="h-1.5 w-1.5 rounded-full bg-[var(--lagoon)]" />
+    DB Explorer
+  </>
+)
+
+const WORDMARK_CLASS =
+  'inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sea-ink)] no-underline'
+
+/**
+ * The wordmark goes home, and home is wherever the app actually is: the data
+ * once you are connected, the connect form only while you are not. Sending a
+ * connected user back to a form they already filled in is a dead end.
+ */
+function HomeLink() {
+  const status = useConnectionStatus()
+  const openFirstTable = useOpenFirstTable()
+
+  if (!status.data?.connected) {
+    return (
+      <Link to="/" className={WORDMARK_CLASS}>
+        {WORDMARK}
+      </Link>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => openFirstTable()}
+      className={`${WORDMARK_CLASS} cursor-pointer`}
+      title="Back to the tables"
+    >
+      {WORDMARK}
+    </button>
+  )
+}
+
+/**
+ * Open the landing view of a connection — the first table of `public`, or of
+ * whatever schema exists. The same move the app makes right after connecting,
+ * so "home" and "just connected" agree.
+ */
+function useOpenFirstTable() {
+  const navigate = useNavigate()
+  return async () => {
+    const schemas = await $getSchemas()
+    const schema = schemas.includes('public') ? 'public' : schemas[0]
+    if (!schema) return navigate({ to: '/' })
+    const tables = await $getTables({ data: { schema } })
+    if (tables.length === 0) return navigate({ to: '/' })
+    return navigate({
+      to: '/t/$schema/$table',
+      params: { schema, table: tables[0].name },
+    })
+  }
 }
 
 /**
@@ -177,7 +229,7 @@ function SchemaPicker() {
 }
 
 function ConnectionSwitcher() {
-  const navigate = useNavigate()
+  const openFirstTable = useOpenFirstTable()
   const queryClient = useQueryClient()
   const [switching, setSwitching] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -205,21 +257,7 @@ function ConnectionSwitcher() {
       }
       await $connect({ data: { config: preset, presetName: preset.name } })
       await queryClient.invalidateQueries()
-      const schemas = await $getSchemas()
-      const schema = schemas.includes('public') ? 'public' : schemas[0]
-      if (!schema) {
-        setError('Connected but no schemas were found')
-        return
-      }
-      const tables = await $getTables({ data: { schema } })
-      if (tables.length === 0) {
-        navigate({ to: '/' })
-        return
-      }
-      navigate({
-        to: '/t/$schema/$table',
-        params: { schema, table: tables[0].name },
-      })
+      await openFirstTable()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
