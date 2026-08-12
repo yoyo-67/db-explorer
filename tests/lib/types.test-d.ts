@@ -85,6 +85,7 @@ describe('RowChildGroup', () => {
     expectTypeOf<RowChildGroup['fkColumn']>().toBeString()
     expectTypeOf<RowChildGroup['toColumn']>().toBeString()
     expectTypeOf<RowChildGroup['rows']>().toEqualTypeOf<Record<string, JsonValue>[]>()
-    expectTypeOf<RowChildGroup['total']>().toBeNumber()
+    // `null` means "not counted" — never zero standing in for unknown.
+    expectTypeOf<RowChildGroup['total']>().toEqualTypeOf<number | null>()
   })
 })

@@ -1,7 +1,22 @@
 import format from 'pg-format'
-import { createConnection as dbConnect, getPresetName, query } from '#/server/db'
+import {
+  createConnection as dbConnect,
+  getPresetName,
+  query,
+  queryWithTimeout,
+  StatementTimeoutError,
+} from '#/server/db'
 import { compileFilters } from '#/lib/filter-dsl'
 import { appendPerfEntry } from '#/server/perf-log'
+import { mergeSchemaGraph } from '#/lib/schema-graph'
+import {
+  countSkipReason,
+  mergeTableEdges,
+  traceCandidateNames,
+} from '#/lib/row-trace'
+import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
+import type { LiveTable } from '#/lib/schema-graph'
+import type { TraceEdge } from '#/lib/row-trace'
 import type {
   ConnectionConfig,
   TableInfo,
@@ -13,6 +28,8 @@ import type {
   JsonValue,
   RowDetail,
   RowChildGroup,
+  RowOutgoingRef,
+  SchemaGraph,
   TablePage,
   TablePageRequest,
 } from '#/lib/types'
@@ -75,6 +92,61 @@ export async function getSchemas(): Promise<string[]> {
   return result.rows.map((row) => row.schema_name as string)
 }
 
+/** Every column in the schema, grouped by table, in ordinal order. */
+async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInfo[]>> {
+  const result = await query(
+    `
+    SELECT
+      table_name,
+      column_name,
+      data_type,
+      is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = $1
+    ORDER BY table_name, ordinal_position
+  `,
+    [schema],
+  )
+
+  const columnsByTable = new Map<string, ColumnInfo[]>()
+  for (const row of result.rows) {
+    const cols = columnsByTable.get(row.table_name) ?? []
+    cols.push({
+      name: row.column_name,
+      dataType: row.data_type,
+      isNullable: row.is_nullable === 'YES',
+    })
+    columnsByTable.set(row.table_name, cols)
+  }
+  return columnsByTable
+}
+
+/** First primary-key column per table in the schema. */
+async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
+  const result = await query(
+    `
+    SELECT kcu.table_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+      AND tc.table_name = kcu.table_name
+    WHERE tc.constraint_type = 'PRIMARY KEY'
+      AND tc.table_schema = $1
+    ORDER BY kcu.table_name, kcu.ordinal_position
+  `,
+    [schema],
+  )
+
+  const pkByTable = new Map<string, string>()
+  for (const row of result.rows) {
+    if (!pkByTable.has(row.table_name)) {
+      pkByTable.set(row.table_name, row.column_name)
+    }
+  }
+  return pkByTable
+}
+
 export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableInfo[]> {
   const tablesResult = await query(
     `
@@ -93,52 +165,10 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
     [schema],
   )
 
-  const columnsResult = await query(
-    `
-    SELECT
-      table_name,
-      column_name,
-      data_type,
-      is_nullable
-    FROM information_schema.columns
-    WHERE table_schema = $1
-    ORDER BY table_name, ordinal_position
-  `,
-    [schema],
-  )
-
-  const pkResult = await query(
-    `
-    SELECT kcu.table_name, kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name
-      AND tc.table_schema = kcu.table_schema
-      AND tc.table_name = kcu.table_name
-    WHERE tc.constraint_type = 'PRIMARY KEY'
-      AND tc.table_schema = $1
-    ORDER BY kcu.table_name, kcu.ordinal_position
-  `,
-    [schema],
-  )
-
-  const pkByTable = new Map<string, string>()
-  for (const row of pkResult.rows) {
-    if (!pkByTable.has(row.table_name)) {
-      pkByTable.set(row.table_name, row.column_name)
-    }
-  }
-
-  const columnsByTable = new Map<string, ColumnInfo[]>()
-  for (const row of columnsResult.rows) {
-    const cols = columnsByTable.get(row.table_name) ?? []
-    cols.push({
-      name: row.column_name,
-      dataType: row.data_type,
-      isNullable: row.is_nullable === 'YES',
-    })
-    columnsByTable.set(row.table_name, cols)
-  }
+  const [columnsByTable, pkByTable] = await Promise.all([
+    fetchSchemaColumns(schema),
+    fetchSchemaPrimaryKeys(schema),
+  ])
 
   return tablesResult.rows.map((row) => ({
     name: row.table_name,
@@ -181,24 +211,35 @@ export async function getTablePreview(
   }
 }
 
+/**
+ * Declared foreign keys, read from `pg_constraint` rather than
+ * `information_schema.constraint_column_usage`.
+ *
+ * The information_schema view took **~8s** on a 337-table schema (measured, see
+ * `perf-log.jsonl`) because it expands every constraint against every column;
+ * this returns the identical rows in tens of milliseconds. `unnest(conkey,
+ * confkey) WITH ORDINALITY` also pairs composite keys column-by-column, which
+ * the old query only got right by accident of there being none.
+ */
 export async function getForeignKeys(schema: string = DEFAULT_SCHEMA): Promise<ForeignKey[]> {
   const result = await query(
     `
     SELECT
-      kcu.table_name AS from_table,
-      kcu.column_name AS from_column,
-      ccu.table_name AS to_table,
-      ccu.column_name AS to_column
-    FROM information_schema.key_column_usage kcu
-    JOIN information_schema.constraint_column_usage ccu
-      ON kcu.constraint_name = ccu.constraint_name
-      AND kcu.constraint_schema = ccu.constraint_schema
-    JOIN information_schema.table_constraints tc
-      ON tc.constraint_name = kcu.constraint_name
-      AND tc.constraint_schema = kcu.constraint_schema
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-      AND kcu.table_schema = $1
-    ORDER BY kcu.table_name, kcu.column_name
+      src.relname AS from_table,
+      sa.attname AS from_column,
+      tgt.relname AS to_table,
+      ta.attname AS to_column
+    FROM pg_constraint c
+    JOIN pg_class src ON src.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = src.relnamespace
+    JOIN pg_class tgt ON tgt.oid = c.confrelid
+    JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(attnum, fattnum, ord)
+      ON true
+    JOIN pg_attribute sa ON sa.attrelid = c.conrelid AND sa.attnum = k.attnum
+    JOIN pg_attribute ta ON ta.attrelid = c.confrelid AND ta.attnum = k.fattnum
+    WHERE c.contype = 'f'
+      AND n.nspname = $1
+    ORDER BY src.relname, sa.attname, k.ord
   `,
     [schema],
   )
@@ -216,6 +257,85 @@ export async function introspect(
 ): Promise<IntrospectResult> {
   const [tables, fks] = await Promise.all([getTables(schema), getForeignKeys(schema)])
   return { schema, tables, fks }
+}
+
+/** `table.column` for every leading index column — the count budget's input. */
+async function fetchIndexedColumns(schema: string): Promise<Set<string>> {
+  const result = await query(
+    `
+    SELECT c.relname AS table_name, a.attname AS column_name
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+    WHERE n.nspname = $1
+  `,
+    [schema],
+  )
+  return new Set(result.rows.map((row) => `${row.table_name}.${row.column_name}`))
+}
+
+/**
+ * The whole-schema graph behind the lens (BUILD-SPEC §2.1) — one fetch, merged
+ * from live Postgres plus the committed Django map. Deliberately *not*
+ * `introspect`: that ships every column for the table browser, roughly four
+ * times this payload for data the lens never reads.
+ *
+ * Unlike `getTables` this includes views: three exist in the map, and dropping
+ * them would make them silently appear as orphans.
+ */
+export async function getSchemaGraph(
+  schema: string = DEFAULT_SCHEMA,
+): Promise<SchemaGraph> {
+  const tablesResult = await query(
+    `
+    SELECT
+      t.table_name,
+      t.table_schema,
+      t.table_type,
+      COALESCE(s.n_live_tup, 0) AS row_count,
+      GREATEST(s.last_autoanalyze, s.last_autovacuum, s.last_analyze, s.last_vacuum) AS last_modified
+    FROM information_schema.tables t
+    LEFT JOIN pg_stat_user_tables s
+      ON s.relname = t.table_name AND s.schemaname = t.table_schema
+    WHERE t.table_schema = $1
+      AND t.table_type IN ('BASE TABLE', 'VIEW')
+    ORDER BY t.table_name
+  `,
+    [schema],
+  )
+
+  const [columnsByTable, pkByTable, declaredEdges, indexedColumns, map, catalog] =
+    await Promise.all([
+      fetchSchemaColumns(schema),
+      fetchSchemaPrimaryKeys(schema),
+      getForeignKeys(schema),
+      fetchIndexedColumns(schema),
+      readSchemaMap(),
+      readTableCatalog(),
+    ])
+
+  const liveTables: LiveTable[] = tablesResult.rows.map((row) => ({
+    name: row.table_name,
+    schema: row.table_schema,
+    kind: row.table_type === 'VIEW' ? 'view' : 'table',
+    rowCount: Number(row.row_count),
+    lastModified: row.last_modified ? new Date(row.last_modified).toISOString() : null,
+    columns: (columnsByTable.get(row.table_name) ?? []).map((c) => ({
+      name: c.name,
+      isNullable: c.isNullable,
+    })),
+    pkColumn: pkByTable.get(row.table_name) ?? null,
+  }))
+
+  return mergeSchemaGraph({
+    schema,
+    liveTables,
+    declaredEdges,
+    map,
+    catalog,
+    indexedColumns,
+  })
 }
 
 export const DEFAULT_PAGE_SIZE = 50
@@ -441,6 +561,41 @@ export async function getRowChildren(args: {
   return { rows: sanitizeRows(result.rows), columns }
 }
 
+/**
+ * On-demand count for one incoming reference the eager batch skipped (BUILD-SPEC
+ * §5.2). The user asked for this one explicitly, so it gets a far longer budget
+ * than the eager batch — but still a bounded one, and still returns `null` rather
+ * than an error when it runs out.
+ */
+export const ON_DEMAND_COUNT_TIMEOUT_MS = 30_000
+
+export async function getChildCount(args: {
+  schema?: string
+  childTable: string
+  fkColumn: string
+  parentValue: string
+}): Promise<{ total: number | null; timedOut: boolean }> {
+  const schema = args.schema || DEFAULT_SCHEMA
+  const columns = await fetchColumns(schema, args.childTable)
+  if (!columns.some((c) => c.name === args.fkColumn)) {
+    throw new Error(`Column "${args.fkColumn}" not found in ${schema}.${args.childTable}`)
+  }
+  const sql = format(
+    'SELECT COUNT(*)::bigint AS c FROM %I.%I WHERE %I = %L',
+    schema,
+    args.childTable,
+    args.fkColumn,
+    args.parentValue,
+  )
+  try {
+    const result = await queryWithTimeout(sql, ON_DEMAND_COUNT_TIMEOUT_MS)
+    return { total: Number(result.rows[0]?.c ?? 0), timedOut: false }
+  } catch (err) {
+    if (err instanceof StatementTimeoutError) return { total: null, timedOut: true }
+    throw err
+  }
+}
+
 async function resolvePrimaryKey(schema: string, table: string): Promise<string | null> {
   const result = await query(
     `
@@ -485,11 +640,9 @@ export async function getRowDetail(
   }))
 
   const validColumnNames = new Set(columns.map((c) => c.name))
+  const pkColumn = await resolvePrimaryKey(schema, table)
   let column = lookupColumn && validColumnNames.has(lookupColumn) ? lookupColumn : null
-  if (!column) {
-    const pk = await resolvePrimaryKey(schema, table)
-    column = pk && validColumnNames.has(pk) ? pk : null
-  }
+  if (!column) column = pkColumn && validColumnNames.has(pkColumn) ? pkColumn : null
   if (!column && validColumnNames.has(FALLBACK_PK)) column = FALLBACK_PK
 
   const root = column
@@ -506,45 +659,299 @@ export async function getRowDetail(
       })()
     : null
 
-  const fks = await getForeignKeys(schema)
-  const incoming = fks.filter((fk) => fk.toTable === table)
+  const { incoming, outgoing, rowCounts, indexedColumns } = await fetchTraceEdges(
+    schema,
+    table,
+    columns,
+    pkColumn,
+  )
 
-  // Phase 1: a single batched UNION-ALL count query covers every incoming FK.
-  // Rows themselves are fetched lazily by getRowChildren when the user expands.
-  let children: RowChildGroup[] = []
-  if (root && incoming.length > 0) {
-    const fragments = incoming
-      .map((fk) => {
-        const parentValue = root[fk.toColumn]
-        if (parentValue === null || parentValue === undefined) return null
-        return format(
-          'SELECT %L AS k, COUNT(*)::bigint AS c FROM %I.%I WHERE %I = %L',
-          `${fk.fromTable}.${fk.fromColumn}`,
-          schema,
-          fk.fromTable,
-          fk.fromColumn,
-          String(parentValue),
-        )
-      })
-      .filter((f): f is string => f !== null)
+  const children = root
+    ? await countIncoming(schema, root, incoming, rowCounts, indexedColumns)
+    : incoming.map((e) => uncountedChild(e, indexedColumns, rowCounts))
 
-    const counts = new Map<string, number>()
-    if (fragments.length > 0) {
-      const batched = fragments.join(' UNION ALL ')
-      const result = await query(batched)
-      for (const row of result.rows) {
-        counts.set(String(row.k), Number(row.c))
-      }
-    }
+  const outgoingRefs = root ? await resolveOutgoing(schema, root, outgoing) : []
 
-    children = incoming.map((fk) => ({
-      table: fk.fromTable,
-      fkColumn: fk.fromColumn,
-      toColumn: fk.toColumn,
-      rows: [],
-      total: counts.get(`${fk.fromTable}.${fk.fromColumn}`) ?? 0,
-    }))
+  return { schema, table, columns, root, children, outgoing: outgoingRefs }
+}
+
+/**
+ * The merged edges for one table, plus the two facts the count budget needs about
+ * every candidate child table: how big it is and whether the referencing column is
+ * index-backed.
+ *
+ * Every query here is filtered to the candidate names computed up front, so a row
+ * page never pays for the whole-schema merge behind the lens.
+ */
+async function fetchTraceEdges(
+  schema: string,
+  table: string,
+  columns: readonly ColumnInfo[],
+  pkColumn: string | null,
+): Promise<{
+  incoming: TraceEdge[]
+  outgoing: TraceEdge[]
+  rowCounts: Map<string, number>
+  indexedColumns: Set<string>
+}> {
+  const tableColumns = columns.map((c) => ({ name: c.name, isNullable: c.isNullable }))
+  const [declaredEdges, map] = await Promise.all([
+    getForeignKeys(schema),
+    readSchemaMap(),
+  ])
+
+  const names = traceCandidateNames(table, tableColumns, pkColumn, declaredEdges, map)
+  const [otherLiveColumns, stats, indexedColumns] = await Promise.all([
+    fetchColumnsByName(schema, names.columnNames),
+    fetchTableStats(schema, names.tableNames),
+    fetchIndexedColumnsFor(schema, names.tableNames),
+  ])
+
+  const edges = mergeTableEdges({
+    table,
+    tableColumns,
+    tablePkColumn: pkColumn,
+    declaredEdges,
+    map,
+    otherLiveColumns,
+    liveTables: new Set(stats.keys()),
+  })
+
+  return { ...edges, rowCounts: stats, indexedColumns }
+}
+
+/** `table.column` → nullability, for the given column names across the schema. */
+async function fetchColumnsByName(
+  schema: string,
+  columnNames: readonly string[],
+): Promise<Map<string, boolean>> {
+  if (columnNames.length === 0) return new Map()
+  const result = await query(
+    `
+    SELECT table_name, column_name, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema = $1 AND column_name = ANY($2)
+  `,
+    [schema, columnNames],
+  )
+  return new Map(
+    result.rows.map((row) => [
+      `${row.table_name}.${row.column_name}`,
+      row.is_nullable === 'YES',
+    ]),
+  )
+}
+
+/**
+ * Approximate row count per table; absence from the result means the table is not
+ * live, which is how map drift stops producing dead links. `reltuples` covers
+ * never-analyzed tables, where `n_live_tup` reads 0 and would make a huge table
+ * look safe to count exactly.
+ */
+async function fetchTableStats(
+  schema: string,
+  tableNames: readonly string[],
+): Promise<Map<string, number>> {
+  if (tableNames.length === 0) return new Map()
+  const result = await query(
+    `
+    SELECT
+      c.relname AS table_name,
+      GREATEST(COALESCE(s.n_live_tup, 0), COALESCE(c.reltuples, 0))::bigint AS row_count
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+    WHERE n.nspname = $1
+      AND c.relname = ANY($2)
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  `,
+    [schema, tableNames],
+  )
+  return new Map(
+    result.rows.map((row) => [row.table_name as string, Math.max(0, Number(row.row_count))]),
+  )
+}
+
+/** Leading index columns, restricted to the tables this row page can reach. */
+async function fetchIndexedColumnsFor(
+  schema: string,
+  tableNames: readonly string[],
+): Promise<Set<string>> {
+  if (tableNames.length === 0) return new Set()
+  const result = await query(
+    `
+    SELECT c.relname AS table_name, a.attname AS column_name
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+    WHERE n.nspname = $1 AND c.relname = ANY($2)
+  `,
+    [schema, tableNames],
+  )
+  return new Set(result.rows.map((row) => `${row.table_name}.${row.column_name}`))
+}
+
+/** Counts are bounded rather than unbounded — see BUILD-SPEC §5.2. */
+export const COUNT_TIMEOUT_MS = 3_000
+
+function uncountedChild(
+  edge: TraceEdge,
+  indexedColumns: ReadonlySet<string>,
+  rowCounts: ReadonlyMap<string, number>,
+  forced?: 'timeout',
+): RowChildGroup {
+  const indexed = indexedColumns.has(`${edge.fromTable}.${edge.fromColumn}`)
+  return {
+    table: edge.fromTable,
+    fkColumn: edge.fromColumn,
+    toColumn: edge.toColumn,
+    rows: [],
+    total: null,
+    basis: edge.basis,
+    indexed,
+    countSkipped:
+      forced ??
+      countSkipReason(
+        indexed,
+        rowCounts.get(edge.fromTable) ?? 0,
+        EXACT_COUNT_THRESHOLD,
+      ) ??
+      'timeout',
+  }
+}
+
+/**
+ * Split count batch (BUILD-SPEC §5.2). Indexed columns on tables under the exact
+ * threshold are counted eagerly in the one batched `UNION ALL`; everything else is
+ * left at "not counted" with a per-table button, because 45% of inferred columns
+ * are unindexed and eagerly counting them would seq-scan once per neighbour.
+ *
+ * A timeout returns neighbours *without* counts rather than failing the page.
+ */
+async function countIncoming(
+  schema: string,
+  root: Row,
+  incoming: readonly TraceEdge[],
+  rowCounts: ReadonlyMap<string, number>,
+  indexedColumns: ReadonlySet<string>,
+): Promise<RowChildGroup[]> {
+  const safe: TraceEdge[] = []
+  const unsafe: TraceEdge[] = []
+  for (const e of incoming) {
+    const indexed = indexedColumns.has(`${e.fromTable}.${e.fromColumn}`)
+    const parentValue = root[e.toColumn]
+    const skip = countSkipReason(
+      indexed,
+      rowCounts.get(e.fromTable) ?? 0,
+      EXACT_COUNT_THRESHOLD,
+    )
+    if (skip !== null || parentValue === null || parentValue === undefined) unsafe.push(e)
+    else safe.push(e)
   }
 
-  return { schema, table, columns, root, children }
+  const counts = new Map<string, number>()
+  let timedOut = false
+  if (safe.length > 0) {
+    const batched = safe
+      .map((e) =>
+        format(
+          'SELECT %L AS k, COUNT(*)::bigint AS c FROM %I.%I WHERE %I = %L',
+          `${e.fromTable}.${e.fromColumn}`,
+          schema,
+          e.fromTable,
+          e.fromColumn,
+          String(root[e.toColumn]),
+        ),
+      )
+      .join(' UNION ALL ')
+    try {
+      const result = await queryWithTimeout(batched, COUNT_TIMEOUT_MS)
+      for (const row of result.rows) counts.set(String(row.k), Number(row.c))
+    } catch (err) {
+      if (err instanceof StatementTimeoutError) timedOut = true
+      else throw err
+    }
+  }
+
+  return incoming.map((e) => {
+    const key = `${e.fromTable}.${e.fromColumn}`
+    const counted = counts.get(key)
+    if (counted !== undefined) {
+      return {
+        table: e.fromTable,
+        fkColumn: e.fromColumn,
+        toColumn: e.toColumn,
+        rows: [],
+        total: counted,
+        basis: e.basis,
+        indexed: true,
+      }
+    }
+    const wasSafe = safe.includes(e)
+    return uncountedChild(
+      e,
+      indexedColumns,
+      rowCounts,
+      wasSafe && timedOut ? 'timeout' : undefined,
+    )
+  })
+}
+
+/**
+ * Outgoing hops. These are primary-key lookups, so they are exact and eager — but
+ * still bounded, because a convention edge can point at a column no index covers.
+ */
+async function resolveOutgoing(
+  schema: string,
+  root: Row,
+  outgoing: readonly TraceEdge[],
+): Promise<RowOutgoingRef[]> {
+  const refs: RowOutgoingRef[] = outgoing.map((e) => ({
+    column: e.fromColumn,
+    targetTable: e.toTable,
+    targetColumn: e.toColumn,
+    basis: e.basis,
+    value: root[e.fromColumn] ?? null,
+    resolves: null,
+  }))
+
+  const checkable = refs.filter((r) => r.value !== null && r.value !== undefined)
+  if (checkable.length === 0) return refs
+
+  const batched = checkable
+    .map((r) =>
+      format(
+        'SELECT %L AS k, EXISTS(SELECT 1 FROM %I.%I WHERE %I = %L) AS e',
+        r.column,
+        schema,
+        r.targetTable,
+        r.targetColumn,
+        String(r.value),
+      ),
+    )
+    .join(' UNION ALL ')
+
+  try {
+    const result = await queryWithTimeout(batched, COUNT_TIMEOUT_MS)
+    const found = new Map(result.rows.map((row) => [String(row.k), row.e === true]))
+    for (const r of refs) {
+      const hit = found.get(r.column)
+      if (hit !== undefined) r.resolves = hit
+    }
+  } catch (err) {
+    // A dangling inferred edge can point at a mistyped column; say "unchecked"
+    // rather than failing the row page over it.
+    if (!(err instanceof StatementTimeoutError)) {
+      void appendPerfEntry({
+        ts: Date.now(),
+        preset: getPresetName() ?? 'trace',
+        sql: '[trace] outgoing EXISTS batch',
+        ms: 0,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  return refs
 }

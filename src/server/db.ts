@@ -107,6 +107,75 @@ export async function disconnect(): Promise<void> {
   }
 }
 
+/** Thrown when a bounded query hits its `statement_timeout`. */
+export class StatementTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`Query exceeded statement_timeout of ${timeoutMs}ms`)
+    this.name = 'StatementTimeoutError'
+  }
+}
+
+/** Postgres `query_canceled`. */
+const QUERY_CANCELED = '57014'
+
+/**
+ * Run one query under a `statement_timeout`, on its own client so the bound
+ * cannot leak to anything else using the pool.
+ *
+ * The trace view's neighbour counts use this: a count that takes too long should
+ * degrade to "not counted" rather than failing the page (BUILD-SPEC §5.2). Every
+ * attempt lands in `perf-log.jsonl`, which is how the 3s figure gets tuned
+ * against a real database instead of guessed at.
+ */
+export async function queryWithTimeout(
+  sql: string,
+  timeoutMs: number,
+): Promise<pg.QueryResult> {
+  const pool = getPool()
+  if (!pool) throw new Error('Not connected to database')
+
+  const client = await pool.connect()
+  const started = Date.now()
+  try {
+    await client.query('BEGIN READ ONLY')
+    await client.query(`SET LOCAL statement_timeout = ${Math.max(1, Math.floor(timeoutMs))}`)
+    const result = await client.query(sql)
+    await client.query('ROLLBACK')
+    void appendPerfEntry({
+      ts: started,
+      preset: presetLabel(),
+      sql,
+      ms: Date.now() - started,
+      ok: true,
+      rowCount: result.rowCount ?? undefined,
+    })
+    return result
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      /* ignore — the transaction is already gone */
+    }
+    const timedOut =
+      typeof err === 'object' && err !== null && 'code' in err && err.code === QUERY_CANCELED
+    void appendPerfEntry({
+      ts: started,
+      preset: presetLabel(),
+      sql,
+      ms: Date.now() - started,
+      ok: false,
+      error: timedOut
+        ? `statement_timeout ${timeoutMs}ms`
+        : err instanceof Error
+          ? err.message
+          : String(err),
+    })
+    throw timedOut ? new StatementTimeoutError(timeoutMs) : err
+  } finally {
+    client.release()
+  }
+}
+
 export async function query(sql: string, params?: unknown[]): Promise<pg.QueryResult> {
   const pool = getPool()
   if (!pool) {

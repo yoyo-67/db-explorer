@@ -86,8 +86,21 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Search tables..."
-        className="mb-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
+        className="mb-2 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
       />
+
+      <Link
+        to="/lens/$schema"
+        params={{ schema }}
+        className="mb-3 flex items-center gap-1.5 rounded px-1.5 py-1 text-xs font-semibold text-[var(--sea-ink)] no-underline hover:bg-[var(--surface-strong)]"
+        title="How this schema is shaped: Group crossings, boundaries, and tables nothing references"
+      >
+        <span className="text-[10px] text-[var(--lagoon-deep)]">◈</span>
+        Schema lens
+        <span className="ml-auto text-[10px] font-normal text-[var(--sea-ink-soft)]">
+          {tables.length} tables
+        </span>
+      </Link>
 
       {introspectQuery.isLoading && (
         <div className="px-2 py-1 text-xs text-[var(--sea-ink-soft)]">Loading...</div>

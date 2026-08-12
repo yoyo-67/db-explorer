@@ -18,6 +18,7 @@ presets.json
 # Local query perf instrumentation
 perf-log.jsonl
 
-# Local table catalog (internal schema — do not commit)
-table-catalog.json
-fk-overrides.json
+# Internal schema metadata — do not commit (this repo is public).
+# Lives in local/, which is its own private git repo, mirroring pycode/local_dev.
+# Regenerate with: python3 ~/Work/buildots/pycode/local_dev/schema_map/extract.py
+local/

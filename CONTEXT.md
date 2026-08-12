@@ -44,6 +44,35 @@ Per-column free-form input, parsed by prefix:
 **Filtered count** ("≈ vs exact"):
 For tables with `n_live_tup < 100k`, run real `SELECT count(*)` for current filter. Above threshold, show approximate `n_live_tup` with on-demand "Exact" button.
 
+**Lens**:
+A read-only architectural view of the current **Schema** at `/lens/$schema`, answering how the schema is *shaped* rather than what is in it. Three pictures over one graph — Group × Group matrix, one **Group** expanded, and the tables nothing references — each clicking through into the table browser. A plugin, not a second app.
+_Avoid_: diagram, ERD, visualizer.
+
+**Merged graph**:
+The edge set the Lens draws: live Postgres constraints merged with Django relations and column-name rules. Fetched whole once per Schema by `$getSchemaGraph`; every metric is derived from it client-side so each has one definition.
+
+**Basis**:
+Where an edge came from, never conflated. `declared` = a real Postgres FK constraint (solid). `model` = a Django relation whose constraint was stripped by `simple_history` or `CrossDBForeignKey` — authoritative but unenforced (dashed). `convention` = inferred from the column name, applied only where no model relation described the column (dashed). Precedence is declared → model → convention, one edge per source column.
+_Avoid_: inferred (ambiguous — covers both model and convention), guessed.
+
+**Crossing**:
+An edge whose two ends sit in different **Group**s. A count, never a verdict: 75% of edges cross, so the words *violation*, *leak* and *breach* appear nowhere in the Lens.
+
+**Boundary stub**:
+In the expanded Group view, an edge leaving the Group drawn to a labelled box at the right-hand boundary instead of to its target node, grouped per target table with a count. Most of a Group's edges leave it, so the stubs are the main content.
+
+**Damping**:
+`?damp=historical,agg`, on by default. Historical and Aggregation crossings are an order of magnitude larger than anything else, so undamped they set the matrix colour scale and flatten every real signal.
+
+**No references found**:
+The honest label for a table with no edge in either direction on the Merged graph. Never "dead" or "unused" — application code can reach a table through a column no basis ever saw. Framework tables (`django_*`, `social_auth_*`, `auth_*`) and views are tagged into their own buckets rather than counted.
+
+**Not counted**:
+`total: null` on an incoming reference — distinct from a counted zero. The eager batch only counts references whose column is index-backed on a table under 100k estimated rows; the rest carry a reason (`unindexed`, `large`, `timeout`) and a per-table button. 45% of inferred columns are unindexed, so this is the common case.
+
+**Trace**:
+Following what one row actually touches, one steered hop at a time. It *is* the **Row detail** route with an `outgoing` array beside `children` — no separate route, so hop history is browser history and a shareable trace is the row URL.
+
 **SQL console**:
 Read-only textarea at `/console`, runs query, renders result in shared `DataTable`. localStorage-backed history of last 20 queries. No save/share. Constrained by session-level `READ ONLY` already set on the pool.
 
@@ -79,6 +108,14 @@ Read-only textarea at `/console`, runs query, renders result in shared `DataTabl
 | Q17 | Adopt shadcn primitives (Sheet, Command, Sidebar, Dialog), keep custom palette via CSS var override | sidebar + command palette want it |
 | Q18 | localStorage query history (20), no server persistence | dev tool |
 | Q19 | Vitest unit tests on pure helpers only (catalog grouping, row label, filter DSL) | (c) testcontainers over-engineered |
+| Q20 | Lens ships inside this app, not as a second project | its payoff is click-through into the existing browser |
+| Q21 | One whole-schema `$getSchemaGraph` fetch; degrees derived client-side | one definition per metric, in one place |
+| Q22 | Never draw the whole schema — one Group at a time, matrix as the entry point | 337 tables in one picture is the failure mode |
+| Q23 | Deterministic layout only; no graph library, no force simulation | largest Group is 37 nodes, so a sorted ring is enough and stable |
+| Q24 | Three bases kept distinct, unresolved columns left undrawn | inventing edges for `celery_task_id` would fabricate structure |
+| Q25 | Trace = Row detail extended, no `/trace` route | hop history is browser history; the row URL is the shareable trace |
+| Q26 | Incoming counts split into eager (indexed, < 100k est.) and not-counted | 45% of inferred columns are unindexed; eager counting would seq-scan per neighbour |
+| Q27 | Internal schema metadata (`local/`) is gitignored, its own private repo | this repo is public |
 
 ## Execution order
 

@@ -8,12 +8,15 @@ import {
   getTablePage,
   getTablePreview,
   getForeignKeys,
+  getChildCount,
   getRowDetail,
   getRowChildren,
+  getSchemaGraph,
   introspect,
   runReadOnlyQuery,
 } from '#/server/functions'
 import { readPerfLog } from '#/server/perf-log'
+import { readTableCatalog } from '#/server/local-metadata'
 import { resolvePresets } from '#/lib/preset-resolver'
 import type {
   ConnectionConfig,
@@ -128,6 +131,20 @@ export const $getRowChildren = createServerFn({ method: 'GET' })
     return getRowChildren(data)
   })
 
+/** Counts one reference the eager batch left at "not counted" (BUILD-SPEC §5.2). */
+export const $getChildCount = createServerFn({ method: 'GET' })
+  .inputValidator(
+    (data: {
+      schema?: string
+      childTable: string
+      fkColumn: string
+      parentValue: string
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    return getChildCount(data)
+  })
+
 export const $getRowDetail = createServerFn({ method: 'GET' })
   .inputValidator(
     (data: {
@@ -180,12 +197,18 @@ export const $getPerfLog = createServerFn({ method: 'GET' })
 
 export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
   async () => {
-    try {
-      const catalogPath = resolve(process.cwd(), 'table-catalog.json')
-      const raw = await readFile(catalogPath, 'utf-8')
-      return JSON.parse(raw) as TableCatalog
-    } catch {
-      return { groups: [], tables: {} } as TableCatalog
-    }
+    const catalog = await readTableCatalog()
+    return catalog ?? ({ groups: [], tables: {} } as TableCatalog)
   },
 )
+
+/**
+ * One whole-schema fetch behind both lens views (BUILD-SPEC §2.1). Cached on the
+ * client by connection preset + schema with a long staleTime; no server cache,
+ * so a reran extractor shows up on the next reload.
+ */
+export const $getSchemaGraph = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    return getSchemaGraph(data.schema)
+  })

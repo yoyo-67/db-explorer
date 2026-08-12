@@ -1,0 +1,144 @@
+import { hubRadius } from '#/lib/schema-graph-metrics'
+import type { SchemaGraphEdge } from '#/lib/types'
+
+/**
+ * Deterministic layout for one expanded Group (BUILD-SPEC §4.2). No force
+ * simulation and no graph library: the lens never draws more than one Group at
+ * a time (the largest curated Group is 37 tables), so a circle sorted by name
+ * is both enough and stable — the same schema always draws the same picture.
+ */
+
+export interface RadialNode {
+  table: string
+  x: number
+  y: number
+  radius: number
+  /** Labels point outwards, so the ring never writes over itself. */
+  labelAnchor: 'start' | 'end'
+  inDegree: number
+  outDegree: number
+  selfRefs: number
+}
+
+export interface RadialLayoutOptions {
+  cx: number
+  cy: number
+  /** Radius of the ring the nodes sit on. */
+  ringRadius: number
+  minNodeRadius: number
+  maxNodeRadius: number
+  /** Scale reference — the whole schema's max, so sizes compare across Groups. */
+  maxInDegree: number
+}
+
+export interface RadialInput {
+  name: string
+  inDegree: number
+  outDegree: number
+  selfRefs: number
+}
+
+export function radialLayout(
+  tables: readonly RadialInput[],
+  opts: RadialLayoutOptions,
+): RadialNode[] {
+  const sorted = [...tables].sort((a, b) => a.name.localeCompare(b.name))
+  const n = sorted.length
+  if (n === 0) return []
+
+  return sorted.map((t, i) => {
+    // Start at the top and go clockwise; a single node sits in the centre.
+    const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
+    const x = n === 1 ? opts.cx : opts.cx + opts.ringRadius * Math.cos(angle)
+    const y = n === 1 ? opts.cy : opts.cy + opts.ringRadius * Math.sin(angle)
+    return {
+      table: t.name,
+      x: round(x),
+      y: round(y),
+      radius: round(
+        hubRadius(t.inDegree, {
+          minRadius: opts.minNodeRadius,
+          maxRadius: opts.maxNodeRadius,
+          maxInDegree: opts.maxInDegree,
+        }),
+      ),
+      labelAnchor: x >= opts.cx ? 'start' : 'end',
+      inDegree: t.inDegree,
+      outDegree: t.outDegree,
+      selfRefs: t.selfRefs,
+    }
+  })
+}
+
+function round(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/** Edges with both ends inside the Group — drawn as chords across the ring. */
+export function internalEdges(
+  edges: readonly SchemaGraphEdge[],
+  groupTables: ReadonlySet<string>,
+): SchemaGraphEdge[] {
+  return edges.filter((e) => groupTables.has(e.fromTable) && groupTables.has(e.toTable))
+}
+
+export interface BoundaryStub {
+  targetTable: string
+  targetGroup: string
+  count: number
+  /** Source tables inside the Group, deduped — where the stub's lines start. */
+  sourceTables: string[]
+  edges: SchemaGraphEdge[]
+}
+
+/**
+ * Edges leaving the Group, collapsed per target table. These are the main
+ * content, not decoration: for most Groups more edges leave than stay.
+ */
+export function boundaryStubs(
+  edges: readonly SchemaGraphEdge[],
+  groupTables: ReadonlySet<string>,
+  groupOf: (table: string) => string | undefined,
+): BoundaryStub[] {
+  const byTarget = new Map<string, BoundaryStub>()
+  for (const e of edges) {
+    if (!groupTables.has(e.fromTable) || groupTables.has(e.toTable)) continue
+    const stub = byTarget.get(e.toTable) ?? {
+      targetTable: e.toTable,
+      targetGroup: groupOf(e.toTable) ?? '',
+      count: 0,
+      sourceTables: [],
+      edges: [],
+    }
+    stub.count++
+    stub.edges.push(e)
+    if (!stub.sourceTables.includes(e.fromTable)) stub.sourceTables.push(e.fromTable)
+    byTarget.set(e.toTable, stub)
+  }
+  return [...byTarget.values()].sort(
+    (a, b) => b.count - a.count || a.targetTable.localeCompare(b.targetTable),
+  )
+}
+
+/** Horizontal S-curve from a ring node out to a boundary stub box. */
+export function stubPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): string {
+  const midX = round(from.x + (to.x - from.x) / 2)
+  return `M${from.x},${from.y} C ${midX},${from.y} ${midX},${to.y} ${to.x},${to.y}`
+}
+
+/** Straight chord between two ring nodes, trimmed to each node's edge. */
+export function chordPath(from: RadialNode, to: RadialNode): string {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  const x1 = round(from.x + ux * from.radius)
+  const y1 = round(from.y + uy * from.radius)
+  const x2 = round(to.x - ux * to.radius)
+  const y2 = round(to.y - uy * to.radius)
+  return `M${x1},${y1} L${x2},${y2}`
+}

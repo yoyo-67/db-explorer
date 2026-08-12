@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LensSchemaIndexRouteImport } from './routes/lens/$schema/index'
+import { Route as LensSchemaOrphansRouteImport } from './routes/lens/$schema/orphans'
 import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
+import { Route as LensSchemaGGroupRouteImport } from './routes/lens/$schema/g/$group'
 import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table/row/$id'
 
 const ConsoleRoute = ConsoleRouteImport.update({
@@ -24,9 +27,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LensSchemaIndexRoute = LensSchemaIndexRouteImport.update({
+  id: '/lens/$schema/',
+  path: '/lens/$schema/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LensSchemaOrphansRoute = LensSchemaOrphansRouteImport.update({
+  id: '/lens/$schema/orphans',
+  path: '/lens/$schema/orphans',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TSchemaTableIndexRoute = TSchemaTableIndexRouteImport.update({
   id: '/t/$schema/$table/',
   path: '/t/$schema/$table/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LensSchemaGGroupRoute = LensSchemaGGroupRouteImport.update({
+  id: '/lens/$schema/g/$group',
+  path: '/lens/$schema/g/$group',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
@@ -38,12 +56,18 @@ const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
+  '/lens/$schema/': typeof LensSchemaIndexRoute
+  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
+  '/lens/$schema': typeof LensSchemaIndexRoute
+  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
   '/t/$schema/$table': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
@@ -51,6 +75,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
+  '/lens/$schema/': typeof LensSchemaIndexRoute
+  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
   '/t/$schema/$table/': typeof TSchemaTableIndexRoute
   '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
 }
@@ -59,14 +86,27 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/console'
+    | '/lens/$schema/orphans'
+    | '/lens/$schema/'
+    | '/lens/$schema/g/$group'
     | '/t/$schema/$table/'
     | '/t/$schema/$table/row/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/console' | '/t/$schema/$table' | '/t/$schema/$table/row/$id'
+  to:
+    | '/'
+    | '/console'
+    | '/lens/$schema/orphans'
+    | '/lens/$schema'
+    | '/lens/$schema/g/$group'
+    | '/t/$schema/$table'
+    | '/t/$schema/$table/row/$id'
   id:
     | '__root__'
     | '/'
     | '/console'
+    | '/lens/$schema/orphans'
+    | '/lens/$schema/'
+    | '/lens/$schema/g/$group'
     | '/t/$schema/$table/'
     | '/t/$schema/$table/row/$id'
   fileRoutesById: FileRoutesById
@@ -74,6 +114,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRoute
+  LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
+  LensSchemaIndexRoute: typeof LensSchemaIndexRoute
+  LensSchemaGGroupRoute: typeof LensSchemaGGroupRoute
   TSchemaTableIndexRoute: typeof TSchemaTableIndexRoute
   TSchemaTableRowIdRoute: typeof TSchemaTableRowIdRoute
 }
@@ -94,11 +137,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lens/$schema/': {
+      id: '/lens/$schema/'
+      path: '/lens/$schema'
+      fullPath: '/lens/$schema/'
+      preLoaderRoute: typeof LensSchemaIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lens/$schema/orphans': {
+      id: '/lens/$schema/orphans'
+      path: '/lens/$schema/orphans'
+      fullPath: '/lens/$schema/orphans'
+      preLoaderRoute: typeof LensSchemaOrphansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/t/$schema/$table/': {
       id: '/t/$schema/$table/'
       path: '/t/$schema/$table'
       fullPath: '/t/$schema/$table/'
       preLoaderRoute: typeof TSchemaTableIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lens/$schema/g/$group': {
+      id: '/lens/$schema/g/$group'
+      path: '/lens/$schema/g/$group'
+      fullPath: '/lens/$schema/g/$group'
+      preLoaderRoute: typeof LensSchemaGGroupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/t/$schema/$table/row/$id': {
@@ -114,6 +178,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRoute,
+  LensSchemaOrphansRoute: LensSchemaOrphansRoute,
+  LensSchemaIndexRoute: LensSchemaIndexRoute,
+  LensSchemaGGroupRoute: LensSchemaGGroupRoute,
   TSchemaTableIndexRoute: TSchemaTableIndexRoute,
   TSchemaTableRowIdRoute: TSchemaTableRowIdRoute,
 }

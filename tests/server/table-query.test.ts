@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockQuery = vi.fn()
+const mockQueryWithTimeout = vi.fn()
+
+class StatementTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`Query exceeded statement_timeout of ${timeoutMs}ms`)
+    this.name = 'StatementTimeoutError'
+  }
+}
 
 vi.mock('#/server/db', () => ({
   createConnection: vi.fn(),
   disconnect: vi.fn(),
   query: (...args: unknown[]) => mockQuery(...args),
+  queryWithTimeout: (...args: unknown[]) => mockQueryWithTimeout(...args),
+  StatementTimeoutError,
   getConnection: () => ({}),
   getPresetName: () => null,
   setPresetName: vi.fn(),
@@ -16,11 +26,25 @@ vi.mock('#/server/perf-log', () => ({
   readPerfLog: vi.fn(async () => []),
 }))
 
-const { getTablePage, getRowChildren, getRowDetail, EXACT_COUNT_THRESHOLD } =
-  await import('#/server/functions')
+// The real reader would load the committed 343-table map from local/, making
+// these unit tests depend on internal schema metadata. The trace merge itself is
+// covered by tests/lib/row-trace.test.ts.
+vi.mock('#/server/local-metadata', () => ({
+  readSchemaMap: vi.fn(async () => null),
+  readTableCatalog: vi.fn(async () => null),
+}))
+
+const {
+  getTablePage,
+  getRowChildren,
+  getRowDetail,
+  EXACT_COUNT_THRESHOLD,
+  COUNT_TIMEOUT_MS,
+} = await import('#/server/functions')
 
 beforeEach(() => {
   mockQuery.mockReset()
+  mockQueryWithTimeout.mockReset()
 })
 
 function mockColumns(names: string[]) {
@@ -183,10 +207,7 @@ describe('foreign-key lookups use native typed comparison (index-friendly)', () 
   })
 
   it('getRowDetail looks up the root row without a ::text cast', async () => {
-    mockColumns(['id']) // columns query
-    mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] }) // resolvePrimaryKey
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'abc' }] }) // root row
-    mockQuery.mockResolvedValueOnce({ rows: [] }) // getForeignKeys -> no incoming
+    mockRowDetailMetadata({ columns: ['id'], root: { id: 'abc' } })
 
     await getRowDetail('public', 'parent', 'abc')
 
@@ -195,3 +216,165 @@ describe('foreign-key lookups use native typed comparison (index-friendly)', () 
     expect(rootSql).toContain("WHERE id = 'abc'")
   })
 })
+
+/**
+ * BUILD-SPEC §5.2. The point of the split is that "not counted" is the common
+ * case, not an error: 45% of inferred columns are unindexed, so counting every
+ * neighbour eagerly would seq-scan once per related table.
+ */
+describe('getRowDetail split count batch', () => {
+  it('counts indexed references on small tables eagerly and leaves the rest uncounted', async () => {
+    mockRowDetailMetadata({
+      columns: ['id'],
+      root: { id: 'abc' },
+      fks: [
+        fkRow('small_indexed', 'parent_id', 'parent', 'id'),
+        fkRow('small_unindexed', 'parent_id', 'parent', 'id'),
+        fkRow('huge_indexed', 'parent_id', 'parent', 'id'),
+      ],
+      stats: {
+        parent: 10,
+        small_indexed: 50,
+        small_unindexed: 50,
+        huge_indexed: EXACT_COUNT_THRESHOLD,
+      },
+      indexed: ['small_indexed.parent_id', 'huge_indexed.parent_id'],
+    })
+    mockTimeoutQuery({ rows: [{ k: 'small_indexed.parent_id', c: '7' }] })
+
+    const detail = await getRowDetail('public', 'parent', 'abc')
+    const byTable = Object.fromEntries(detail.children.map((c) => [c.table, c]))
+
+    expect(byTable.small_indexed).toMatchObject({ total: 7, indexed: true })
+    expect(byTable.small_unindexed).toMatchObject({
+      total: null,
+      countSkipped: 'unindexed',
+    })
+    expect(byTable.huge_indexed).toMatchObject({ total: null, countSkipped: 'large' })
+
+    // Only the safe reference is in the batch — that is the whole budget.
+    const batch = mockQueryWithTimeout.mock.calls[0][0] as string
+    expect(batch).toContain('small_indexed')
+    expect(batch).not.toContain('small_unindexed')
+    expect(batch).not.toContain('huge_indexed')
+  })
+
+  it('bounds the eager batch with a statement timeout', async () => {
+    mockRowDetailMetadata({
+      columns: ['id'],
+      root: { id: 'abc' },
+      fks: [fkRow('child', 'parent_id', 'parent', 'id')],
+      stats: { parent: 1, child: 10 },
+      indexed: ['child.parent_id'],
+    })
+    mockTimeoutQuery({ rows: [{ k: 'child.parent_id', c: '2' }] })
+
+    await getRowDetail('public', 'parent', 'abc')
+
+    expect(mockQueryWithTimeout.mock.calls[0][1]).toBe(COUNT_TIMEOUT_MS)
+  })
+
+  it('degrades to uncounted neighbours on timeout rather than failing the row', async () => {
+    mockRowDetailMetadata({
+      columns: ['id'],
+      root: { id: 'abc' },
+      fks: [fkRow('child', 'parent_id', 'parent', 'id')],
+      stats: { parent: 1, child: 10 },
+      indexed: ['child.parent_id'],
+    })
+    mockQueryWithTimeout.mockRejectedValueOnce(new StatementTimeoutError(3000))
+
+    const detail = await getRowDetail('public', 'parent', 'abc')
+
+    expect(detail.children[0]).toMatchObject({ total: null, countSkipped: 'timeout' })
+  })
+
+  it('never counts a reference whose parent value is null', async () => {
+    mockRowDetailMetadata({
+      columns: ['id', 'other_id'],
+      root: { id: 'abc', other_id: null },
+      fks: [fkRow('child', 'other_ref_id', 'parent', 'other_id')],
+      stats: { parent: 1, child: 10 },
+      indexed: ['child.other_ref_id'],
+    })
+
+    const detail = await getRowDetail('public', 'parent', 'abc')
+
+    expect(detail.children[0].total).toBeNull()
+    expect(mockQueryWithTimeout).not.toHaveBeenCalled()
+  })
+})
+
+describe('getRowDetail outgoing hops', () => {
+  it('checks each set reference exactly and marks a missing target dangling', async () => {
+    mockRowDetailMetadata({
+      columns: ['id', 'project_id', 'batch_id'],
+      root: { id: 'abc', project_id: 'p1', batch_id: null },
+      fks: [
+        fkRow('video', 'project_id', 'project', 'id'),
+        fkRow('video', 'batch_id', 'batch', 'id'),
+      ],
+      stats: { video: 1, project: 1, batch: 1 },
+      indexed: [],
+      table: 'video',
+    })
+    mockTimeoutQuery({ rows: [{ k: 'project_id', e: false }] })
+
+    const detail = await getRowDetail('public', 'video', 'abc')
+    const byColumn = Object.fromEntries(detail.outgoing.map((o) => [o.column, o]))
+
+    expect(byColumn.project_id).toMatchObject({
+      targetTable: 'project',
+      value: 'p1',
+      resolves: false,
+    })
+    // A null value is nothing to resolve, so it is unchecked rather than dangling.
+    expect(byColumn.batch_id).toMatchObject({ value: null, resolves: null })
+    const batch = mockQueryWithTimeout.mock.calls[0][0] as string
+    expect(batch).toContain('EXISTS')
+    expect(batch).not.toContain('batch_id')
+  })
+})
+
+function fkRow(fromTable: string, fromColumn: string, toTable: string, toColumn: string) {
+  return {
+    from_table: fromTable,
+    from_column: fromColumn,
+    to_table: toTable,
+    to_column: toColumn,
+  }
+}
+
+/**
+ * Queue the metadata queries `getRowDetail` makes, in order: the table's columns,
+ * its primary key, the root row, every declared FK, then the filtered table-stats
+ * and leading-index lookups the count budget needs.
+ */
+function mockRowDetailMetadata(opts: {
+  columns: string[]
+  root: Record<string, unknown> | null
+  fks?: Array<ReturnType<typeof fkRow>>
+  stats?: Record<string, number>
+  indexed?: string[]
+  table?: string
+}) {
+  mockColumns(opts.columns)
+  mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] }) // resolvePrimaryKey
+  mockQuery.mockResolvedValueOnce({ rows: opts.root ? [opts.root] : [] }) // root row
+  mockQuery.mockResolvedValueOnce({ rows: opts.fks ?? [] }) // getForeignKeys
+  mockQuery.mockResolvedValueOnce({
+    rows: Object.entries(opts.stats ?? { [opts.table ?? 'parent']: 0 }).map(
+      ([table_name, row_count]) => ({ table_name, row_count: String(row_count) }),
+    ),
+  }) // fetchTableStats
+  mockQuery.mockResolvedValueOnce({
+    rows: (opts.indexed ?? []).map((key) => {
+      const dot = key.lastIndexOf('.')
+      return { table_name: key.slice(0, dot), column_name: key.slice(dot + 1) }
+    }),
+  }) // fetchIndexedColumnsFor
+}
+
+function mockTimeoutQuery(result: { rows: Array<Record<string, unknown>> }) {
+  mockQueryWithTimeout.mockResolvedValueOnce(result)
+}

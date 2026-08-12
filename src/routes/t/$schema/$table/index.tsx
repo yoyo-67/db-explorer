@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
 import Pager from '#/components/Pager'
-import { $getTablePage, $introspect } from '#/server/api'
+import { $getTableCatalog, $getTablePage, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
+import { lensTargetForTable } from '#/lib/lens-links'
 import type { TableSort } from '#/lib/types'
 
 interface TableSearch {
@@ -46,6 +47,46 @@ function parseSort(s: string | undefined): TableSort | null {
 
 function formatSort(sort: TableSort | null): string | undefined {
   return sort ? `${sort.column}:${sort.direction}` : undefined
+}
+
+/**
+ * The other half of the seam (BUILD-SPEC §6): from a table into its Group in the
+ * lens, focused on this table. Answered from the catalog the sidebar already
+ * caches, so the table page never pays for the whole-schema graph fetch.
+ */
+function ShowInLens({ schema, table }: { schema: string; table: string }) {
+  const catalogQuery = useQuery({
+    queryKey: ['tableCatalog'],
+    queryFn: () => $getTableCatalog(),
+    staleTime: Infinity,
+  })
+  const target = lensTargetForTable(table, catalogQuery.data)
+  const className =
+    'rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] no-underline hover:bg-[rgba(79,184,178,0.1)]'
+
+  if (target.kind === 'matrix') {
+    return (
+      <Link
+        to="/lens/$schema"
+        params={{ schema }}
+        className={className}
+        title="No group claims this table — opening the Group × Group matrix instead"
+      >
+        Show in lens
+      </Link>
+    )
+  }
+  return (
+    <Link
+      to="/lens/$schema/g/$group"
+      params={{ schema, group: target.group }}
+      search={{ focus: table }}
+      className={className}
+      title={`Show ${table} inside ${target.group}`}
+    >
+      Show in lens
+    </Link>
+  )
 }
 
 function TablePage() {
@@ -188,6 +229,7 @@ function TablePage() {
               Clear filters & sort
             </button>
           )}
+          <ShowInLens schema={schema} table={table} />
           <div className="ml-auto flex items-center gap-3">
             {pageData && (
               <ExportButtons

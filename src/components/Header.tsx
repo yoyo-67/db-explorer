@@ -8,6 +8,7 @@ import {
   $getTables,
   $testConnection,
 } from '#/server/api'
+import { parseLensPath, schemaFromPathname } from '#/lib/lens-links'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
 
@@ -39,6 +40,7 @@ export default function Header() {
           >
             Console
           </Link>
+          <LensLink />
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -52,11 +54,29 @@ export default function Header() {
   )
 }
 
+/** Entry point into the lens, for whichever schema the current route is about. */
+function LensLink() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const schema = schemaFromPathname(pathname)
+  if (!schema) return null
+  return (
+    <Link
+      to="/lens/$schema"
+      params={{ schema }}
+      className="nav-link"
+      activeProps={{ className: 'nav-link is-active' }}
+      title="Schema architecture lens — how this schema is shaped"
+    >
+      Lens
+    </Link>
+  )
+}
+
 function SchemaPicker() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isOnTableRoute = pathname.startsWith('/t/')
-  const currentSchema = isOnTableRoute ? pathname.split('/')[2] : undefined
+  const currentSchema = schemaFromPathname(pathname)
+  const lensLocation = parseLensPath(pathname)
 
   const schemasQuery = useQuery({
     queryKey: ['schemas'],
@@ -70,6 +90,22 @@ function SchemaPicker() {
   const selected = currentSchema ?? schemas[0]
 
   const handleChange = async (nextSchema: string) => {
+    // On the lens, a schema switch keeps the view you were reading. A Group that
+    // the next schema does not have falls back to the matrix, which the group
+    // route handles rather than this picker guessing at another schema's groups.
+    if (lensLocation) {
+      if (lensLocation.view.kind === 'group') {
+        navigate({
+          to: '/lens/$schema/g/$group',
+          params: { schema: nextSchema, group: lensLocation.view.group },
+        })
+      } else if (lensLocation.view.kind === 'orphans') {
+        navigate({ to: '/lens/$schema/orphans', params: { schema: nextSchema } })
+      } else {
+        navigate({ to: '/lens/$schema', params: { schema: nextSchema } })
+      }
+      return
+    }
     const tables = await $getTables({ data: { schema: nextSchema } })
     if (tables.length === 0) return
     navigate({

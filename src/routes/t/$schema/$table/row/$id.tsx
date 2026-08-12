@@ -2,7 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import LinkableValue from '#/components/LinkableValue'
-import { $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
+import { $getChildCount, $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { getRowLabel } from '#/lib/row-label'
@@ -12,6 +12,7 @@ import type {
   JsonValue,
   RowChildGroup,
   RowDetail,
+  RowOutgoingRef,
   TableInfo,
 } from '#/lib/types'
 
@@ -54,11 +55,13 @@ function RowDetailPage() {
   const label = root ? getRowLabel(root, detail?.columns ?? [], fks, table) : null
   const rootTableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
   const rootPkColumn = rootTableInfo?.pkColumn ?? null
+  // An uncounted reference is never hidden as "empty": not counted is not zero.
   const visibleChildren = useMemo(() => {
     const all = detail?.children ?? []
-    return showEmpty ? all : all.filter((c) => c.total > 0)
+    return showEmpty ? all : all.filter((c) => c.total === null || c.total > 0)
   }, [detail, showEmpty])
   const hiddenEmpty = (detail?.children.length ?? 0) - visibleChildren.length
+  const uncounted = visibleChildren.filter((c) => c.total === null).length
 
   if (isChecking) {
     return (
@@ -153,6 +156,10 @@ function RowDetailPage() {
           </section>
         )}
 
+        {detail && detail.outgoing.length > 0 && (
+          <OutgoingRefs schema={schema} outgoing={detail.outgoing} />
+        )}
+
         {detail && detail.children.length > 0 && (
           <section className="space-y-3">
             <div className="flex items-center gap-3">
@@ -160,7 +167,8 @@ function RowDetailPage() {
                 Incoming references
               </h2>
               <span className="text-xs text-[var(--sea-ink-soft)]">
-                {visibleChildren.length} non-empty
+                {visibleChildren.length - uncounted} non-empty
+                {uncounted > 0 && ` · ${uncounted} not counted`}
                 {hiddenEmpty > 0 && ` · ${hiddenEmpty} empty hidden`}
               </span>
               {hiddenEmpty > 0 && (
@@ -286,13 +294,38 @@ async function buildRowText(
     return lines.join('\n')
   }
 
-  const refs = detail.children.filter((c) => c.total > 0)
+  const outgoing = detail.outgoing.filter((o) => o.value !== null)
+  if (outgoing.length > 0) {
+    lines.push('', '## Outgoing references')
+    for (const o of outgoing) {
+      const resolves =
+        o.resolves === null ? 'unchecked' : o.resolves ? 'resolves' : 'DANGLING'
+      lines.push(
+        `- ${o.column} → ${o.targetTable}.${o.targetColumn} = ${fmtValue(o.value)} ` +
+          `[${o.basis}, ${resolves}]`,
+      )
+    }
+  }
+
+  // Uncounted references are listed but not fetched: the count was skipped
+  // precisely because scanning them is expensive.
+  const uncounted = detail.children.filter((c) => c.total === null)
+  const refs = detail.children.filter((c) => c.total !== null && c.total > 0)
+  if (uncounted.length > 0) {
+    lines.push('', '## Incoming references, not counted')
+    for (const c of uncounted) {
+      lines.push(
+        `- ${c.table} via ${c.fkColumn} → ${c.toColumn} [${c.basis}, ${c.countSkipped}]`,
+      )
+    }
+  }
   if (refs.length > 0) {
     lines.push('', '## Incoming references')
     for (const c of refs) {
+      const total = c.total ?? 0
       const parentValue = detail.root[c.toColumn]
-      const limit = Math.min(c.total, MAX_REF_ROWS)
-      const header = `### ${c.table} (${c.total}) via ${c.fkColumn} → ${c.toColumn}`
+      const limit = Math.min(total, MAX_REF_ROWS)
+      const header = `### ${c.table} (${total}) via ${c.fkColumn} → ${c.toColumn}`
       if (parentValue === null || parentValue === undefined) {
         lines.push('', header, '(parent value null — skipped)')
         continue
@@ -314,7 +347,7 @@ async function buildRowText(
         continue
       }
       lines.push('', header)
-      if (c.total > limit) lines.push(`(showing first ${limit} of ${c.total})`)
+      if (total > limit) lines.push(`(showing first ${limit} of ${total})`)
       res.rows.forEach((row, i) => {
         lines.push(`- [${i + 1}]`)
         lines.push(...fmtRow(res.columns ?? [], row, '  '))
@@ -380,13 +413,37 @@ function ChildGroup({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [page, setPage] = useState(1)
+  const [countRequested, setCountRequested] = useState(false)
   const offset = (page - 1) * CHILD_PAGE_SIZE
-  const totalPages = Math.max(1, Math.ceil(child.total / CHILD_PAGE_SIZE))
-  const canFetch =
-    expanded &&
-    child.total > 0 &&
-    parentValue !== null &&
-    parentValue !== undefined
+  const hasParentValue = parentValue !== null && parentValue !== undefined
+
+  // The eager batch skipped this one; count it only when asked (BUILD-SPEC §5.2).
+  const countQuery = useQuery({
+    queryKey: [
+      'childCount',
+      schema,
+      child.table,
+      child.fkColumn,
+      String(parentValue ?? ''),
+    ],
+    queryFn: () =>
+      $getChildCount({
+        data: {
+          schema,
+          childTable: child.table,
+          fkColumn: child.fkColumn,
+          parentValue: String(parentValue ?? ''),
+        },
+      }),
+    enabled: countRequested && child.total === null && hasParentValue,
+    staleTime: 60_000,
+  })
+
+  const total = child.total ?? countQuery.data?.total ?? null
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / CHILD_PAGE_SIZE))
+  // Expanding an uncounted reference still fetches its first page: the page is a
+  // LIMIT, which is cheap, unlike the COUNT(*) that was skipped.
+  const canFetch = expanded && total !== 0 && hasParentValue
 
   const rowsQuery = useQuery({
     queryKey: [
@@ -420,8 +477,8 @@ function ChildGroup({
     [childColumns, fks, child.table],
   )
   const childPkColumn = childTableInfo?.pkColumn ?? null
-  const start = child.total === 0 ? 0 : offset + 1
-  const end = Math.min(child.total, offset + rows.length)
+  const start = total === 0 ? 0 : offset + 1
+  const end = total === null ? offset + rows.length : Math.min(total, offset + rows.length)
 
   return (
     <div className="island-shell rounded-xl">
@@ -443,18 +500,56 @@ function ChildGroup({
         >
           {child.table}
         </Link>
-        <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)]">
-          {child.total}
-        </span>
+        {total !== null ? (
+          <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs tabular-nums text-[var(--lagoon-deep)]">
+            {total.toLocaleString()}
+          </span>
+        ) : (
+          <CountOnDemand
+            skipped={child.countSkipped}
+            state={
+              !countRequested
+                ? 'idle'
+                : countQuery.isFetching
+                  ? 'busy'
+                  : countQuery.data?.timedOut
+                    ? 'timeout'
+                    : countQuery.error
+                      ? 'error'
+                      : 'idle'
+            }
+            disabled={!hasParentValue}
+            onCount={(e) => {
+              e.stopPropagation()
+              setCountRequested(true)
+            }}
+          />
+        )}
         <span className="text-[10px] text-[var(--sea-ink-soft)]">
           via {child.fkColumn} → {child.toColumn}
         </span>
+        {child.basis !== 'declared' && (
+          <span
+            className="rounded-full border border-dashed border-[var(--line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)]"
+            title={
+              child.basis === 'model'
+                ? 'Django relation with no database constraint — authoritative, but unenforced.'
+                : 'Inferred from the column name, where no Django relation described it.'
+            }
+          >
+            {child.basis}
+          </span>
+        )}
       </button>
 
       {expanded && (
         <div className="space-y-2 border-t border-[var(--line)] p-3">
-          {child.total === 0 ? (
+          {total === 0 ? (
             <p className="px-2 py-2 text-xs text-[var(--sea-ink-soft)]">No related rows.</p>
+          ) : !hasParentValue ? (
+            <p className="px-2 py-2 text-xs text-[var(--sea-ink-soft)]">
+              The referenced value on this row is null, so nothing can point at it.
+            </p>
           ) : rowsQuery.isLoading ? (
             <p className="px-2 py-2 text-xs text-[var(--sea-ink-soft)]">Loading rows...</p>
           ) : rowsQuery.error ? (
@@ -474,10 +569,10 @@ function ChildGroup({
               />
             ))
           )}
-          {child.total > CHILD_PAGE_SIZE && (
+          {(total === null ? rows.length === CHILD_PAGE_SIZE : total > CHILD_PAGE_SIZE) && (
             <div className="flex items-center justify-end gap-2 px-2 pt-1 text-[11px] text-[var(--sea-ink-soft)]">
               <span>
-                {start}–{end} of {child.total}
+                {start}–{end} of {total === null ? 'an uncounted total' : total}
               </span>
               <button
                 type="button"
@@ -488,12 +583,15 @@ function ChildGroup({
                 ‹
               </button>
               <span className="tabular-nums">
-                {page} / {totalPages}
+                {page} / {total === null ? '?' : totalPages}
               </span>
               <button
                 type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages || rowsQuery.isFetching}
+                onClick={() => setPage((p) => (total === null ? p + 1 : Math.min(totalPages, p + 1)))}
+                disabled={
+                  rowsQuery.isFetching ||
+                  (total === null ? rows.length < CHILD_PAGE_SIZE : page >= totalPages)
+                }
                 className="rounded border border-[var(--line)] px-1.5 py-0.5 hover:bg-[var(--surface-strong)] disabled:opacity-30"
               >
                 ›
@@ -503,6 +601,141 @@ function ChildGroup({
         </div>
       )}
     </div>
+  )
+}
+
+const COUNT_SKIP_HINT: Record<string, string> = {
+  unindexed:
+    'Not counted: the referencing column has no index, so COUNT(*) would scan the whole table. 45% of inferred columns are unindexed.',
+  large:
+    'Not counted: the referencing table is estimated at or above the 100k-row exact-count threshold. The estimate is pg_class.reltuples, which is what stops a never-analyzed table reading as empty.',
+  timeout: 'Not counted: the eager batch ran out of its time budget.',
+}
+
+/**
+ * "Not counted" says so, and offers to count this one table. Never a zero — a
+ * skipped count and an empty reference are different facts.
+ */
+function CountOnDemand({
+  skipped,
+  state,
+  disabled,
+  onCount,
+}: {
+  skipped: RowChildGroup['countSkipped']
+  state: 'idle' | 'busy' | 'timeout' | 'error'
+  disabled: boolean
+  onCount: (e: React.MouseEvent) => void
+}) {
+  if (disabled) {
+    return (
+      <span className="rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--sea-ink-soft)]">
+        parent value null
+      </span>
+    )
+  }
+  const label =
+    state === 'busy'
+      ? 'counting…'
+      : state === 'timeout'
+        ? 'timed out'
+        : state === 'error'
+          ? 'count failed'
+          : 'not counted · count'
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onCount}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onCount(e as unknown as React.MouseEvent)
+      }}
+      title={skipped ? COUNT_SKIP_HINT[skipped] : undefined}
+      className="cursor-pointer rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--sea-ink-soft)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
+    >
+      {label}
+    </span>
+  )
+}
+
+/**
+ * The steerable hops out of this row (BUILD-SPEC §2.2). These are primary-key
+ * lookups, so they are counted exactly and eagerly — and a dangling one is worth
+ * saying out loud, since an inferred edge carries no database constraint to stop
+ * it happening.
+ */
+function OutgoingRefs({
+  schema,
+  outgoing,
+}: {
+  schema: string
+  outgoing: RowOutgoingRef[]
+}) {
+  const set = outgoing.filter((o) => o.value !== null)
+  const dangling = set.filter((o) => o.resolves === false)
+  return (
+    <section className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-sm font-semibold text-[var(--sea-ink)]">
+          Outgoing references
+        </h2>
+        <span className="text-xs text-[var(--sea-ink-soft)]">
+          {set.length} of {outgoing.length} set
+          {dangling.length > 0 && ` · ${dangling.length} dangling`}
+        </span>
+      </div>
+      <div className="island-shell rounded-xl">
+        <ul className="divide-y divide-[var(--line)]/60">
+          {outgoing.map((o) => (
+            <li
+              key={o.column}
+              className="flex flex-wrap items-baseline gap-x-2 px-4 py-1.5 font-mono text-[11px]"
+            >
+              <span className="text-[var(--sea-ink-soft)]">{o.column}</span>
+              <span className="text-[var(--sea-ink-soft)]">→</span>
+              {o.value !== null && o.resolves !== false ? (
+                <Link
+                  to="/t/$schema/$table/row/$id"
+                  params={{ schema, table: o.targetTable, id: String(o.value) }}
+                  search={o.targetColumn !== 'id' ? { col: o.targetColumn } : {}}
+                  className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
+                >
+                  {o.targetTable}.{o.targetColumn}
+                </Link>
+              ) : (
+                <span className="text-[var(--sea-ink)]">
+                  {o.targetTable}.{o.targetColumn}
+                </span>
+              )}
+              <span className="break-all text-[var(--sea-ink-soft)]">
+                = {o.value === null ? 'null' : String(o.value)}
+              </span>
+              {o.basis !== 'declared' && (
+                <span className="rounded-full border border-dashed border-[var(--line)] px-1.5 text-[10px] not-italic text-[var(--sea-ink-soft)]">
+                  {o.basis}
+                </span>
+              )}
+              {o.resolves === false && (
+                <span
+                  className="rounded-full bg-red-500/15 px-1.5 text-[10px] text-red-500"
+                  title="No row in the target table has this value. An inferred edge has no constraint behind it, so this can happen."
+                >
+                  dangling
+                </span>
+              )}
+              {o.resolves === null && o.value !== null && (
+                <span
+                  className="text-[10px] text-[var(--sea-ink-soft)]/70"
+                  title="The existence check did not complete within its time budget."
+                >
+                  unchecked
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   )
 }
 
