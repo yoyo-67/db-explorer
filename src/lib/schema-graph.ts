@@ -234,6 +234,7 @@ export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
     return {
       name: t.name,
       schema: t.schema,
+      model: map?.tables[t.name]?.model ?? null,
       group,
       groupIsDerived,
       kind: t.kind,

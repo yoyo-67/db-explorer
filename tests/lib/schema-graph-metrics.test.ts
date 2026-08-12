@@ -39,6 +39,7 @@ function node(
   return {
     name,
     schema: 'public',
+    model: null,
     group,
     groupIsDerived: false,
     kind: 'table',

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   boundaryStubs,
   internalEdges,
+  labelLadder,
   radialLayout,
   stubPath,
 } from '#/lib/lens-layout'
-import type { RadialInput } from '#/lib/lens-layout'
+import type { RadialInput, RadialNode } from '#/lib/lens-layout'
 import type { SchemaGraphEdge } from '#/lib/types'
 
 function edge(fromTable: string, fromColumn: string, toTable: string): SchemaGraphEdge {
@@ -128,5 +129,59 @@ describe('stubPath', () => {
     expect(stubPath({ x: 100, y: 50 }, { x: 300, y: 150 })).toBe(
       'M100,50 C 200,50 200,150 300,150',
     )
+  })
+})
+
+describe('labelLadder', () => {
+  function n(table: string, x: number, y: number): RadialNode {
+    return {
+      table,
+      x,
+      y,
+      radius: 5,
+      labelAnchor: x >= 100 ? 'start' : 'end',
+      inDegree: 0,
+      outDegree: 0,
+      selfRefs: 0,
+    }
+  }
+  const opts = { cx: 100, leftX: 10, rightX: 190, minGap: 15 }
+
+  it('puts each side in its own column, anchored outwards', () => {
+    const slots = labelLadder([n('a', 40, 50), n('b', 160, 50)], opts)
+    expect(slots.get('a')).toMatchObject({ x: 10, anchor: 'end' })
+    expect(slots.get('b')).toMatchObject({ x: 190, anchor: 'start' })
+  })
+
+  it('leaves labels on their own row when they already clear each other', () => {
+    const slots = labelLadder([n('a', 160, 20), n('b', 160, 80)], opts)
+    expect(slots.get('a')).toMatchObject({ y: 20, leader: false })
+    expect(slots.get('b')).toMatchObject({ y: 80, leader: false })
+  })
+
+  it('pushes crowded labels apart to minGap and marks them for a leader', () => {
+    const slots = labelLadder(
+      [n('a', 160, 100), n('b', 160, 104), n('c', 160, 108)],
+      opts,
+    )
+    const ys = ['a', 'b', 'c'].map((t) => slots.get(t)!.y)
+    expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(15)
+    expect(ys[2] - ys[1]).toBeGreaterThanOrEqual(15)
+    expect(slots.get('a')!.leader).toBe(true)
+  })
+
+  it('centres the pushed column instead of letting it drift past the last node', () => {
+    const slots = labelLadder(
+      [n('a', 160, 100), n('b', 160, 104), n('c', 160, 108)],
+      opts,
+    )
+    // The column ends on the last node's row, so it grows upwards, not downwards.
+    expect(slots.get('c')!.y).toBe(108)
+    expect(slots.get('a')!.y).toBe(78)
+  })
+
+  it('keeps node order within a column', () => {
+    const slots = labelLadder([n('late', 160, 90), n('early', 160, 30)], opts)
+    expect(slots.get('early')!.y).toBeLessThan(slots.get('late')!.y)
   })
 })

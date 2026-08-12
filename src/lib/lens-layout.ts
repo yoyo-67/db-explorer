@@ -74,6 +74,71 @@ function round(n: number): number {
   return Math.round(n * 10) / 10
 }
 
+export interface LabelSlot {
+  table: string
+  x: number
+  y: number
+  anchor: 'start' | 'end'
+  /** Label had to move off its node's row — draw a leader so the pairing holds. */
+  leader: boolean
+}
+
+export interface LabelLadderOptions {
+  cx: number
+  /** Right edge of the left-hand column; labels end here. */
+  leftX: number
+  /** Left edge of the right-hand column; labels start here. */
+  rightX: number
+  /** Minimum vertical distance between two labels — roughly the line height. */
+  minGap: number
+}
+
+/**
+ * Ring labels de-collided into two columns.
+ *
+ * Nodes near the top and bottom of the ring sit ~40px apart horizontally, but a
+ * label is ten times that wide, so placing each one beside its node guarantees
+ * overlap however far the ring is spread. Each side instead becomes a ladder:
+ * labels keep their node's order, get pushed apart to `minGap`, and a leader
+ * line carries the eye back to the node whose row they left.
+ */
+export function labelLadder(
+  nodes: readonly RadialNode[],
+  opts: LabelLadderOptions,
+): Map<string, LabelSlot> {
+  const slots = new Map<string, LabelSlot>()
+  for (const side of ['left', 'right'] as const) {
+    const column = nodes
+      .filter((n) => (side === 'left' ? n.x < opts.cx : n.x >= opts.cx))
+      .sort((a, b) => a.y - b.y)
+
+    // Down-pass opens gaps, up-pass pulls the overshoot back so the column stays
+    // centred on the nodes it labels rather than drifting off the bottom.
+    const ys: number[] = []
+    for (const [i, n] of column.entries()) {
+      ys.push(i === 0 ? n.y : Math.max(n.y, ys[i - 1] + opts.minGap))
+    }
+    const last = ys.length - 1
+    if (last >= 0 && ys[last] > column[last].y) {
+      ys[last] = column[last].y
+      for (let i = last; i > 0; i--) {
+        ys[i - 1] = Math.min(ys[i - 1], ys[i] - opts.minGap)
+      }
+    }
+
+    for (const [i, n] of column.entries()) {
+      slots.set(n.table, {
+        table: n.table,
+        x: side === 'left' ? opts.leftX : opts.rightX,
+        y: round(ys[i]),
+        anchor: side === 'left' ? 'end' : 'start',
+        leader: Math.abs(ys[i] - n.y) > 4,
+      })
+    }
+  }
+  return slots
+}
+
 /** Edges with both ends inside the Group — drawn as chords across the ring. */
 export function internalEdges(
   edges: readonly SchemaGraphEdge[],

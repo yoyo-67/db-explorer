@@ -153,6 +153,9 @@ export type NodeKind = 'table' | 'view'
 export interface SchemaGraphNode {
   name: string
   schema: string
+  /** Django model behind the table, from `schema-map.json` — the readable name
+   *  drawings use. Null for tables the map does not know. */
+  model: string | null
   group: string
   /** Group came from the Django module rather than the hand catalog. */
   groupIsDerived: boolean

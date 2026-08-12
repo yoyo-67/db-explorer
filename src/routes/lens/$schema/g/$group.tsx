@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import LensNav from '#/components/lens/LensNav'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useLensGraph } from '#/hooks/useLensGraph'
@@ -8,11 +8,13 @@ import {
   boundaryStubs,
   chordPath,
   internalEdges,
+  labelLadder,
   radialLayout,
   stubPath,
 } from '#/lib/lens-layout'
 import { degreesOf } from '#/lib/schema-graph-metrics'
-import type { BoundaryStub, RadialNode } from '#/lib/lens-layout'
+import { tableLabel } from '#/lib/table-label'
+import type { BoundaryStub, LabelSlot, RadialNode } from '#/lib/lens-layout'
 import type { SchemaGraphEdge } from '#/lib/types'
 
 export const Route = createFileRoute('/lens/$schema/g/$group')({
@@ -26,21 +28,35 @@ export const Route = createFileRoute('/lens/$schema/g/$group')({
  * at the right-hand boundary grouped by target table. The stubs are the main
  * content, not decoration: for most Groups more edges leave than stay.
  */
-const RING_MIN_RADIUS = 150
-const RING_NODE_SPACING = 30
-const MIN_NODE_RADIUS = 5
+const RING_MIN_RADIUS = 170
+/** Arc length per node — labels are ~14px tall, so tighter than this and the
+ *  ring's left/right flanks write over themselves. */
+const RING_NODE_SPACING = 46
+const MIN_NODE_RADIUS = 6
 const MAX_NODE_RADIUS = 21
-const LABEL_GUTTER = 250
+const LABEL_GUTTER = 300
+/** Line height of a ring label — the ladder's minimum vertical separation. */
+const LABEL_GAP = 15
+/** Gap between the ring and its label columns, where leader lines live. */
+const LABEL_INSET = 18
+const MAX_LABEL_CHARS = 34
 const STUB_WIDTH = 230
 const STUB_HEIGHT = 26
 const STUB_GAP = 16
 const MAX_STUBS = 40
+/** Hover swells the node so a 6px dot becomes a real target and its label wins
+ *  the overlap against its neighbours' (BUILD-SPEC §4.2 reading unit). */
+const HOVER_SCALE = 1.9
+const HOVER_BONUS = 7
+/** Invisible disc under each node — hover/click without pixel hunting. */
+const MIN_HIT_RADIUS = 15
 
 function GroupPage() {
   const { schema, group } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
   const { isChecking, isConnected } = useConnectionGuard()
+  const [hovered, setHovered] = useState<string | null>(null)
 
   const lens = useLensGraph(schema, {
     enabled: isConnected,
@@ -102,6 +118,17 @@ function GroupPage() {
     [layout],
   )
 
+  const labelSlots = useMemo(
+    () =>
+      labelLadder(layout.nodes, {
+        cx: layout.cx,
+        leftX: layout.cx - layout.ringRadius - LABEL_INSET,
+        rightX: layout.cx + layout.ringRadius + LABEL_INSET,
+        minGap: LABEL_GAP,
+      }),
+    [layout],
+  )
+
   const inside = useMemo(
     () => internalEdges(lens.edges, memberNames),
     [lens.edges, memberNames],
@@ -110,6 +137,18 @@ function GroupPage() {
     () => boundaryStubs(lens.edges, memberNames, lens.groupOf),
     [lens.edges, memberNames, lens.groupOf],
   )
+  /** Tables the hovered node touches inside the Group — they stay lit while the
+   *  rest of the ring fades, so one hover reads the node's whole neighbourhood. */
+  const neighbours = useMemo(() => {
+    if (!hovered) return null
+    const set = new Set<string>([hovered])
+    for (const e of inside) {
+      if (e.fromTable === hovered) set.add(e.toTable)
+      if (e.toTable === hovered) set.add(e.fromTable)
+    }
+    return set
+  }, [hovered, inside])
+
   const inbound = useMemo(
     () =>
       lens.edges.filter(
@@ -208,6 +247,7 @@ function GroupPage() {
                 style={{ minWidth: Math.min(width, 1100) }}
                 role="img"
                 aria-label={`${group}: ${members.length} tables, ${inside.length} internal edges, ${stubs.length} boundary targets`}
+                onMouseLeave={() => setHovered(null)}
               >
                 <circle
                   cx={layout.cx}
@@ -222,14 +262,19 @@ function GroupPage() {
                   const from = nodeByTable.get(e.fromTable)
                   const to = nodeByTable.get(e.toTable)
                   if (!from || !to || from === to) return null
+                  const touched =
+                    !hovered || e.fromTable === hovered || e.toTable === hovered
+                  const base = e.basis === 'declared' ? 0.75 : 0.45
                   return (
                     <path
                       key={`${e.fromTable}.${e.fromColumn}`}
                       d={chordPath(from, to)}
                       fill="none"
                       stroke="var(--lagoon-deep)"
-                      strokeOpacity={e.basis === 'declared' ? 0.75 : 0.45}
+                      strokeOpacity={hovered ? (touched ? 0.95 : 0.07) : base}
+                      strokeWidth={hovered && touched ? 2 : 1}
                       strokeDasharray={e.basis === 'declared' ? undefined : '4 3'}
+                      style={{ transition: 'stroke-opacity 120ms ease' }}
                     />
                   )
                 })}
@@ -255,6 +300,12 @@ function GroupPage() {
                       y={y}
                       anchorY={anchorY}
                       nodeByTable={nodeByTable}
+                      hovered={hovered}
+                      label={tableLabel(
+                        stub.targetTable,
+                        lens.nodeByName.get(stub.targetTable)?.model,
+                      )}
+                      onHover={setHovered}
                       onOpen={() => {
                         if (stub.targetGroup && stub.targetGroup !== group) {
                           navigate({
@@ -273,13 +324,26 @@ function GroupPage() {
                   )
                 })}
 
-                {layout.nodes.map((n) => (
+                {/* Hovered node last so its swollen circle and label paint over
+                    the neighbours it overlaps. */}
+                {[...layout.nodes]
+                  .sort(
+                    (a, b) =>
+                      Number(a.table === hovered) - Number(b.table === hovered),
+                  )
+                  .map((n) => (
                   <RingNode
                     key={n.table}
                     node={n}
                     focused={search.focus === n.table}
+                    hovered={hovered === n.table}
+                    dimmed={!!neighbours && !neighbours.has(n.table)}
                     unresolved={lens.nodeByName.get(n.table)?.unresolvedRefColumns ?? 0}
                     kind={lens.nodeByName.get(n.table)?.kind ?? 'table'}
+                    label={tableLabel(n.table, lens.nodeByName.get(n.table)?.model)}
+                    slot={labelSlots.get(n.table)}
+                    viewWidth={width}
+                    onHover={setHovered}
                     onOpen={() =>
                       navigate({
                         to: '/t/$schema/$table',
@@ -310,21 +374,54 @@ function GroupPage() {
 function RingNode({
   node,
   focused,
+  hovered,
+  dimmed,
   unresolved,
   kind,
+  label,
+  slot,
+  viewWidth,
+  onHover,
   onOpen,
 }: {
   node: RadialNode
   focused: boolean
+  hovered: boolean
+  dimmed: boolean
   unresolved: number
   kind: 'table' | 'view'
+  label: string
+  slot: LabelSlot | undefined
+  /** Drawing width — a restored label is clamped to stay inside it. */
+  viewWidth: number
+  onHover: (table: string | null) => void
   onOpen: () => void
 }) {
-  const labelX = node.labelAnchor === 'start' ? node.x + node.radius + 5 : node.x - node.radius - 5
+  const r = hovered ? node.radius * HOVER_SCALE + HOVER_BONUS : node.radius
+  const anchor = slot?.anchor ?? node.labelAnchor
+  const labelY = slot?.y ?? node.y
+  const text = kind === 'view' ? `${label} ⃰` : label
+  // Truncation is only a drawing limit: hovering restores the full name, and the
+  // tooltip and the boundary list always carry the raw table name.
+  const shown = hovered ? text : truncate(text, MAX_LABEL_CHARS)
+  // A restored name can be longer than its column, so it slides inwards over the
+  // (dimmed) ring rather than off the canvas where it cannot be read at all.
+  const textWidth = shown.length * (hovered ? 7.2 : 5.6)
+  const columnX = slot?.x ?? (anchor === 'start' ? node.x + r + 7 : node.x - r - 7)
+  const labelX =
+    anchor === 'end'
+      ? Math.max(columnX, textWidth + 4)
+      : Math.min(columnX, viewWidth - textWidth - 4)
   return (
     <g
       onClick={onOpen}
-      style={{ cursor: 'pointer' }}
+      onMouseEnter={() => onHover(node.table)}
+      onMouseLeave={() => onHover(null)}
+      style={{
+        cursor: 'pointer',
+        opacity: dimmed ? 0.22 : 1,
+        transition: 'opacity 120ms ease',
+      }}
       aria-label={node.table}
     >
       <title>
@@ -334,35 +431,69 @@ function RingNode({
           node.selfRefs > 0 ? `, ${node.selfRefs} self-reference` : ''
         }${unresolved > 0 ? `, ${unresolved} unresolved *_id column` : ''}`}
       </title>
+      {/* Hit target, not a mark: small nodes sit 6px wide but must still be
+          easy to hover on a ring where the labels are the dense part. */}
       <circle
         cx={node.x}
         cy={node.y}
-        r={node.radius}
+        r={Math.max(r, MIN_HIT_RADIUS)}
+        fill="transparent"
+        stroke="none"
+      />
+      {slot?.leader && (
+        <path
+          d={`M${anchor === 'end' ? node.x - node.radius - 3 : node.x + node.radius + 3},${
+            node.y
+          } L${anchor === 'end' ? slot.x + 4 : slot.x - 4},${slot.y}`}
+          fill="none"
+          stroke="var(--line)"
+          strokeOpacity={hovered ? 0.9 : 0.45}
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      )}
+      <circle
+        cx={node.x}
+        cy={node.y}
+        r={r}
         fill="var(--lagoon)"
-        fillOpacity={focused ? 0.95 : 0.6}
-        stroke={focused ? 'var(--palm)' : 'var(--surface-strong)'}
-        strokeWidth={focused ? 2.5 : 1}
+        fillOpacity={hovered ? 1 : focused ? 0.95 : 0.6}
+        stroke={hovered ? 'var(--lagoon-deep)' : focused ? 'var(--palm)' : 'var(--surface-strong)'}
+        strokeWidth={hovered ? 2 : focused ? 2.5 : 1}
+        style={{ transition: 'r 120ms ease, fill-opacity 120ms ease' }}
+        pointerEvents="none"
       />
       {node.selfRefs > 0 && (
         <circle
           cx={node.x}
           cy={node.y}
-          r={node.radius + 3.5}
+          r={r + 3.5}
           fill="none"
           stroke="var(--lagoon-deep)"
           strokeWidth={1}
           strokeDasharray="2 2"
+          style={{ transition: 'r 120ms ease' }}
+          pointerEvents="none"
         />
       )}
+      {/* The label is the easiest thing on the ring to point at, so it hovers
+          the node too rather than being decoration beside it. */}
       <text
         x={labelX}
-        y={node.y + 3}
-        textAnchor={node.labelAnchor}
-        fontSize={10}
+        y={labelY + (hovered ? 4 : 3)}
+        textAnchor={anchor}
+        fontSize={hovered ? 13 : 10}
         fill="var(--sea-ink)"
-        fontWeight={focused ? 600 : 400}
+        fontWeight={hovered || focused ? 600 : 400}
+        /* Halo: even laddered, a hovered label grows over its neighbours, so each
+           one carries its own background rather than relying on space. */
+        stroke="var(--surface)"
+        strokeWidth={hovered ? 5 : 3}
+        paintOrder="stroke"
+        strokeLinejoin="round"
+        style={{ cursor: 'pointer' }}
       >
-        {kind === 'view' ? `${node.table} ⃰` : node.table}
+        {shown}
       </text>
     </g>
   )
@@ -374,6 +505,9 @@ function StubGroup({
   y,
   anchorY,
   nodeByTable,
+  hovered,
+  label,
+  onHover,
   onOpen,
 }: {
   stub: BoundaryStub
@@ -381,25 +515,38 @@ function StubGroup({
   y: number
   anchorY: number
   nodeByTable: Map<string, RadialNode>
+  hovered: string | null
+  label: string
+  onHover: (table: string | null) => void
   onOpen: () => void
 }) {
+  const feeds = !hovered || stub.sourceTables.includes(hovered)
+  const lit = hovered === stub.targetTable || (!!hovered && feeds)
   return (
-    <g>
+    <g style={{ opacity: hovered && !lit ? 0.15 : 1, transition: 'opacity 120ms ease' }}>
       {stub.edges.map((e) => {
         const from = nodeByTable.get(e.fromTable)
         if (!from) return null
+        const onHovered = hovered === e.fromTable || hovered === stub.targetTable
         return (
           <path
             key={`${e.fromTable}.${e.fromColumn}`}
             d={stubPath({ x: from.x + from.radius, y: from.y }, { x, y: anchorY })}
             fill="none"
             stroke="#c07a24"
-            strokeOpacity={0.4}
+            strokeOpacity={hovered ? (onHovered ? 0.95 : 0.06) : 0.4}
+            strokeWidth={onHovered ? 1.8 : 1}
             strokeDasharray={e.basis === 'declared' ? undefined : '4 3'}
+            style={{ transition: 'stroke-opacity 120ms ease' }}
           />
         )
       })}
-      <g onClick={onOpen} style={{ cursor: 'pointer' }}>
+      <g
+        onClick={onOpen}
+        onMouseEnter={() => onHover(stub.targetTable)}
+        onMouseLeave={() => onHover(null)}
+        style={{ cursor: 'pointer' }}
+      >
         <title>{`${stub.count} edge${stub.count === 1 ? '' : 's'} to ${stub.targetTable}${
           stub.targetGroup ? ` (${stub.targetGroup})` : ''
         } from ${stub.sourceTables.join(', ')}`}</title>
@@ -410,10 +557,17 @@ function StubGroup({
           height={STUB_HEIGHT}
           rx={4}
           fill="var(--surface-strong)"
-          stroke="var(--line)"
+          stroke={hovered === stub.targetTable ? '#c07a24' : 'var(--line)'}
+          strokeWidth={hovered === stub.targetTable ? 1.8 : 1}
         />
-        <text x={x + 8} y={y + 17} fontSize={10} fill="var(--sea-ink)">
-          {truncate(stub.targetTable, 30)} ({stub.count})
+        <text
+          x={x + 8}
+          y={y + 17}
+          fontSize={hovered === stub.targetTable ? 11.5 : 10}
+          fontWeight={hovered === stub.targetTable ? 600 : 400}
+          fill="var(--sea-ink)"
+        >
+          {truncate(label, 30)} ({stub.count})
         </text>
       </g>
     </g>
