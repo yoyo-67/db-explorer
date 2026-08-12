@@ -137,8 +137,14 @@ function GroupPage() {
     () => boundaryStubs(lens.edges, memberNames, lens.groupOf),
     [lens.edges, memberNames, lens.groupOf],
   )
-  /** Tables the hovered node touches inside the Group — they stay lit while the
-   *  rest of the ring fades, so one hover reads the node's whole neighbourhood. */
+  /**
+   * Tables the hovered thing touches, ring-side — they stay lit while the rest
+   * fades, so one hover reads a whole neighbourhood.
+   *
+   * A boundary stub is hovered by its *target*, which is not on the ring, so the
+   * answer there is the Group members feeding it. Without that the stub lights
+   * its own lines while every table those lines start from goes dark.
+   */
   const neighbours = useMemo(() => {
     if (!hovered) return null
     const set = new Set<string>([hovered])
@@ -146,8 +152,11 @@ function GroupPage() {
       if (e.fromTable === hovered) set.add(e.toTable)
       if (e.toTable === hovered) set.add(e.fromTable)
     }
+    for (const stub of stubs) {
+      if (stub.targetTable === hovered) for (const t of stub.sourceTables) set.add(t)
+    }
     return set
-  }, [hovered, inside])
+  }, [hovered, inside, stubs])
 
   const inbound = useMemo(
     () =>
@@ -337,6 +346,7 @@ function GroupPage() {
                     node={n}
                     focused={search.focus === n.table}
                     hovered={hovered === n.table}
+                    related={!!neighbours && hovered !== n.table && neighbours.has(n.table)}
                     dimmed={!!neighbours && !neighbours.has(n.table)}
                     unresolved={lens.nodeByName.get(n.table)?.unresolvedRefColumns ?? 0}
                     kind={lens.nodeByName.get(n.table)?.kind ?? 'table'}
@@ -375,6 +385,7 @@ function RingNode({
   node,
   focused,
   hovered,
+  related,
   dimmed,
   unresolved,
   kind,
@@ -387,6 +398,8 @@ function RingNode({
   node: RadialNode
   focused: boolean
   hovered: boolean
+  /** On the hovered thing's other end — the far side of a chord or a stub. */
+  related: boolean
   dimmed: boolean
   unresolved: number
   kind: 'table' | 'view'
@@ -457,9 +470,15 @@ function RingNode({
         cy={node.y}
         r={r}
         fill="var(--lagoon)"
-        fillOpacity={hovered ? 1 : focused ? 0.95 : 0.6}
-        stroke={hovered ? 'var(--lagoon-deep)' : focused ? 'var(--palm)' : 'var(--surface-strong)'}
-        strokeWidth={hovered ? 2 : focused ? 2.5 : 1}
+        fillOpacity={hovered ? 1 : related ? 0.9 : focused ? 0.95 : 0.6}
+        stroke={
+          hovered || related
+            ? 'var(--lagoon-deep)'
+            : focused
+              ? 'var(--palm)'
+              : 'var(--surface-strong)'
+        }
+        strokeWidth={hovered ? 2 : related ? 1.5 : focused ? 2.5 : 1}
         style={{ transition: 'r 120ms ease, fill-opacity 120ms ease' }}
         pointerEvents="none"
       />
@@ -484,7 +503,7 @@ function RingNode({
         textAnchor={anchor}
         fontSize={hovered ? 13 : 10}
         fill="var(--sea-ink)"
-        fontWeight={hovered || focused ? 600 : 400}
+        fontWeight={hovered || related || focused ? 600 : 400}
         /* Halo: even laddered, a hovered label grows over its neighbours, so each
            one carries its own background rather than relying on space. */
         stroke="var(--surface)"
@@ -520,8 +539,9 @@ function StubGroup({
   onHover: (table: string | null) => void
   onOpen: () => void
 }) {
-  const feeds = !hovered || stub.sourceTables.includes(hovered)
-  const lit = hovered === stub.targetTable || (!!hovered && feeds)
+  // Symmetric with the ring: hovering a source lights the boxes it feeds, and
+  // hovering a box lights the sources feeding it.
+  const lit = !!hovered && (hovered === stub.targetTable || stub.sourceTables.includes(hovered))
   return (
     <g style={{ opacity: hovered && !lit ? 0.15 : 1, transition: 'opacity 120ms ease' }}>
       {stub.edges.map((e) => {
@@ -557,14 +577,14 @@ function StubGroup({
           height={STUB_HEIGHT}
           rx={4}
           fill="var(--surface-strong)"
-          stroke={hovered === stub.targetTable ? '#c07a24' : 'var(--line)'}
-          strokeWidth={hovered === stub.targetTable ? 1.8 : 1}
+          stroke={lit ? '#c07a24' : 'var(--line)'}
+          strokeWidth={lit ? 1.8 : 1}
         />
         <text
           x={x + 8}
           y={y + 17}
           fontSize={hovered === stub.targetTable ? 11.5 : 10}
-          fontWeight={hovered === stub.targetTable ? 600 : 400}
+          fontWeight={lit ? 600 : 400}
           fill="var(--sea-ink)"
         >
           {truncate(label, 30)} ({stub.count})
