@@ -10,9 +10,14 @@ export interface CatalogGroup {
 export const UNCATEGORIZED_GROUP_NAME = 'Uncategorized'
 export const UNCATEGORIZED_ORDER = 999
 
+/** Derived groups sort after every curated one, before Uncategorized. */
+export const DERIVED_ORDER = 900
+
 export function groupTablesByCatalog(
   tables: TableInfo[],
   catalog: TableCatalog | undefined,
+  /** Table → Django module group, the lens's second-choice grouping. */
+  mapGroups?: Readonly<Record<string, string>>,
 ): CatalogGroup[] {
   if (!catalog || catalog.groups.length === 0) {
     return fallbackGroupTables(tables)
@@ -31,25 +36,45 @@ export function groupTablesByCatalog(
     order: g.order,
     tables: [] as TableInfo[],
   }))
+  // A table the catalog skipped is not automatically homeless: the map places
+  // most of them by Django module, which is what the lens draws. Only what
+  // neither source knows is genuinely Uncategorized.
+  const derived = new Map<string, TableInfo[]>()
   const uncategorized: TableInfo[] = []
 
   for (const table of tables) {
     const idx = tableToGroup.get(table.name)
     if (idx !== undefined) {
       buckets[idx].tables.push(table)
-    } else {
-      uncategorized.push(table)
+      continue
     }
+    const derivedGroup = mapGroups?.[table.name]
+    if (derivedGroup) {
+      const list = derived.get(derivedGroup) ?? []
+      list.push(table)
+      derived.set(derivedGroup, list)
+      continue
+    }
+    uncategorized.push(table)
   }
 
   const result = buckets
     .filter((g) => g.tables.length > 0)
     .sort((a, b) => a.order - b.order)
 
+  for (const [name, groupTables] of [...derived].sort(([a], [b]) => a.localeCompare(b))) {
+    result.push({
+      name,
+      description: 'Grouped from the Django module, not the catalog',
+      order: DERIVED_ORDER,
+      tables: groupTables,
+    })
+  }
+
   if (uncategorized.length > 0) {
     result.push({
       name: UNCATEGORIZED_GROUP_NAME,
-      description: 'Tables not assigned to any group in table-catalog.json',
+      description: 'Tables neither the catalog nor schema-map.json places',
       order: UNCATEGORIZED_ORDER,
       tables: uncategorized,
     })

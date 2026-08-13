@@ -82,8 +82,23 @@ describe('lensTargetForTable', () => {
     })
   })
 
+  it('uses the map module group for a table the catalog skipped', () => {
+    expect(
+      lensTargetForTable('data_clientslice', catalog, {
+        data_clientslice: 'Client Slice',
+      }),
+    ).toEqual({ kind: 'group', group: 'Client Slice' })
+  })
+
+  it('prefers the curated group over the map one', () => {
+    expect(
+      lensTargetForTable('data_video', catalog, { data_video: 'Some Module' }),
+    ).toEqual({ kind: 'group', group: 'Video & Capture' })
+  })
+
   it('falls back to the matrix rather than an empty group', () => {
     expect(lensTargetForTable('data_mystery', catalog)).toEqual({ kind: 'matrix' })
+    expect(lensTargetForTable('data_mystery', catalog, {})).toEqual({ kind: 'matrix' })
     expect(lensTargetForTable('data_video', undefined)).toEqual({ kind: 'matrix' })
   })
 })

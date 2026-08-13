@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
 import Pager from '#/components/Pager'
-import { $getTableCatalog, $getTablePage, $introspect } from '#/server/api'
+import {
+  $getMapGroups,
+  $getTableCatalog,
+  $getTablePage,
+  $introspect,
+} from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { lensTargetForTable } from '#/lib/lens-links'
@@ -60,7 +65,12 @@ function ShowInLens({ schema, table }: { schema: string; table: string }) {
     queryFn: () => $getTableCatalog(),
     staleTime: Infinity,
   })
-  const target = lensTargetForTable(table, catalogQuery.data)
+  const mapGroupsQuery = useQuery({
+    queryKey: ['mapGroups'],
+    queryFn: () => $getMapGroups(),
+    staleTime: Infinity,
+  })
+  const target = lensTargetForTable(table, catalogQuery.data, mapGroupsQuery.data)
   const className =
     'rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] no-underline hover:bg-[rgba(79,184,178,0.1)]'
 

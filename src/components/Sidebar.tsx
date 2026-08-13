@@ -1,7 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { $getTableCatalog, $introspect } from '#/server/api'
+import { $getMapGroups, $getTableCatalog, $introspect } from '#/server/api'
 import {
   filterGroups,
   groupTablesByCatalog,
@@ -52,10 +52,16 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
     staleTime: Infinity,
   })
 
+  const mapGroupsQuery = useQuery({
+    queryKey: ['mapGroups'],
+    queryFn: () => $getMapGroups(),
+    staleTime: Infinity,
+  })
+
   const tables = introspectQuery.data?.tables ?? []
   const groups = useMemo(
-    () => groupTablesByCatalog(tables, catalogQuery.data),
-    [tables, catalogQuery.data],
+    () => groupTablesByCatalog(tables, catalogQuery.data, mapGroupsQuery.data),
+    [tables, catalogQuery.data, mapGroupsQuery.data],
   )
   const visibleGroups = useMemo(() => filterGroups(groups, filter), [groups, filter])
 

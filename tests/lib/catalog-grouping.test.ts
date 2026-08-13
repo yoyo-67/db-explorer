@@ -121,3 +121,41 @@ describe('filterGroups', () => {
     expect(result[0].name).toBe('Content')
   })
 })
+
+describe('groupTablesByCatalog (map module groups)', () => {
+  const catalog: TableCatalog = {
+    groups: [
+      { name: 'Auth', description: 'identity', order: 1, tables: ['users'] },
+    ],
+    tables: {},
+  }
+
+  it('buckets a catalog-less table under its module group instead of Uncategorized', () => {
+    const groups = groupTablesByCatalog(
+      [table('users'), table('data_clientslice')],
+      catalog,
+      { data_clientslice: 'Client Slice' },
+    )
+    expect(groups.map((g) => g.name)).toEqual(['Auth', 'Client Slice'])
+    expect(groups[1].tables.map((t) => t.name)).toEqual(['data_clientslice'])
+  })
+
+  it('sorts derived groups after curated ones and before Uncategorized', () => {
+    const groups = groupTablesByCatalog(
+      [table('users'), table('data_report'), table('data_mystery')],
+      catalog,
+      { data_report: 'Report Compiler' },
+    )
+    expect(groups.map((g) => g.name)).toEqual([
+      'Auth',
+      'Report Compiler',
+      UNCATEGORIZED_GROUP_NAME,
+    ])
+    expect(groups[2].tables.map((t) => t.name)).toEqual(['data_mystery'])
+  })
+
+  it('keeps the curated group when both sources place a table', () => {
+    const groups = groupTablesByCatalog([table('users')], catalog, { users: 'Elsewhere' })
+    expect(groups.map((g) => g.name)).toEqual(['Auth'])
+  })
+})

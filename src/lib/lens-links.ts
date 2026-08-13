@@ -40,10 +40,11 @@ export function parseLensPath(pathname: string): LensLocation | null {
 /**
  * Where "show in lens" goes for one table: its Group, focused on the table.
  *
- * The catalog alone answers this for 317 of 337 tables, and the historical
- * inheritance rule covers the generated `data_historical*` ones — enough to avoid
- * making the table page pay for the whole-schema graph fetch. Anything the catalog
- * cannot place lands on the matrix instead of a Group that would be empty.
+ * Same precedence as the graph — catalog, then the historical inheritance rule,
+ * then the Django module group from the map. Skipping that last source is what
+ * used to dump ~20 module-grouped tables on the matrix while the lens itself was
+ * happily drawing them inside a Group. Two small JSON reads, so the table page
+ * still never pays for the whole-schema graph fetch.
  */
 /** A table lands in a Group or, failing that, on the matrix — never on orphans. */
 export type LensTableTarget = { kind: 'matrix' } | { kind: 'group'; group: string }
@@ -51,11 +52,21 @@ export type LensTableTarget = { kind: 'matrix' } | { kind: 'group'; group: strin
 export function lensTargetForTable(
   table: string,
   catalog: TableCatalog | undefined,
+  mapGroups?: Readonly<Record<string, string>>,
 ): LensTableTarget {
+  const { group } = resolveGroup(
+    table,
+    curatedGroups(catalog),
+    new Map(Object.entries(mapGroups ?? {})),
+  )
+  return group === UNGROUPED ? { kind: 'matrix' } : { kind: 'group', group }
+}
+
+/** Table → curated Group, flattened out of the catalog's group-major shape. */
+export function curatedGroups(catalog: TableCatalog | undefined): Map<string, string> {
   const curated = new Map<string, string>()
   for (const g of catalog?.groups ?? []) {
     for (const t of g.tables) curated.set(t, g.name)
   }
-  const { group } = resolveGroup(table, curated, new Map())
-  return group === UNGROUPED ? { kind: 'matrix' } : { kind: 'group', group }
+  return curated
 }

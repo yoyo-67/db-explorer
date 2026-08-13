@@ -16,7 +16,7 @@ import {
   runReadOnlyQuery,
 } from '#/server/functions'
 import { readPerfLog } from '#/server/perf-log'
-import { readTableCatalog } from '#/server/local-metadata'
+import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { resolvePresets } from '#/lib/preset-resolver'
 import type {
   ConnectionConfig,
@@ -201,6 +201,21 @@ export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
     return catalog ?? ({ groups: [], tables: {} } as TableCatalog)
   },
 )
+
+/**
+ * Table → Django module group, the lens's second-choice grouping. The catalog
+ * alone leaves ~20 tables Uncategorized that the map does place, so anything
+ * asking "what group is this table in?" needs this alongside the catalog to
+ * answer the way the graph does. Names only — no edges, no DB round trip.
+ */
+export const $getMapGroups = createServerFn({ method: 'GET' }).handler(async () => {
+  const map = await readSchemaMap()
+  const groups: Record<string, string> = {}
+  for (const [table, meta] of Object.entries(map?.tables ?? {})) {
+    if (meta.group) groups[table] = meta.group
+  }
+  return groups
+})
 
 /**
  * One whole-schema fetch behind both lens views (BUILD-SPEC §2.1). Cached on the
