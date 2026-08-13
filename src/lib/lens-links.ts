@@ -10,6 +10,7 @@ import type { TableCatalog } from '#/lib/types'
 export type LensView =
   | { kind: 'matrix' }
   | { kind: 'group'; group: string }
+  | { kind: 'table'; table: string }
   | { kind: 'orphans' }
 
 export interface LensLocation {
@@ -33,6 +34,10 @@ export function parseLensPath(pathname: string): LensLocation | null {
   const group = rest.match(/^g\/([^/]+)\/?$/)
   if (group) {
     return { schema, view: { kind: 'group', group: decodeURIComponent(group[1]) } }
+  }
+  const table = rest.match(/^t\/([^/]+)\/?$/)
+  if (table) {
+    return { schema, view: { kind: 'table', table: decodeURIComponent(table[1]) } }
   }
   return { schema, view: { kind: 'matrix' } }
 }

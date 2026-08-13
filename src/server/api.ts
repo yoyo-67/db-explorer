@@ -8,6 +8,7 @@ import {
   getTablePage,
   getTablePreview,
   getForeignKeys,
+  getRandomRow,
   getChildCount,
   getRowDetail,
   getRowChildren,
@@ -102,6 +103,17 @@ export const $getTablePage = createServerFn({ method: 'GET' })
   .inputValidator((data: TablePageRequest) => data)
   .handler(async ({ data }) => {
     return getTablePage(data)
+  })
+
+/**
+ * One row of a table, drawn as randomly as its size allows (see `getRandomRow`).
+ * Not cached by the client beyond the draw it asked for — the point is to be able
+ * to ask again and see a different row.
+ */
+export const $getRandomRow = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema: string; table: string }) => data)
+  .handler(async ({ data }) => {
+    return getRandomRow(data.schema, data.table)
   })
 
 export const $getForeignKeys = createServerFn({ method: 'GET' })

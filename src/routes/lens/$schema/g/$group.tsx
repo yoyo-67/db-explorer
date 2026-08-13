@@ -324,8 +324,9 @@ function GroupPage() {
                           })
                         } else {
                           navigate({
-                            to: '/t/$schema/$table',
+                            to: '/lens/$schema/t/$table',
                             params: { schema, table: stub.targetTable },
+                            search: { damp: search.damp, basis: search.basis },
                           })
                         }
                       }}
@@ -356,8 +357,9 @@ function GroupPage() {
                     onHover={setHovered}
                     onOpen={() =>
                       navigate({
-                        to: '/t/$schema/$table',
+                        to: '/lens/$schema/t/$table',
                         params: { schema, table: n.table },
+                        search: { damp: search.damp, basis: search.basis },
                       })
                     }
                   />
@@ -637,8 +639,9 @@ function StubTable({
               {stub.count}
             </span>
             <Link
-              to="/t/$schema/$table"
+              to="/lens/$schema/t/$table"
               params={{ schema, table: stub.targetTable }}
+              search={{ damp: search.damp, basis: search.basis }}
               className="font-mono text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
               {stub.targetTable}

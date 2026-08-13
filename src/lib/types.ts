@@ -1,3 +1,5 @@
+import type { SampleStrategy } from '#/lib/sample-plan'
+
 export type JsonValue =
   | string
   | number
@@ -93,6 +95,21 @@ export interface RowDetail {
 export interface TableSort {
   column: string
   direction: 'asc' | 'desc'
+}
+
+/**
+ * One row drawn from a table, plus how honestly random the draw was — a `first`
+ * strategy is a plain `LIMIT 1` and the UI must not present it as a sample.
+ */
+export interface RandomRowSample {
+  schema: string
+  table: string
+  columns: ColumnInfo[]
+  pkColumn: string | null
+  /** `null` for an empty table, or when the draw ran out of time. */
+  row: Record<string, JsonValue> | null
+  strategy: SampleStrategy
+  timedOut: boolean
 }
 
 export interface TablePageRequest {

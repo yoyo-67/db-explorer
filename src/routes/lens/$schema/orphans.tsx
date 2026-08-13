@@ -162,7 +162,7 @@ function NodeList({
             className="flex items-baseline gap-2 py-0.5 font-mono text-[11px]"
           >
             <Link
-              to="/t/$schema/$table"
+              to="/lens/$schema/t/$table"
               params={{ schema, table: n.name }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >

@@ -11,6 +11,7 @@ import type { EdgeBasis, SchemaGraphStaleness } from '#/lib/types'
 export default function LensNav({
   schema,
   group,
+  table,
   damp,
   basis,
   dampKeys,
@@ -21,6 +22,8 @@ export default function LensNav({
 }: {
   schema: string
   group?: string
+  /** Set on a table's relations view — the deepest crumb. */
+  table?: string
   damp: string | undefined
   basis: EdgeBasis | undefined
   dampKeys: string[]
@@ -59,7 +62,24 @@ export default function LensNav({
         {group && (
           <>
             <span>/</span>
-            <span className="text-[var(--sea-ink)]">{group}</span>
+            {table ? (
+              <Link
+                to="/lens/$schema/g/$group"
+                params={{ schema, group }}
+                search={{ damp, basis, focus: table }}
+                className="hover:text-[var(--lagoon-deep)]"
+              >
+                {group}
+              </Link>
+            ) : (
+              <span className="text-[var(--sea-ink)]">{group}</span>
+            )}
+          </>
+        )}
+        {table && (
+          <>
+            <span>/</span>
+            <span className="font-mono text-[var(--sea-ink)]">{table}</span>
           </>
         )}
       </nav>

@@ -15,6 +15,8 @@ import {
   traceCandidateNames,
 } from '#/lib/row-trace'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
+import { samplePlan } from '#/lib/sample-plan'
+import type { SampleAttempt, SampleStrategy } from '#/lib/sample-plan'
 import type { LiveTable } from '#/lib/schema-graph'
 import type { TraceEdge } from '#/lib/row-trace'
 import type {
@@ -26,6 +28,7 @@ import type {
   ConsoleResult,
   IntrospectResult,
   JsonValue,
+  RandomRowSample,
   RowDetail,
   RowChildGroup,
   RowOutgoingRef,
@@ -442,6 +445,88 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
     isCountApproximate,
     totalPages,
   }
+}
+
+/** One row is one row: a sample that cannot be drawn in three seconds is not worth
+ *  more (BUILD-SPEC §5.2's budget rule, applied to a single row). */
+export const SAMPLE_TIMEOUT_MS = 3_000
+
+/**
+ * One row, drawn as randomly as the table's size allows — the "what does this
+ * actually hold?" answer the lens's relations view needs before you commit to
+ * opening the whole table.
+ *
+ * The escalation and the arithmetic live in `#/lib/sample-plan`; this only turns
+ * an attempt into SQL and decides when to move on. Three ways an attempt ends:
+ * a row (done), no rows (widen), or a rejection — `TABLESAMPLE` is invalid on a
+ * plain view, so that case skips straight to the labelled `LIMIT 1`.
+ */
+export async function getRandomRow(
+  schema: string,
+  table: string,
+): Promise<RandomRowSample> {
+  const [columns, approxRows, pkColumn] = await Promise.all([
+    fetchColumns(schema, table),
+    fetchApproxRowCount(schema, table),
+    resolvePrimaryKey(schema, table),
+  ])
+
+  const queue = samplePlan(approxRows)
+  let strategy: SampleStrategy = queue[0].strategy
+
+  while (queue.length > 0) {
+    const attempt = queue.shift() as SampleAttempt
+    strategy = attempt.strategy
+    let rows: Record<string, unknown>[]
+    try {
+      const result = await queryWithTimeout(
+        sampleSql(schema, table, attempt),
+        SAMPLE_TIMEOUT_MS,
+      )
+      rows = result.rows
+    } catch (err) {
+      if (err instanceof StatementTimeoutError) {
+        return { schema, table, columns, pkColumn, row: null, strategy, timedOut: true }
+      }
+      // `TABLESAMPLE` is invalid on a plain view. If sampling is not available here
+      // it will not become available at a wider percentage, so drop every remaining
+      // draw and let the labelled `LIMIT 1` answer.
+      const sampling = attempt.strategy === 'sampled'
+      const canFallBack = queue.some((a) => a.strategy === 'first')
+      if (!sampling || !canFallBack) throw err
+      while (queue[0]?.strategy === 'sampled') queue.shift()
+      continue
+    }
+    if (rows.length > 0) {
+      return {
+        schema,
+        table,
+        columns,
+        pkColumn,
+        row: sanitizeRow(rows[0]),
+        strategy,
+        timedOut: false,
+      }
+    }
+  }
+
+  // Every attempt drew nothing, `LIMIT 1` included — the table is empty.
+  return { schema, table, columns, pkColumn, row: null, strategy, timedOut: false }
+}
+
+function sampleSql(schema: string, table: string, attempt: SampleAttempt): string {
+  if (attempt.strategy === 'random') {
+    return format('SELECT * FROM %I.%I ORDER BY random() LIMIT 1', schema, table)
+  }
+  if (attempt.strategy === 'sampled') {
+    return format(
+      'SELECT * FROM %I.%I TABLESAMPLE SYSTEM (%s) LIMIT 1',
+      schema,
+      table,
+      attempt.percent,
+    )
+  }
+  return format('SELECT * FROM %I.%I LIMIT 1', schema, table)
 }
 
 const CHILD_PAGE_SIZE = 25

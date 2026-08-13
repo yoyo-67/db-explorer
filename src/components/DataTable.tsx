@@ -85,7 +85,9 @@ export default function DataTable({
                     key={col.name}
                     col={col}
                     sortDir={sortDir}
+                    sortable={!!onSortChange}
                     onSort={() => handleSort(col.name)}
+                    filterable={!!onFilterChange}
                     filterValue={filterValue}
                     onFilter={(v) => onFilterChange?.(col.name, v)}
                     isFilterOpen={openFilter === col.name}
@@ -126,11 +128,15 @@ export default function DataTable({
 type SortDir = 'asc' | 'desc' | null
 
 function ColumnHeader({
-  col, sortDir, onSort, filterValue, onFilter, isFilterOpen, onToggleFilter,
+  col, sortDir, sortable, onSort, filterable, filterValue, onFilter, isFilterOpen, onToggleFilter,
 }: {
   col: ColumnInfo
   sortDir: SortDir
+  /** Off where the rows are not a queryable page — a one-row sample has nothing
+   *  to sort or filter, and a control that does nothing reads as broken. */
+  sortable: boolean
   onSort: () => void
+  filterable: boolean
   filterValue: string
   onFilter: (v: string) => void
   isFilterOpen: boolean
@@ -146,10 +152,14 @@ function ColumnHeader({
   return (
     <th className="whitespace-nowrap px-3 py-2 text-xs font-bold tracking-wide text-[var(--sea-ink)]">
       <div className="flex items-center gap-1">
-        <button type="button" onClick={onSort} className="flex items-center gap-1 hover:text-[var(--lagoon-deep)]">
-          {col.name}
-          <SortIcon dir={sortDir} />
-        </button>
+        {sortable ? (
+          <button type="button" onClick={onSort} className="flex items-center gap-1 hover:text-[var(--lagoon-deep)]">
+            {col.name}
+            <SortIcon dir={sortDir} />
+          </button>
+        ) : (
+          <span>{col.name}</span>
+        )}
 
         <span className="rounded bg-[rgba(79,184,178,0.12)] px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]">
           {col.dataType}
@@ -164,6 +174,7 @@ function ColumnHeader({
           </span>
         )}
 
+        {filterable && (
         <button
           type="button"
           data-filter-trigger
@@ -177,6 +188,7 @@ function ColumnHeader({
             <path d="M1.5 1.5h13L9.5 7.5v5l-3 2v-7L1.5 1.5z" />
           </svg>
         </button>
+        )}
       </div>
 
       {isFilterOpen && (

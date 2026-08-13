@@ -1,9 +1,11 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
+import BasisTag from '#/components/lens/BasisTag'
 import LensNav from '#/components/lens/LensNav'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useLensGraph } from '#/hooks/useLensGraph'
 import { validateLensSearch } from '#/lib/lens-search'
+import type { LensSearch } from '#/lib/lens-search'
 import {
   buildCrossingMatrix,
   cellIntensity,
@@ -293,6 +295,7 @@ function MatrixPage() {
             {selected && (
               <CellDetail
                 schema={schema}
+                search={search}
                 from={selected.from}
                 to={selected.to}
                 edges={selectedEdges}
@@ -333,12 +336,14 @@ const MAX_LISTED_EDGES = 200
 
 function CellDetail({
   schema,
+  search,
   from,
   to,
   edges,
   onClose,
 }: {
   schema: string
+  search: LensSearch
   from: string
   to: string
   edges: SchemaGraphEdge[]
@@ -370,8 +375,9 @@ function CellDetail({
             className="flex flex-wrap items-baseline gap-x-2 px-4 py-1 font-mono text-[11px]"
           >
             <Link
-              to="/t/$schema/$table"
+              to="/lens/$schema/t/$table"
               params={{ schema, table: e.fromTable }}
+              search={{ damp: search.damp, basis: search.basis }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
               {e.fromTable}
@@ -379,8 +385,9 @@ function CellDetail({
             <span className="text-[var(--sea-ink-soft)]">.{e.fromColumn}</span>
             <span className="text-[var(--sea-ink-soft)]">→</span>
             <Link
-              to="/t/$schema/$table"
+              to="/lens/$schema/t/$table"
               params={{ schema, table: e.toTable }}
+              search={{ damp: search.damp, basis: search.basis }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
               {e.toTable}
@@ -394,28 +401,5 @@ function CellDetail({
         ))}
       </ul>
     </section>
-  )
-}
-
-export function BasisTag({ basis }: { basis: SchemaGraphEdge['basis'] }) {
-  const label = { declared: 'declared', model: 'model', convention: 'convention' }[basis]
-  const hint = {
-    declared: 'A real Postgres foreign-key constraint.',
-    model:
-      'A Django relation whose constraint was stripped (simple_history / CrossDBForeignKey). Authoritative, but not enforced by the database.',
-    convention:
-      'Inferred from the column name, only where no model relation described the column.',
-  }[basis]
-  return (
-    <span
-      title={hint}
-      className={`rounded-full border px-1.5 text-[10px] ${
-        basis === 'declared'
-          ? 'border-[var(--chip-line)] text-[var(--palm)]'
-          : 'border-dashed border-[var(--line)] text-[var(--sea-ink-soft)]'
-      }`}
-    >
-      {label}
-    </span>
   )
 }

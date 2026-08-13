@@ -36,10 +36,12 @@ vi.mock('#/server/local-metadata', () => ({
 
 const {
   getTablePage,
+  getRandomRow,
   getRowChildren,
   getRowDetail,
   EXACT_COUNT_THRESHOLD,
   COUNT_TIMEOUT_MS,
+  SAMPLE_TIMEOUT_MS,
 } = await import('#/server/functions')
 
 beforeEach(() => {
@@ -378,3 +380,106 @@ function mockRowDetailMetadata(opts: {
 function mockTimeoutQuery(result: { rows: Array<Record<string, unknown>> }) {
   mockQueryWithTimeout.mockResolvedValueOnce(result)
 }
+
+describe('getRandomRow sampling', () => {
+  /** columns, approximate size, primary key — in the order the function asks. */
+  function mockPreamble(columns: string[], approx: number, pk = 'id') {
+    mockColumns(columns)
+    mockApprox(approx)
+    mockQuery.mockResolvedValueOnce({ rows: [{ column_name: pk }] })
+  }
+
+  it('sorts a small table by random() and returns the row it drew', async () => {
+    mockPreamble(['id', 'name'], 900)
+    mockTimeoutQuery({ rows: [{ id: 7, name: 'seven' }] })
+
+    const sample = await getRandomRow('public', 'small')
+
+    expect(mockQueryWithTimeout).toHaveBeenCalledWith(
+      'SELECT * FROM public.small ORDER BY random() LIMIT 1',
+      SAMPLE_TIMEOUT_MS,
+    )
+    expect(sample.row).toEqual({ id: 7, name: 'seven' })
+    expect(sample.strategy).toBe('random')
+    expect(sample.pkColumn).toBe('id')
+    expect(sample.timedOut).toBe(false)
+  })
+
+  it('block-samples a big table and stops at the first draw that hits', async () => {
+    mockPreamble(['id'], 1_000_000)
+    mockTimeoutQuery({ rows: [{ id: 42 }] })
+
+    const sample = await getRandomRow('public', 'big')
+
+    expect(mockQueryWithTimeout).toHaveBeenCalledTimes(1)
+    expect(mockQueryWithTimeout.mock.calls[0][0]).toBe(
+      'SELECT * FROM public.big TABLESAMPLE SYSTEM (0.05) LIMIT 1',
+    )
+    expect(sample.strategy).toBe('sampled')
+  })
+
+  it('widens the sample when a draw comes back empty', async () => {
+    mockPreamble(['id'], 1_000_000)
+    mockTimeoutQuery({ rows: [] })
+    mockTimeoutQuery({ rows: [{ id: 42 }] })
+
+    const sample = await getRandomRow('public', 'big')
+
+    expect(mockQueryWithTimeout.mock.calls[1][0]).toBe(
+      'SELECT * FROM public.big TABLESAMPLE SYSTEM (0.5) LIMIT 1',
+    )
+    expect(sample.row).toEqual({ id: 42 })
+    expect(sample.strategy).toBe('sampled')
+  })
+
+  it('falls back to the first row, labelled as such, when no draw hits', async () => {
+    mockPreamble(['id'], 1_000_000)
+    mockTimeoutQuery({ rows: [] })
+    mockTimeoutQuery({ rows: [] })
+    mockTimeoutQuery({ rows: [] })
+    mockTimeoutQuery({ rows: [{ id: 1 }] })
+
+    const sample = await getRandomRow('public', 'big')
+
+    expect(mockQueryWithTimeout.mock.calls[3][0]).toBe('SELECT * FROM public.big LIMIT 1')
+    expect(sample.strategy).toBe('first')
+    expect(sample.row).toEqual({ id: 1 })
+  })
+
+  it('skips to the first row when TABLESAMPLE is rejected, as it is on a view', async () => {
+    mockPreamble(['id'], 1_000_000)
+    mockQueryWithTimeout.mockRejectedValueOnce(
+      new Error('TABLESAMPLE clause can only be applied to tables and materialized views'),
+    )
+    mockTimeoutQuery({ rows: [{ id: 1 }] })
+
+    const sample = await getRandomRow('public', 'a_view')
+
+    expect(mockQueryWithTimeout).toHaveBeenCalledTimes(2)
+    expect(mockQueryWithTimeout.mock.calls[1][0]).toBe(
+      'SELECT * FROM public.a_view LIMIT 1',
+    )
+    expect(sample.strategy).toBe('first')
+  })
+
+  it('reports a timeout as no row rather than failing the page', async () => {
+    mockPreamble(['id'], 900)
+    mockQueryWithTimeout.mockRejectedValueOnce(new StatementTimeoutError(SAMPLE_TIMEOUT_MS))
+
+    const sample = await getRandomRow('public', 'small')
+
+    expect(sample.row).toBeNull()
+    expect(sample.timedOut).toBe(true)
+  })
+
+  it('returns no row for an empty table without claiming a timeout', async () => {
+    mockPreamble(['id'], 900)
+    mockTimeoutQuery({ rows: [] })
+
+    const sample = await getRandomRow('public', 'empty')
+
+    expect(sample.row).toBeNull()
+    expect(sample.timedOut).toBe(false)
+    expect(sample.columns.map((c) => c.name)).toEqual(['id'])
+  })
+})

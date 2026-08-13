@@ -62,6 +62,17 @@ describe('parseLensPath', () => {
     })
   })
 
+  it('recognises a table relations view, decoding the name', () => {
+    expect(parseLensPath('/lens/public/t/data_video')?.view).toEqual({
+      kind: 'table',
+      table: 'data_video',
+    })
+    expect(parseLensPath('/lens/public/t/data%20video/')?.view).toEqual({
+      kind: 'table',
+      table: 'data video',
+    })
+  })
+
   it('is null off the lens', () => {
     expect(parseLensPath('/t/public/data_video')).toBeNull()
   })
