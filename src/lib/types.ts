@@ -21,6 +21,12 @@ export interface ConnectionConfig {
   ssl?: boolean
 }
 
+/** Where a connected session should land: the first table worth showing, or why
+ *  there isn't one. */
+export type EntryTarget =
+  | { ok: true; schema: string; table: string }
+  | { ok: false; error: string }
+
 export interface ColumnInfo {
   name: string
   dataType: string

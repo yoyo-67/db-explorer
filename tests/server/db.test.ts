@@ -7,18 +7,30 @@ const mockConnect = vi.fn()
 
 vi.mock('pg', () => ({
   default: {
-    Pool: vi.fn().mockImplementation(() => ({
-      query: mockQuery,
-      end: mockEnd,
-      connect: mockConnect,
-    })),
+    Pool: vi.fn().mockImplementation(() => {
+      // Real pg emits 'connect' with each new physical client, which is where
+      // the read-only session setting is applied. The fake pool has to do the
+      // same or that behaviour is untestable.
+      const onConnect: Array<(client: unknown) => void> = []
+      return {
+        query: mockQuery,
+        end: mockEnd,
+        on: (event: string, fn: (client: unknown) => void) => {
+          if (event === 'connect') onConnect.push(fn)
+        },
+        connect: async (...args: unknown[]) => {
+          const client = await mockConnect(...args)
+          for (const fn of onConnect) fn(client)
+          return client
+        },
+      }
+    }),
   },
 }))
 
 // Import after mock
-const { createConnection, getConnection, disconnect, query } = await import(
-  '#/server/db'
-)
+const { createConnection, ensureConnection, getConnection, disconnect, query } =
+  await import('#/server/db')
 
 const validConfig: ConnectionConfig = {
   host: 'localhost',
@@ -98,6 +110,54 @@ describe('db module', () => {
 
       await expect(createConnection(validConfig)).rejects.toThrow()
       expect(mockEnd).toHaveBeenCalled()
+    })
+  })
+
+  describe('ensureConnection', () => {
+    it('connects when there is no pool yet', async () => {
+      await ensureConnection(validConfig)
+
+      expect(getConnection()).not.toBeNull()
+    })
+
+    it('reuses the live pool when the config is unchanged', async () => {
+      await createConnection(validConfig)
+      const pool = getConnection()
+      mockEnd.mockClear()
+
+      await ensureConnection({ ...validConfig })
+
+      expect(getConnection()).toBe(pool)
+      expect(mockEnd).not.toHaveBeenCalled()
+    })
+
+    it('rebuilds the pool when the config differs', async () => {
+      await createConnection(validConfig)
+      const pool = getConnection()
+
+      await ensureConnection({ ...validConfig, database: 'otherdb' })
+
+      expect(getConnection()).not.toBe(pool)
+      expect(mockEnd).toHaveBeenCalled()
+    })
+
+    it('rebuilds the pool when the config differs only by ssl', async () => {
+      await createConnection(validConfig)
+      const pool = getConnection()
+
+      await ensureConnection({ ...validConfig, ssl: true })
+
+      expect(getConnection()).not.toBe(pool)
+    })
+
+    it('rebuilds the pool when the live check fails', async () => {
+      await createConnection(validConfig)
+      const pool = getConnection()
+      mockQuery.mockRejectedValueOnce(new Error('connection terminated'))
+
+      await ensureConnection(validConfig)
+
+      expect(getConnection()).not.toBe(pool)
     })
   })
 

@@ -14,6 +14,7 @@ import {
   getRowChildren,
   getSchemaGraph,
   introspect,
+  resolveEntryTarget,
   runReadOnlyQuery,
 } from '#/server/functions'
 import { readPerfLog } from '#/server/perf-log'
@@ -42,11 +43,11 @@ export const $isConnected = createServerFn({ method: 'GET' }).handler(
 
 export const $reconnect = createServerFn({ method: 'POST' }).handler(
   async () => {
-    const { getLastConfig, createConnection } = await import('#/server/db')
+    const { getLastConfig, ensureConnection } = await import('#/server/db')
     const config = getLastConfig()
     if (!config) return { success: false as const, error: 'No previous connection' }
     try {
-      await createConnection(config)
+      await ensureConnection(config)
       return { success: true as const }
     } catch (err) {
       return { success: false as const, error: err instanceof Error ? err.message : String(err) }
@@ -60,14 +61,24 @@ export const $testConnection = createServerFn({ method: 'POST' })
     return testConnection(data)
   })
 
+/**
+ * Connecting is idempotent: a second tab picking the same preset joins the pool
+ * the first tab is already using instead of tearing it down under it.
+ */
 export const $connect = createServerFn({ method: 'POST' })
   .inputValidator((data: { config: ConnectionConfig; presetName?: string }) => data)
   .handler(async ({ data }) => {
-    const { createConnection, setPresetName } = await import('#/server/db')
-    await createConnection(data.config)
+    const { ensureConnection, setPresetName } = await import('#/server/db')
+    await ensureConnection(data.config)
     setPresetName(data.presetName ?? null)
     return { success: true as const }
   })
+
+export const $resolveEntryTarget = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    return resolveEntryTarget()
+  },
+)
 
 export const $disconnect = createServerFn({ method: 'POST' }).handler(
   async () => {

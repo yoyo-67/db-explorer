@@ -24,6 +24,7 @@ const {
   getTables,
   getTablePreview,
   getForeignKeys,
+  resolveEntryTarget,
 } = await import('#/server/functions')
 
 const validConfig: ConnectionConfig = {
@@ -266,3 +267,64 @@ describe('getForeignKeys', () => {
   })
 })
 
+
+describe('resolveEntryTarget', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /** Route queries by the object each one reads, so order doesn't matter. */
+  function stubCatalog(schemas: string[], tables: string[]) {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('information_schema.schemata')) {
+        return { rows: schemas.map((schema_name) => ({ schema_name })) }
+      }
+      return {
+        rows: tables.map((table_name) => ({
+          table_name,
+          table_schema: schemas[0],
+          row_count: 0,
+          last_modified: null,
+        })),
+      }
+    })
+  }
+
+  it('prefers the public schema and its first table', async () => {
+    stubCatalog(['analytics', 'public'], ['accounts', 'zones'])
+
+    await expect(resolveEntryTarget()).resolves.toEqual({
+      ok: true,
+      schema: 'public',
+      table: 'accounts',
+    })
+  })
+
+  it('falls back to the first schema when there is no public', async () => {
+    stubCatalog(['analytics', 'billing'], ['events'])
+
+    await expect(resolveEntryTarget()).resolves.toEqual({
+      ok: true,
+      schema: 'analytics',
+      table: 'events',
+    })
+  })
+
+  it('reports when the database exposes no schemas', async () => {
+    stubCatalog([], [])
+
+    await expect(resolveEntryTarget()).resolves.toEqual({
+      ok: false,
+      error: 'Connected, but no schemas were found',
+    })
+  })
+
+  it('reports when the chosen schema has no tables', async () => {
+    stubCatalog(['public'], [])
+
+    await expect(resolveEntryTarget()).resolves.toEqual({
+      ok: false,
+      error: 'Connected, but schema "public" has no tables',
+    })
+  })
+})

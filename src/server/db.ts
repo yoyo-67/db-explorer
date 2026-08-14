@@ -95,6 +95,40 @@ export async function createConnection(config: ConnectionConfig): Promise<void> 
   setLastConfig(config)
 }
 
+function sameConfig(a: ConnectionConfig, b: ConnectionConfig): boolean {
+  return (
+    a.host === b.host &&
+    a.port === b.port &&
+    a.database === b.database &&
+    a.user === b.user &&
+    a.password === b.password &&
+    Boolean(a.ssl) === Boolean(b.ssl)
+  )
+}
+
+/**
+ * Connect only if the process isn't already connected the same way.
+ *
+ * The pool lives on `globalThis`, so every browser tab shares it — but a second
+ * tab landing on the connect form used to call `createConnection`, which ends
+ * the live pool and builds a new one, cutting the first tab off mid-session.
+ * Reuse needs the config to match AND the pool to still answer, so a wedged pool
+ * is still rebuilt rather than handed back.
+ */
+export async function ensureConnection(config: ConnectionConfig): Promise<void> {
+  const pool = getPool()
+  const last = getLastConfig()
+  if (pool && last && sameConfig(last, config)) {
+    try {
+      await pool.query('SELECT 1')
+      return
+    } catch {
+      /* pool is dead — fall through and rebuild it */
+    }
+  }
+  await createConnection(config)
+}
+
 export function getConnection(): pg.Pool | null {
   return getPool()
 }

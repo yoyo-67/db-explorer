@@ -21,6 +21,7 @@ import type { LiveTable } from '#/lib/schema-graph'
 import type { TraceEdge } from '#/lib/row-trace'
 import type {
   ConnectionConfig,
+  EntryTarget,
   TableInfo,
   ColumnInfo,
   TableData,
@@ -181,6 +182,24 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
     columns: columnsByTable.get(row.table_name) ?? [],
     pkColumn: pkByTable.get(row.table_name) ?? null,
   }))
+}
+
+/**
+ * The landing spot for a connected session — used both after an explicit connect
+ * and by `/` when a second tab arrives on an already-connected server, so both
+ * paths agree on where "the data" is.
+ */
+export async function resolveEntryTarget(): Promise<EntryTarget> {
+  const schemas = await getSchemas()
+  const schema = schemas.includes(DEFAULT_SCHEMA) ? DEFAULT_SCHEMA : schemas[0]
+  if (!schema) return { ok: false, error: 'Connected, but no schemas were found' }
+
+  const tables = await getTables(schema)
+  const table = tables[0]
+  if (!table) {
+    return { ok: false, error: `Connected, but schema "${schema}" has no tables` }
+  }
+  return { ok: true, schema, table: table.name }
 }
 
 export async function getTablePreview(

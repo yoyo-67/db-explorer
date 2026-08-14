@@ -1,17 +1,36 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import ConnectionForm from '#/components/ConnectionForm'
 import {
   $connect,
   $getPresets,
-  $getSchemas,
-  $getTables,
+  $isConnected,
+  $resolveEntryTarget,
   $testConnection,
 } from '#/server/api'
 import type { ConnectionConfig } from '#/lib/types'
 
-export const Route = createFileRoute('/')({ component: HomePage })
+/**
+ * The pool lives on the server, so a second tab is already connected the moment
+ * it loads. Send it to the data instead of a connect form it doesn't need —
+ * filling that form in would rebuild the pool the first tab is using. Reaching
+ * the form again is what Disconnect in the header is for.
+ */
+export const Route = createFileRoute('/')({
+  loader: async () => {
+    const status = await $isConnected()
+    if (!status.connected) return
+    const target = await $resolveEntryTarget()
+    if (target.ok) {
+      throw redirect({
+        to: '/t/$schema/$table',
+        params: { schema: target.schema, table: target.table },
+      })
+    }
+  },
+  component: HomePage,
+})
 
 function HomePage() {
   const navigate = useNavigate()
@@ -35,20 +54,14 @@ function HomePage() {
       }
 
       await $connect({ data: { config, presetName } })
-      const schemas = await $getSchemas()
-      const schema = schemas.includes('public') ? 'public' : schemas[0]
-      if (!schema) {
-        setError('Connected, but no schemas were found')
-        return
-      }
-      const tables = await $getTables({ data: { schema } })
-      if (tables.length === 0) {
-        setError(`Connected, but schema "${schema}" has no tables`)
+      const target = await $resolveEntryTarget()
+      if (!target.ok) {
+        setError(target.error)
         return
       }
       navigate({
         to: '/t/$schema/$table',
-        params: { schema, table: tables[0].name },
+        params: { schema: target.schema, table: target.table },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')
