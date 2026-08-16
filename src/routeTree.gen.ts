@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LensSchemaIndexRouteImport } from './routes/lens/$schema/index'
@@ -18,6 +19,11 @@ import { Route as LensSchemaTTableRouteImport } from './routes/lens/$schema/t/$t
 import { Route as LensSchemaGGroupRouteImport } from './routes/lens/$schema/g/$group'
 import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table/row/$id'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsoleRoute = ConsoleRouteImport.update({
   id: '/console',
   path: '/console',
@@ -62,6 +68,7 @@ const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/settings': typeof SettingsRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/settings': typeof SettingsRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/settings': typeof SettingsRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/console'
+    | '/settings'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/console'
+    | '/settings'
     | '/lens/$schema/orphans'
     | '/lens/$schema'
     | '/lens/$schema/g/$group'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/console'
+    | '/settings'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRoute
+  SettingsRoute: typeof SettingsRoute
   LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
   LensSchemaIndexRoute: typeof LensSchemaIndexRoute
   LensSchemaGGroupRoute: typeof LensSchemaGGroupRoute
@@ -136,6 +149,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/console': {
       id: '/console'
       path: '/console'
@@ -198,6 +218,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRoute,
+  SettingsRoute: SettingsRoute,
   LensSchemaOrphansRoute: LensSchemaOrphansRoute,
   LensSchemaIndexRoute: LensSchemaIndexRoute,
   LensSchemaGGroupRoute: LensSchemaGGroupRoute,

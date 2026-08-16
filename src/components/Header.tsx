@@ -7,9 +7,11 @@ import {
   $getPresets,
   $getSchemas,
   $getTables,
+  $resolveEntryTarget,
   $testConnection,
 } from '#/server/api'
 import { connectionStatusKey, useConnectionStatus } from '#/hooks/useConnectionStatus'
+import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath, schemaFromPathname } from '#/lib/lens-links'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
@@ -33,13 +35,37 @@ export default function Header() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          <QueryHud />
+          <OptionalQueryHud />
           <ConnectionSwitcher />
           <SchemaPicker />
+          <SettingsLink />
           <ThemeToggle />
         </div>
       </nav>
     </header>
+  )
+}
+
+/**
+ * The HUD polls the query log every second for as long as it is mounted, in
+ * every open tab. Not mounted is the off switch — see `/settings`.
+ */
+function OptionalQueryHud() {
+  const { queryHud } = useAppSettings()
+  if (!queryHud) return null
+  return <QueryHud />
+}
+
+function SettingsLink() {
+  return (
+    <Link
+      to="/settings"
+      className="nav-link"
+      activeProps={{ className: 'nav-link is-active' }}
+      title="Settings for this browser"
+    >
+      ⚙
+    </Link>
   )
 }
 
@@ -89,14 +115,11 @@ function HomeLink() {
 function useOpenFirstTable() {
   const navigate = useNavigate()
   return async () => {
-    const schemas = await $getSchemas()
-    const schema = schemas.includes('public') ? 'public' : schemas[0]
-    if (!schema) return navigate({ to: '/' })
-    const tables = await $getTables({ data: { schema } })
-    if (tables.length === 0) return navigate({ to: '/' })
+    const target = await $resolveEntryTarget()
+    if (!target.ok) return navigate({ to: '/' })
     return navigate({
       to: '/t/$schema/$table',
-      params: { schema, table: tables[0].name },
+      params: { schema: target.schema, table: target.table },
     })
   }
 }
