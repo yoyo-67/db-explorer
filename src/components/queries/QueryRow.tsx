@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import CopyButton from '#/components/CopyButton'
+import { stageConsoleSql } from '#/lib/console-handoff'
 import { Chip, Meter } from '#/components/pressure/PressureSection'
 import { formatCompactCount } from '#/lib/inspect/format'
 import { formatPercent } from '#/lib/inspect/stats'
@@ -32,6 +33,7 @@ export default function QueryRow({
   totalMs: number
 }) {
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
   const share = shareOfTime(entry.totalMs, totalMs)
   const hitRatio = cacheHitRatio(entry)
   const perCall = rowsPerCall(entry)
@@ -108,14 +110,17 @@ export default function QueryRow({
           {open && (
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <CopyButton text={entry.query} label="Copy SQL" />
-              <Link
-                to="/console"
-                search={{ sql: `EXPLAIN ${entry.query}` }}
-                className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] no-underline hover:bg-[rgba(79,184,178,0.1)]"
+              <button
+                type="button"
+                onClick={() => {
+                  stageConsoleSql(`EXPLAIN ${entry.query}`)
+                  navigate({ to: '/console' })
+                }}
+                className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
                 title="Open the console with EXPLAIN in front of this statement. Its placeholders still need real values."
               >
                 EXPLAIN in console
-              </Link>
+              </button>
               <span className="text-[10px] text-[var(--sea-ink-soft)]">
                 queryid {entry.queryId} · placeholders (`$1`) are the normalizer's, not yours —
                 replace them before running
