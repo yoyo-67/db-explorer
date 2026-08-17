@@ -119,12 +119,6 @@ export function indexAuditTotals(
   }
 }
 
-/** The `DROP INDEX` for a finding, so the page hands over something runnable
- *  rather than a name to retype. Concurrent, because the alternative locks. */
-export function dropIndexSql(schema: string, index: IndexEntry): string {
-  return `DROP INDEX CONCURRENTLY ${schema}.${index.name};`
-}
-
 /** The index a missing foreign-key index would need. */
 export function createFkIndexSql(schema: string, fk: ForeignKeyColumns): string {
   const columns = fk.columns.join(', ')

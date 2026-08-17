@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   createFkIndexSql,
-  dropIndexSql,
   enforcesConstraint,
   indexAuditTotals,
   isLeadingPrefix,
@@ -189,12 +188,6 @@ describe('indexAuditTotals', () => {
 })
 
 describe('generated SQL', () => {
-  it('drops concurrently, so it does not lock the table', () => {
-    expect(dropIndexSql('public', index({ name: 'orders_user_idx' }))).toBe(
-      'DROP INDEX CONCURRENTLY public.orders_user_idx;',
-    )
-  })
-
   it('names a foreign-key index after the columns it covers', () => {
     expect(
       createFkIndexSql('public', { table: 'orders', constraint: 'fk', columns: ['user_id', 'kind'] }),

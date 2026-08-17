@@ -4,7 +4,6 @@ import { formatBytes } from '#/lib/pressure/bytes'
 import { formatRelativeTime } from '#/lib/inspect/format'
 import {
   createFkIndexSql,
-  dropIndexSql,
   enforcesConstraint,
   indexAuditTotals,
   redundantIndexes,
@@ -82,11 +81,6 @@ export default function IndexSection({ pressure }: { pressure: SchemaPressure })
                     {index.scans.toLocaleString()} scans
                   </Chip>
                 )}
-                <CopyButton
-                  text={dropIndexSql(schema, index)}
-                  label="Copy DROP"
-                  className="ml-auto"
-                />
               </div>
             )}
           />
@@ -142,15 +136,13 @@ function UnusedRow({ schema, index }: { schema: string; index: IndexEntry }) {
       </span>
       {index.method !== 'btree' && <Chip>{index.method}</Chip>}
       {index.isPartial && <Chip title="Partial index — covers only the rows its WHERE clause keeps">partial</Chip>}
-      {loadBearing ? (
+      {loadBearing && (
         <Chip
           tone="warn"
           title="Dropping this index drops the constraint it enforces — unique keys are not dead weight even when nothing scans them"
         >
           enforces a constraint
         </Chip>
-      ) : (
-        <CopyButton text={dropIndexSql(schema, index)} label="Copy DROP" className="ml-auto" />
       )}
     </div>
   )
