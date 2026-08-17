@@ -12,7 +12,8 @@ import {
 } from '#/server/api'
 import { connectionStatusKey, useConnectionStatus } from '#/hooks/useConnectionStatus'
 import { useAppSettings } from '#/hooks/useAppSettings'
-import { parseLensPath, schemaFromPathname } from '#/lib/lens-links'
+import { parseLensPath } from '#/lib/lens-links'
+import { resolveActiveSchema } from '#/lib/active-schema'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
 
@@ -184,10 +185,24 @@ function ConnectionAction() {
   )
 }
 
+/**
+ * The schema the schema-scoped links point at: the route's own when it has one,
+ * the default otherwise, so the nav does not lose entries on the console or the
+ * query board. The schema list is already cached by the picker below.
+ */
+function useActiveSchema(): string | undefined {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const schemasQuery = useQuery({
+    queryKey: ['schemas'],
+    queryFn: () => $getSchemas(),
+    staleTime: Infinity,
+  })
+  return resolveActiveSchema(pathname, schemasQuery.data ?? [])
+}
+
 /** Entry point into the lens, for whichever schema the current route is about. */
 function LensLink() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const schema = schemaFromPathname(pathname)
+  const schema = useActiveSchema()
   if (!schema) return null
   return (
     <Link
@@ -204,8 +219,7 @@ function LensLink() {
 
 /** Index sprawl, disk, vacuum debt, sequence headroom — for the current schema. */
 function PressureLink() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const schema = schemaFromPathname(pathname)
+  const schema = useActiveSchema()
   if (!schema) return null
   return (
     <Link
@@ -223,7 +237,6 @@ function PressureLink() {
 function SchemaPicker() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const currentSchema = schemaFromPathname(pathname)
   const lensLocation = parseLensPath(pathname)
 
   const schemasQuery = useQuery({
@@ -235,7 +248,7 @@ function SchemaPicker() {
   const schemas = schemasQuery.data ?? []
   if (schemas.length === 0) return null
 
-  const selected = currentSchema ?? schemas[0]
+  const selected = resolveActiveSchema(pathname, schemas) ?? schemas[0]
 
   const handleChange = async (nextSchema: string) => {
     // On the lens, a schema switch keeps the view you were reading. A Group that
