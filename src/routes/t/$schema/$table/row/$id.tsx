@@ -237,16 +237,17 @@ function FieldRow({
         </span>
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
-        <LinkableValue
-          value={value}
-          prettyJson={prettyJson}
-          target={target}
-          variant={variant}
-        />
-        {pretty !== null && (
-          <pre className="mt-1 overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
+        {pretty !== null ? (
+          <pre className="overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
             {pretty}
           </pre>
+        ) : (
+          <LinkableValue
+            value={value}
+            prettyJson={prettyJson}
+            target={target}
+            variant={variant}
+          />
         )}
       </span>
     </>
