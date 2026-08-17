@@ -15,6 +15,16 @@ functions), TypeScript, and Tailwind.
 - **Foreign-key navigation** — click a value to jump to the related row; lazy
   child counts. A row also lists its *outgoing* references and flags any that
   point at a row that isn't there.
+- **Table inspector** — three tabs above the rows, all read from the catalog so
+  they cost the same on a billion rows as on none. *Profile* shows every column's
+  nulls, distinct estimate and most common values from the last `ANALYZE` (and
+  says how old that is); clicking a common value filters the rows below to it.
+  *DDL* reconstructs the `CREATE TABLE` — real declared types, constraints,
+  indexes, comments — ready to copy. *Types* lists enum labels and, per sequence,
+  how much room is left measured against whichever ceiling binds first: a
+  `bigint` sequence on an `integer` column runs out at 2.1B, not 9.2E18. It also
+  flags a sequence sitting *below* its column's maximum, where the next insert
+  collides.
 - **Schema lens** (`/lens/$schema`) — three views over one merged reference
   graph: a Group × Group matrix of how much the groups reference each other, one
   group drawn on its own with the edges that leave it stubbed at the boundary,

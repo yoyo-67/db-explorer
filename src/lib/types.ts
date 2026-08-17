@@ -222,6 +222,142 @@ export interface SchemaGraph {
   staleness: SchemaGraphStaleness
 }
 
+// ── Table inspector ────────────────────────────────────────────────────────
+
+/** One of a column's most common values, and the share of rows it covers. */
+export interface CommonValue {
+  /** Text rendering of the value as the planner stored it; `null` is a real null. */
+  value: string | null
+  /** 0..1 share of the table's rows. */
+  freq: number
+}
+
+/**
+ * What `pg_stats` knows about one column. Everything here is a planner estimate
+ * gathered by the last ANALYZE — never a fresh count, never a table read.
+ */
+export interface ColumnStats {
+  nullFrac: number
+  /**
+   * Raw `pg_stats.n_distinct`: positive is an absolute estimate, negative is a
+   * fraction of the row count, `-1` means "unique", `0` means unknown. Kept raw
+   * so the UI can say which of those it is rather than inventing a number.
+   */
+  nDistinctRaw: number
+  avgWidth: number
+  /** Physical/logical order agreement, `null` for types with no ordering. */
+  correlation: number | null
+  commonValues: CommonValue[]
+  /** First and last histogram bound — the observed range, absent for few-value columns. */
+  range: { low: string; high: string } | null
+}
+
+export interface ColumnProfile {
+  name: string
+  /** `format_type` — the declared type, not information_schema's widened name. */
+  dataType: string
+  notNull: boolean
+  isPrimaryKey: boolean
+  /** Leading column of some index, so a filter on it is cheap. */
+  indexed: boolean
+  comment: string | null
+  /** `null` when the column has no `pg_stats` row: never analyzed, or not visible to this user. */
+  stats: ColumnStats | null
+}
+
+export interface TableProfile {
+  schema: string
+  table: string
+  /** `pg_class.reltuples`, `-1` when the table has never been analyzed. */
+  estimatedRows: number
+  lastAnalyze: string | null
+  columns: ColumnProfile[]
+}
+
+export interface DdlColumn {
+  name: string
+  type: string
+  notNull: boolean
+  default: string | null
+  /** `ALWAYS` / `BY DEFAULT` for identity columns, else `null`. */
+  identity: string | null
+  /** Generation expression for generated columns. */
+  generated: string | null
+  comment: string | null
+}
+
+/** `pg_constraint.contype`: p primary, u unique, f foreign, c check, x exclusion. */
+export type DdlConstraintKind = 'p' | 'u' | 'f' | 'c' | 'x' | 'other'
+
+export interface DdlConstraint {
+  name: string
+  kind: DdlConstraintKind
+  /** `pg_get_constraintdef` — Postgres's own rendering, not ours. */
+  definition: string
+}
+
+export interface DdlIndex {
+  name: string
+  /** `pg_get_indexdef`. */
+  definition: string
+  /** Created by a constraint, so the DDL emits the constraint instead. */
+  constraintBacked: boolean
+  isPrimary: boolean
+  isUnique: boolean
+}
+
+export interface TableDdl {
+  schema: string
+  table: string
+  columns: DdlColumn[]
+  constraints: DdlConstraint[]
+  indexes: DdlIndex[]
+  tableComment: string | null
+  /** Assembled statements — CREATE TABLE, then indexes, then comments. */
+  sql: string
+}
+
+export interface EnumType {
+  /** Schema-qualified when the type does not live in the table's schema. */
+  name: string
+  labels: string[]
+  /** Columns of this table using the type. */
+  columns: string[]
+}
+
+/**
+ * A sequence feeding one column, with the two numbers that matter: how close it
+ * is to its ceiling, and whether the column has drifted past it.
+ *
+ * Bignum-safe: values stay strings, since an int8 sequence outruns `number`.
+ */
+export interface SequenceInfo {
+  name: string
+  column: string
+  /** The sequence's own type. */
+  dataType: string
+  /**
+   * The column's type, which usually sets the real ceiling: a `bigint` sequence
+   * feeding an `integer` column runs out four billion values before its own
+   * `max_value` — the shape every Django `AutoField` produces.
+   */
+  columnType: string
+  lastValue: string | null
+  maxValue: string | null
+  cycles: boolean
+  /** `MAX(column)`, `null` when the probe was skipped. */
+  columnMax: string | null
+  /** Why `columnMax` is null, so the UI never reads it as zero. */
+  maxSkipped?: 'timeout' | 'error'
+}
+
+export interface TableTypes {
+  schema: string
+  table: string
+  enums: EnumType[]
+  sequences: SequenceInfo[]
+}
+
 /** Shape of `local/schema-map.json`, emitted by pycode/local_dev/schema_map/extract.py. */
 export interface SchemaMap {
   source?: string

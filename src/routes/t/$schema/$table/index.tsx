@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
 import Pager from '#/components/Pager'
+import TableInspector from '#/components/inspect/TableInspector'
+import { parseInspectorTab } from '#/lib/inspect/tabs'
+import type { InspectorTab } from '#/lib/inspect/tabs'
 import {
   $getMapGroups,
   $getTableCatalog,
@@ -20,6 +23,8 @@ interface TableSearch {
   exact?: boolean
   f?: Record<string, string>
   sort?: string
+  /** Open inspector tab; absent means the panel is collapsed. */
+  insp?: InspectorTab
 }
 
 export const Route = createFileRoute('/t/$schema/$table/')({
@@ -37,7 +42,8 @@ export const Route = createFileRoute('/t/$schema/$table/')({
           )
         : undefined
     const sort = typeof search.sort === 'string' && search.sort.length > 0 ? search.sort : undefined
-    return { p, exact, f, sort }
+    const insp = parseInspectorTab(search.insp)
+    return { p, exact, f, sort, insp }
   },
 })
 
@@ -214,6 +220,20 @@ function TablePage() {
     updateSearch({ f: undefined, sort: undefined, p: undefined })
   }
 
+  /**
+   * A value clicked in the inspector lands in the URL immediately — a click is
+   * already the deliberate act the typing debounce waits for. Any pending
+   * debounce is cancelled first, so a half-typed draft can't overwrite it.
+   * `null` clears the column, which is what makes the same chip a toggle.
+   */
+  const applyFilterValue = (column: string, input: string | null) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const next = { ...filter }
+    if (input === null) delete next[column]
+    else next[column] = input
+    updateSearch({ f: Object.keys(next).length ? next : undefined, p: undefined })
+  }
+
   const totalRows = pageData?.count ?? tableInfo?.rowCount ?? 0
   const hasFilterOrSort = Object.keys(filter).length > 0 || sort !== null
 
@@ -261,6 +281,15 @@ function TablePage() {
             </label>
           </div>
         </div>
+
+        <TableInspector
+          schema={schema}
+          table={table}
+          tab={search.insp}
+          onTabChange={(next: InspectorTab | undefined) => updateSearch({ insp: next })}
+          filter={filter}
+          onFilterValue={applyFilterValue}
+        />
 
         {pageQuery.error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">

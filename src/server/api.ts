@@ -17,6 +17,7 @@ import {
   resolveEntryTarget,
   runReadOnlyQuery,
 } from '#/server/functions'
+import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { readPerfLog } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { resolvePresets } from '#/lib/preset-resolver'
@@ -250,3 +251,20 @@ export const $getSchemaGraph = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     return getSchemaGraph(data.schema)
   })
+
+/**
+ * The three inspector tabs, each its own fetch so opening the panel costs only
+ * the tab being read. All three read the catalog rather than the table — the one
+ * exception, `MAX(column)` behind a sequence, is bounded server-side.
+ */
+export const $getTableProfile = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema: string; table: string }) => data)
+  .handler(async ({ data }) => getTableProfile(data.schema, data.table))
+
+export const $getTableDdl = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema: string; table: string }) => data)
+  .handler(async ({ data }) => getTableDdl(data.schema, data.table))
+
+export const $getTableTypes = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema: string; table: string }) => data)
+  .handler(async ({ data }) => getTableTypes(data.schema, data.table))
