@@ -415,6 +415,9 @@ export interface TableVacuumEntry {
   /** Dead tuples autovacuum waits for on this table, per-table `reloptions`
    *  included. `null` when the settings were unreadable. */
   vacuumThreshold: number | null
+  /** Changed rows autoanalyze waits for. `null` when autovacuum is off for the
+   *  table, since then nothing is waiting on it. */
+  analyzeThreshold: number | null
 }
 
 export interface SchemaPressure {

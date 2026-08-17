@@ -162,6 +162,16 @@ export async function getSchemaPressure(
           )::float8 AS vac_scale_factor,
           COALESCE(
             (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o
+              WHERE o.option_name = 'autovacuum_analyze_threshold'),
+            current_setting('autovacuum_analyze_threshold')
+          )::float8 AS analyze_threshold,
+          COALESCE(
+            (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o
+              WHERE o.option_name = 'autovacuum_analyze_scale_factor'),
+            current_setting('autovacuum_analyze_scale_factor')
+          )::float8 AS analyze_scale_factor,
+          COALESCE(
+            (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o
               WHERE o.option_name = 'autovacuum_enabled'),
             'true'
           ) AS autovacuum_enabled
@@ -259,6 +269,13 @@ export async function getSchemaPressure(
             estimatedRows,
             toNumber(row.vac_threshold, 50),
             toNumber(row.vac_scale_factor, 0.2),
+          )
+        : null,
+      analyzeThreshold: autovacuumOn
+        ? autovacuumTrigger(
+            estimatedRows,
+            toNumber(row.analyze_threshold, 50),
+            toNumber(row.analyze_scale_factor, 0.1),
           )
         : null,
     }

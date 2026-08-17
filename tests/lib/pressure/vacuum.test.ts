@@ -21,6 +21,7 @@ function entry(overrides: Partial<TableVacuumEntry> = {}): TableVacuumEntry {
     lastAnalyze: null,
     lastAutoanalyze: null,
     vacuumThreshold: 250,
+    analyzeThreshold: 150,
     ...overrides,
   }
 }

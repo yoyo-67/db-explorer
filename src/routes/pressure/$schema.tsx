@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import AnalyzeSection from '#/components/pressure/AnalyzeSection'
 import IndexSection from '#/components/pressure/IndexSection'
 import SequenceSection from '#/components/pressure/SequenceSection'
 import SizeSection from '#/components/pressure/SizeSection'
@@ -11,6 +12,7 @@ import { formatPercent } from '#/lib/inspect/stats'
 import { sequenceHealth } from '#/lib/inspect/sequence'
 import { indexAuditTotals } from '#/lib/pressure/index-audit'
 import { vacuumLevel } from '#/lib/pressure/vacuum'
+import { analyzeState, isBlindAndLarge } from '#/lib/pressure/analyze'
 import type { SchemaPressure } from '#/lib/types'
 
 export const Route = createFileRoute('/pressure/$schema')({
@@ -87,6 +89,7 @@ function PressurePage() {
             <IndexSection pressure={pressure} />
             <SizeSection pressure={pressure} />
             <VacuumSection pressure={pressure} />
+            <AnalyzeSection pressure={pressure} />
             <SequenceSection pressure={pressure} />
           </>
         )}
@@ -100,13 +103,16 @@ function Summary({ pressure }: { pressure: SchemaPressure }) {
   const totals = indexAuditTotals(pressure.indexes, pressure.foreignKeys)
   const largest = [...pressure.sizes].sort((a, b) => b.totalBytes - a.totalBytes)[0]
   const overdue = pressure.vacuum.filter((entry) => vacuumLevel(entry) === 'overdue').length
+  const blind = pressure.vacuum.filter(
+    (entry) => analyzeState(entry) === 'never' && isBlindAndLarge(entry),
+  ).length
   const tightest = [...pressure.sequences]
     .map((entry) => ({ entry, health: sequenceHealth(entry) }))
     .filter((item) => item.health.usedFrac !== null)
     .sort((a, b) => (b.health.usedFrac ?? 0) - (a.health.usedFrac ?? 0))[0]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <Tile
         href="#indexes"
         label="Index bytes nothing reads"
@@ -124,6 +130,12 @@ function Summary({ pressure }: { pressure: SchemaPressure }) {
         label="Past their vacuum trigger"
         value={String(overdue)}
         note={`of ${pressure.vacuum.length} tables with statistics`}
+      />
+      <Tile
+        href="#analyze"
+        label="Large tables with no stats"
+        value={String(blind)}
+        note="the planner guesses on these"
       />
       <Tile
         href="#sequences"

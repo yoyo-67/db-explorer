@@ -159,6 +159,8 @@ describe('getSchemaPressure — vacuum', () => {
     est_rows: 1000,
     vac_threshold: 50,
     vac_scale_factor: 0.2,
+    analyze_threshold: 50,
+    analyze_scale_factor: 0.1,
     autovacuum_enabled: 'true',
   }
 
@@ -239,5 +241,47 @@ describe('getSchemaPressure — sequences', () => {
     const pressure = await getSchemaPressure('public')
     expect(pressure.sequences[0].name).toBe('seqs.orders_id_seq')
     expect(pressure.sequences[0].lastValue).toBeNull()
+  })
+})
+
+describe('getSchemaPressure — analyze thresholds', () => {
+  it('computes the autoanalyze trigger alongside the vacuum one', async () => {
+    answer([
+      ...baseRoutes,
+      ['pg_stat_user_tables', [
+        {
+          table_name: 'orders',
+          live_tuples: '1000', dead_tuples: '0', mods_since_analyze: '0',
+          last_vacuum: null, last_autovacuum: null, last_analyze: null, last_autoanalyze: null,
+          est_rows: 1000,
+          vac_threshold: 50, vac_scale_factor: 0.2,
+          analyze_threshold: 50, analyze_scale_factor: 0.1,
+          autovacuum_enabled: 'true',
+        },
+      ]],
+    ])
+
+    const pressure = await getSchemaPressure('public')
+    expect(pressure.vacuum[0]).toMatchObject({ vacuumThreshold: 250, analyzeThreshold: 150 })
+  })
+
+  it('reports no analyze trigger when autovacuum is off for the table', async () => {
+    answer([
+      ...baseRoutes,
+      ['pg_stat_user_tables', [
+        {
+          table_name: 'orders',
+          live_tuples: '1000', dead_tuples: '0', mods_since_analyze: '0',
+          last_vacuum: null, last_autovacuum: null, last_analyze: null, last_autoanalyze: null,
+          est_rows: 1000,
+          vac_threshold: 50, vac_scale_factor: 0.2,
+          analyze_threshold: 50, analyze_scale_factor: 0.1,
+          autovacuum_enabled: 'false',
+        },
+      ]],
+    ])
+
+    const pressure = await getSchemaPressure('public')
+    expect(pressure.vacuum[0].analyzeThreshold).toBeNull()
   })
 })
