@@ -358,6 +358,87 @@ export interface TableTypes {
   sequences: SequenceInfo[]
 }
 
+// ── Schema pressure ────────────────────────────────────────────────────────
+
+/**
+ * One index as the catalog describes it, plus its usage counter. The server
+ * ships these facts and nothing else — which of them count as *findings* is
+ * derived in `lib/pressure/index-audit.ts`, where it can be tested.
+ */
+export interface IndexEntry {
+  table: string
+  name: string
+  /** Access method: btree, gin, gist… Only same-method indexes can cover each other. */
+  method: string
+  /** Key columns in order. An expression column is reported as `(expr)`. */
+  keyColumns: string[]
+  isUnique: boolean
+  isPrimary: boolean
+  /** Has a `WHERE` clause, so it covers only part of the table. */
+  isPartial: boolean
+  hasExpression: boolean
+  /** Created by a constraint — dropping it means dropping the constraint. */
+  constraintBacked: boolean
+  /** Scans since the counters were last reset; `null` when the view had no row. */
+  scans: number | null
+  bytes: number
+}
+
+/** A foreign key's columns, in constraint order — what an index must lead with
+ *  to make the key's lookups and cascades cheap. */
+export interface ForeignKeyColumns {
+  table: string
+  constraint: string
+  columns: string[]
+}
+
+export interface TableSizeEntry {
+  table: string
+  /** Heap only — TOAST is reported separately rather than folded in. */
+  heapBytes: number
+  indexBytes: number
+  toastBytes: number
+  totalBytes: number
+  estimatedRows: number
+}
+
+export interface TableVacuumEntry {
+  table: string
+  liveTuples: number
+  deadTuples: number
+  modsSinceAnalyze: number
+  estimatedRows: number
+  lastVacuum: string | null
+  lastAutovacuum: string | null
+  lastAnalyze: string | null
+  lastAutoanalyze: string | null
+  /** Dead tuples autovacuum waits for on this table, per-table `reloptions`
+   *  included. `null` when the settings were unreadable. */
+  vacuumThreshold: number | null
+}
+
+export interface SchemaPressure {
+  schema: string
+  /**
+   * When the cumulative counters were last zeroed. Without it, "this index has
+   * never been scanned" is not a claim anyone can check — the counter may simply
+   * be young.
+   */
+  statsReset: string | null
+  indexes: IndexEntry[]
+  foreignKeys: ForeignKeyColumns[]
+  sizes: TableSizeEntry[]
+  vacuum: TableVacuumEntry[]
+  /** Schema-wide sequences. `columnMax` is always `null` here: probing `MAX()`
+   *  once per sequence is affordable for one table, not for a whole schema. */
+  sequences: SchemaSequenceEntry[]
+}
+
+/** A sequence seen from the schema, where the owning table has to be named. */
+export interface SchemaSequenceEntry extends SequenceInfo {
+  table: string
+}
+
 /** Shape of `local/schema-map.json`, emitted by pycode/local_dev/schema_map/extract.py. */
 export interface SchemaMap {
   source?: string

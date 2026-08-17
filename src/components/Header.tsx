@@ -32,6 +32,7 @@ export default function Header() {
             Console
           </Link>
           <LensLink />
+          <PressureLink />
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -189,6 +190,24 @@ function LensLink() {
       title="Schema architecture lens — how this schema is shaped"
     >
       Lens
+    </Link>
+  )
+}
+
+/** Index sprawl, disk, vacuum debt, sequence headroom — for the current schema. */
+function PressureLink() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const schema = schemaFromPathname(pathname)
+  if (!schema) return null
+  return (
+    <Link
+      to="/pressure/$schema"
+      params={{ schema }}
+      className="nav-link"
+      activeProps={{ className: 'nav-link is-active' }}
+      title="Schema pressure — unread indexes, disk, vacuum debt, sequences running out"
+    >
+      Pressure
     </Link>
   )
 }

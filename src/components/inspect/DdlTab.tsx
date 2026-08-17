@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import CopyButton from '#/components/inspect/CopyButton'
+import CopyButton from '#/components/CopyButton'
 import { $getTableDdl } from '#/server/api'
 import type { DdlIndex, TableDdl } from '#/lib/types'
 

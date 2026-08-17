@@ -29,6 +29,10 @@ describe('schemaFromPathname', () => {
     expect(schemaFromPathname('/lens/aggs_staged/orphans')).toBe('aggs_staged')
   })
 
+  it('reads the schema off the pressure route, so the nav keeps working there', () => {
+    expect(schemaFromPathname('/pressure/public')).toBe('public')
+  })
+
   it('decodes an encoded schema name', () => {
     expect(schemaFromPathname('/lens/my%20schema')).toBe('my schema')
   })

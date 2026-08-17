@@ -20,7 +20,7 @@ export interface LensLocation {
 
 /** Which schema the current URL is about, on either a table or a lens route. */
 export function schemaFromPathname(pathname: string): string | undefined {
-  const match = pathname.match(/^\/(?:t|lens)\/([^/]+)/)
+  const match = pathname.match(/^\/(?:t|lens|pressure)\/([^/]+)/)
   return match ? decodeURIComponent(match[1]) : undefined
 }
 

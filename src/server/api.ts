@@ -18,6 +18,7 @@ import {
   runReadOnlyQuery,
 } from '#/server/functions'
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
+import { getSchemaPressure } from '#/server/schema-pressure'
 import { readPerfLog } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { resolvePresets } from '#/lib/preset-resolver'
@@ -268,3 +269,12 @@ export const $getTableDdl = createServerFn({ method: 'GET' })
 export const $getTableTypes = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema: string; table: string }) => data)
   .handler(async ({ data }) => getTableTypes(data.schema, data.table))
+
+/**
+ * Everything behind `/pressure/$schema` in one fetch: index usage, sizes, vacuum
+ * debt, sequence headroom. Six catalog/statistics reads, no table data, so the
+ * page costs the same on a 1.8 TB schema as on an empty one.
+ */
+export const $getSchemaPressure = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string } | undefined) => data ?? {})
+  .handler(async ({ data }) => getSchemaPressure(data.schema))

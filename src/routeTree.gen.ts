@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PressureSchemaRouteImport } from './routes/pressure/$schema'
 import { Route as LensSchemaIndexRouteImport } from './routes/lens/$schema/index'
 import { Route as LensSchemaOrphansRouteImport } from './routes/lens/$schema/orphans'
 import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
@@ -32,6 +33,11 @@ const ConsoleRoute = ConsoleRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PressureSchemaRoute = PressureSchemaRouteImport.update({
+  id: '/pressure/$schema',
+  path: '/pressure/$schema',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LensSchemaIndexRoute = LensSchemaIndexRouteImport.update({
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
   '/settings': typeof SettingsRoute
+  '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
   '/settings': typeof SettingsRoute
+  '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
   '/settings': typeof SettingsRoute
+  '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/'
     | '/console'
     | '/settings'
+    | '/pressure/$schema'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/'
     | '/console'
     | '/settings'
+    | '/pressure/$schema'
     | '/lens/$schema/orphans'
     | '/lens/$schema'
     | '/lens/$schema/g/$group'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/console'
     | '/settings'
+    | '/pressure/$schema'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -139,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRoute
   SettingsRoute: typeof SettingsRoute
+  PressureSchemaRoute: typeof PressureSchemaRoute
   LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
   LensSchemaIndexRoute: typeof LensSchemaIndexRoute
   LensSchemaGGroupRoute: typeof LensSchemaGGroupRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pressure/$schema': {
+      id: '/pressure/$schema'
+      path: '/pressure/$schema'
+      fullPath: '/pressure/$schema'
+      preLoaderRoute: typeof PressureSchemaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lens/$schema/': {
@@ -219,6 +239,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRoute,
   SettingsRoute: SettingsRoute,
+  PressureSchemaRoute: PressureSchemaRoute,
   LensSchemaOrphansRoute: LensSchemaOrphansRoute,
   LensSchemaIndexRoute: LensSchemaIndexRoute,
   LensSchemaGGroupRoute: LensSchemaGGroupRoute,
