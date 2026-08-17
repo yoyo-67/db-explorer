@@ -5,6 +5,7 @@ import LinkableValue from '#/components/LinkableValue'
 import { $getChildCount, $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
+import { formatJsonText } from '#/lib/json-text'
 import { getRowLabel } from '#/lib/row-label'
 import type {
   ColumnInfo,
@@ -224,7 +225,9 @@ function FieldRow({
   target?: { schema: string; table: string; column: string }
   variant?: 'fk' | 'pk' | 'self-pk'
 }) {
-  const isJson = value !== null && value !== undefined && typeof value === 'object'
+  // A `text` column holding a JSON document lays out like a `jsonb` one — the
+  // declared type says nothing about what was stored in it.
+  const pretty = prettyJson ? formatJsonText(value) : null
   return (
     <>
       <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
@@ -240,9 +243,9 @@ function FieldRow({
           target={target}
           variant={variant}
         />
-        {isJson && prettyJson && (
+        {pretty !== null && (
           <pre className="mt-1 overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed text-[var(--sea-ink)] dark:bg-[rgba(255,255,255,0.04)]">
-            {JSON.stringify(value, null, 2)}
+            {pretty}
           </pre>
         )}
       </span>

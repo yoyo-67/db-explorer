@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import LinkableValue from '#/components/LinkableValue'
+import { formatJsonText } from '#/lib/json-text'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
@@ -348,7 +349,9 @@ function ExpandedField({
   target?: { schema: string; table: string; column: string }
   variant: 'fk' | 'pk'
 }) {
-  const isJsonObject = value !== null && typeof value === 'object'
+  // Covers a `text` column carrying a JSON document as well as a real json/jsonb
+  // one — same layout either way, since the declared type does not decide it.
+  const pretty = prettyJson ? formatJsonText(value) : null
   return (
     <>
       <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
@@ -356,9 +359,9 @@ function ExpandedField({
         <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">{col.dataType}</span>
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
-        {isJsonObject && prettyJson ? (
+        {pretty !== null ? (
           <pre className="overflow-x-auto rounded-md bg-[rgba(0,0,0,0.03)] p-2 text-[11px] leading-relaxed dark:bg-[rgba(255,255,255,0.04)]">
-            {JSON.stringify(value, null, 2)}
+            {pretty}
           </pre>
         ) : (
           <LinkableValue value={value} prettyJson={prettyJson} target={target} variant={variant} />
@@ -438,9 +441,7 @@ function HoverExpandCell({
           style={popupStyle}
           className="max-h-[200px] max-w-[500px] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--line)] bg-[var(--bg-base)] px-4 py-3 font-mono text-[12px] text-[var(--sea-ink)] shadow-xl"
         >
-          {typeof value === 'object' && value !== null && prettyJson
-            ? JSON.stringify(value, null, 2)
-            : str}
+          {(prettyJson ? formatJsonText(value) : null) ?? str}
         </div>
       )}
     </td>
