@@ -114,12 +114,14 @@ export default function TableInspector({
         )}
       </div>
 
+      {/* min-w-0 so a wide child — the profile's non-wrapping table — scrolls
+          inside its own container instead of stretching the page. */}
       {tab && (
         <div
           role="tabpanel"
           id={`inspector-panel-${tab}`}
           aria-labelledby={`inspector-tab-${tab}`}
-          className="border-t border-[var(--line)] px-3 py-3"
+          className="min-w-0 border-t border-[var(--line)] px-3 py-3"
         >
           {tab === 'profile' && (
             <ProfileTab

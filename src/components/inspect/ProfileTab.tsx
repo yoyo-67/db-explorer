@@ -54,8 +54,11 @@ export default function ProfileTab({
   return (
     <div className="space-y-3">
       <StatsFreshness profile={profile} />
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-[12px]">
+      {/* The cells do not wrap (a truncated column name or range is worse than a
+          scrollbar), so the table is allowed to outgrow the panel and scroll
+          inside it rather than widening the page. */}
+      <div className="min-w-0 overflow-x-auto">
+        <table className="w-max min-w-full border-collapse text-left text-[12px]">
           <thead>
             <tr className="border-b border-[var(--line)] text-[10px] uppercase tracking-wider text-[var(--sea-ink-soft)]">
               <th className="py-1.5 pr-3 font-semibold">Column</th>
@@ -181,7 +184,7 @@ function ColumnRow({
               onFilterValue={onFilterValue}
             />
           </td>
-          <td className="py-2 font-mono text-[11px] text-[var(--sea-ink-soft)]">
+          <td className="whitespace-nowrap py-2 font-mono text-[11px] text-[var(--sea-ink-soft)]">
             {stats.range ? (
               <span title={`${stats.range.low} … ${stats.range.high}`}>
                 {truncateValue(stats.range.low, 18)} … {truncateValue(stats.range.high, 18)}
@@ -214,7 +217,9 @@ function CommonValues({
   const coverage = commonValueCoverage(stats.commonValues)
 
   return (
-    <div className="space-y-1">
+    // Bounded so the chips wrap onto a second line instead of stretching the
+    // column — this is the one cell whose content has no natural width.
+    <div className="w-[22rem] max-w-[22rem] space-y-1">
       <div className="flex flex-wrap gap-1">
         {values.map((value) => {
           const input = filterInputForValue(value.value)
@@ -241,7 +246,15 @@ function CommonValues({
                   : 'border-[var(--line)] text-[var(--sea-ink)] hover:border-[var(--lagoon)] hover:bg-[rgba(79,184,178,0.08)]'
               } disabled:cursor-not-allowed disabled:opacity-50`}
             >
-              <span className={value.value === null ? 'italic opacity-70' : 'truncate'}>{shown}</span>
+              <span
+                className={
+                  value.value === null
+                    ? 'italic opacity-70'
+                    : 'max-w-[16rem] truncate break-all'
+                }
+              >
+                {shown}
+              </span>
               <span className="tabular-nums text-[10px] text-[var(--sea-ink-soft)]">
                 {formatPercent(value.freq, 0)}
               </span>
