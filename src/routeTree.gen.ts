@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as QueriesRouteImport } from './routes/queries'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PressureSchemaRouteImport } from './routes/pressure/$schema'
@@ -23,6 +24,11 @@ import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueriesRoute = QueriesRouteImport.update({
+  id: '/queries',
+  path: '/queries',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsoleRoute = ConsoleRouteImport.update({
@@ -74,6 +80,7 @@ const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/console': typeof ConsoleRoute
+  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/pressure/$schema': typeof PressureSchemaRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/console'
+    | '/queries'
     | '/settings'
     | '/pressure/$schema'
     | '/lens/$schema/orphans'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/console'
+    | '/queries'
     | '/settings'
     | '/pressure/$schema'
     | '/lens/$schema/orphans'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/console'
+    | '/queries'
     | '/settings'
     | '/pressure/$schema'
     | '/lens/$schema/orphans'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRoute
+  QueriesRoute: typeof QueriesRoute
   SettingsRoute: typeof SettingsRoute
   PressureSchemaRoute: typeof PressureSchemaRoute
   LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queries': {
+      id: '/queries'
+      path: '/queries'
+      fullPath: '/queries'
+      preLoaderRoute: typeof QueriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/console': {
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRoute,
+  QueriesRoute: QueriesRoute,
   SettingsRoute: SettingsRoute,
   PressureSchemaRoute: PressureSchemaRoute,
   LensSchemaOrphansRoute: LensSchemaOrphansRoute,

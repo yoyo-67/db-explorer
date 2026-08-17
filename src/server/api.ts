@@ -19,6 +19,7 @@ import {
 } from '#/server/functions'
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { getSchemaPressure } from '#/server/schema-pressure'
+import { getQueryStats } from '#/server/query-board'
 import { readPerfLog } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { resolvePresets } from '#/lib/preset-resolver'
@@ -278,3 +279,12 @@ export const $getTableTypes = createServerFn({ method: 'GET' })
 export const $getSchemaPressure = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => getSchemaPressure(data.schema))
+
+/**
+ * The `pg_stat_statements` board — connection-scoped, not schema-scoped: the
+ * view holds whatever the whole database ran, and says so when the extension is
+ * missing rather than showing an empty table.
+ */
+export const $getQueryStats = createServerFn({ method: 'GET' }).handler(async () =>
+  getQueryStats(),
+)

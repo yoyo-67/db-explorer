@@ -442,6 +442,57 @@ export interface SchemaSequenceEntry extends SequenceInfo {
   table: string
 }
 
+// ── Query board (pg_stat_statements) ───────────────────────────────────────
+
+/**
+ * One normalized statement as `pg_stat_statements` accumulated it. Times are
+ * milliseconds; every figure is a running total since the counters were reset,
+ * never a sample of "now".
+ */
+export interface QueryStatEntry {
+  /** `queryid` as a string — it is a signed bigint and is routinely negative. */
+  queryId: string
+  /** The normalized text, with constants replaced by `$n` placeholders. */
+  query: string
+  calls: number
+  totalMs: number
+  meanMs: number
+  minMs: number
+  maxMs: number
+  stddevMs: number
+  rows: number
+  sharedBlksHit: number
+  sharedBlksRead: number
+  /** `null` when `track_io_timing` is off, which is different from zero wait. */
+  ioReadMs: number | null
+  ioWriteMs: number | null
+  /** Role that ran it, `null` when the role is not visible to this user. */
+  role: string | null
+}
+
+/**
+ * The query board, or why there isn't one. `pg_stat_statements` is an extension
+ * and a read-only session cannot install it, so an absent extension is reported
+ * rather than shown as an empty board.
+ */
+export interface QueryStats {
+  available: boolean
+  unavailableReason: 'not-installed' | 'not-readable' | null
+  /** Error text when the view exists but would not answer. */
+  error: string | null
+  /** From `pg_stat_statements_info` (Postgres 14+); `null` on older servers. */
+  statsReset: string | null
+  /** Whether the server records I/O wait — without it the I/O columns are blank. */
+  ioTiming: boolean
+  /** `pg_stat_statements.track`: `top`, `all`, or `none`. */
+  track: string | null
+  /** Execution time summed over every statement, for share-of-total. */
+  totalMs: number
+  /** Statements the view is holding for this database, before the board's cap. */
+  statementCount: number
+  entries: QueryStatEntry[]
+}
+
 /** Shape of `local/schema-map.json`, emitted by pycode/local_dev/schema_map/extract.py. */
 export interface SchemaMap {
   source?: string

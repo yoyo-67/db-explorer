@@ -31,6 +31,14 @@ export default function Header() {
           >
             Console
           </Link>
+          <Link
+            to="/queries"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+            title="Query board — what this database spends its time running"
+          >
+            Queries
+          </Link>
           <LensLink />
           <PressureLink />
         </div>

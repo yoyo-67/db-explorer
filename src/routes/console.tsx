@@ -12,13 +12,24 @@ import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { $runReadOnlyQuery } from '#/server/api'
 import type { ConsoleResult } from '#/lib/types'
 
+interface ConsoleSearch {
+  /** Statement to open the console with — how the query board hands one over. */
+  sql?: string
+}
+
 export const Route = createFileRoute('/console')({
   component: ConsolePage,
+  validateSearch: (search: Record<string, unknown>): ConsoleSearch => ({
+    sql: typeof search.sql === 'string' && search.sql.length > 0 ? search.sql : undefined,
+  }),
 })
 
 function ConsolePage() {
   const { isChecking, isConnected } = useConnectionGuard()
-  const [sql, setSql] = useState('SELECT 1')
+  const search = Route.useSearch()
+  // Prefilled, never auto-run: the statement arrives with `$1` placeholders the
+  // normalizer left behind, so it is a draft to edit rather than one to execute.
+  const [sql, setSql] = useState(search.sql ?? 'SELECT 1')
   const [result, setResult] = useState<ConsoleResult | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
