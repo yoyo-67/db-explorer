@@ -14,6 +14,7 @@ import { connectionStatusKey, useConnectionStatus } from '#/hooks/useConnectionS
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath } from '#/lib/lens-links'
 import { resolveActiveSchema } from '#/lib/active-schema'
+import TextScale from './TextScale'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
 
@@ -42,6 +43,14 @@ export default function Header() {
           </Link>
           <LensLink />
           <PressureLink />
+          <Link
+            to="/help"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+            title="What this app asks your database, explained"
+          >
+            Help
+          </Link>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
@@ -49,6 +58,7 @@ export default function Header() {
           <ConnectionSwitcher />
           <SchemaPicker />
           <SettingsLink />
+          <TextScale />
           <ThemeToggle />
         </div>
       </nav>

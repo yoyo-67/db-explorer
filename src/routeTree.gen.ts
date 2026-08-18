@@ -13,7 +13,9 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QueriesRouteImport } from './routes/queries'
 import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HelpIndexRouteImport } from './routes/help/index'
 import { Route as PressureSchemaRouteImport } from './routes/pressure/$schema'
+import { Route as HelpTopicRouteImport } from './routes/help/$topic'
 import { Route as LensSchemaIndexRouteImport } from './routes/lens/$schema/index'
 import { Route as LensSchemaOrphansRouteImport } from './routes/lens/$schema/orphans'
 import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
@@ -41,9 +43,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HelpIndexRoute = HelpIndexRouteImport.update({
+  id: '/help/',
+  path: '/help/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PressureSchemaRoute = PressureSchemaRouteImport.update({
   id: '/pressure/$schema',
   path: '/pressure/$schema',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpTopicRoute = HelpTopicRouteImport.update({
+  id: '/help/$topic',
+  path: '/help/$topic',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LensSchemaIndexRoute = LensSchemaIndexRouteImport.update({
@@ -82,7 +94,9 @@ export interface FileRoutesByFullPath {
   '/console': typeof ConsoleRoute
   '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
+  '/help/$topic': typeof HelpTopicRoute
   '/pressure/$schema': typeof PressureSchemaRoute
+  '/help/': typeof HelpIndexRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -95,7 +109,9 @@ export interface FileRoutesByTo {
   '/console': typeof ConsoleRoute
   '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
+  '/help/$topic': typeof HelpTopicRoute
   '/pressure/$schema': typeof PressureSchemaRoute
+  '/help': typeof HelpIndexRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -109,7 +125,9 @@ export interface FileRoutesById {
   '/console': typeof ConsoleRoute
   '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
+  '/help/$topic': typeof HelpTopicRoute
   '/pressure/$schema': typeof PressureSchemaRoute
+  '/help/': typeof HelpIndexRoute
   '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
   '/lens/$schema/': typeof LensSchemaIndexRoute
   '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
@@ -124,7 +142,9 @@ export interface FileRouteTypes {
     | '/console'
     | '/queries'
     | '/settings'
+    | '/help/$topic'
     | '/pressure/$schema'
+    | '/help/'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -137,7 +157,9 @@ export interface FileRouteTypes {
     | '/console'
     | '/queries'
     | '/settings'
+    | '/help/$topic'
     | '/pressure/$schema'
+    | '/help'
     | '/lens/$schema/orphans'
     | '/lens/$schema'
     | '/lens/$schema/g/$group'
@@ -150,7 +172,9 @@ export interface FileRouteTypes {
     | '/console'
     | '/queries'
     | '/settings'
+    | '/help/$topic'
     | '/pressure/$schema'
+    | '/help/'
     | '/lens/$schema/orphans'
     | '/lens/$schema/'
     | '/lens/$schema/g/$group'
@@ -164,7 +188,9 @@ export interface RootRouteChildren {
   ConsoleRoute: typeof ConsoleRoute
   QueriesRoute: typeof QueriesRoute
   SettingsRoute: typeof SettingsRoute
+  HelpTopicRoute: typeof HelpTopicRoute
   PressureSchemaRoute: typeof PressureSchemaRoute
+  HelpIndexRoute: typeof HelpIndexRoute
   LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
   LensSchemaIndexRoute: typeof LensSchemaIndexRoute
   LensSchemaGGroupRoute: typeof LensSchemaGGroupRoute
@@ -203,11 +229,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/help/': {
+      id: '/help/'
+      path: '/help'
+      fullPath: '/help/'
+      preLoaderRoute: typeof HelpIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pressure/$schema': {
       id: '/pressure/$schema'
       path: '/pressure/$schema'
       fullPath: '/pressure/$schema'
       preLoaderRoute: typeof PressureSchemaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help/$topic': {
+      id: '/help/$topic'
+      path: '/help/$topic'
+      fullPath: '/help/$topic'
+      preLoaderRoute: typeof HelpTopicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lens/$schema/': {
@@ -260,7 +300,9 @@ const rootRouteChildren: RootRouteChildren = {
   ConsoleRoute: ConsoleRoute,
   QueriesRoute: QueriesRoute,
   SettingsRoute: SettingsRoute,
+  HelpTopicRoute: HelpTopicRoute,
   PressureSchemaRoute: PressureSchemaRoute,
+  HelpIndexRoute: HelpIndexRoute,
   LensSchemaOrphansRoute: LensSchemaOrphansRoute,
   LensSchemaIndexRoute: LensSchemaIndexRoute,
   LensSchemaGGroupRoute: LensSchemaGGroupRoute,
