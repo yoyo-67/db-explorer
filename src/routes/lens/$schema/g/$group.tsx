@@ -15,7 +15,7 @@ import {
 import { degreesOf } from '#/lib/schema-graph-metrics'
 import { tableLabel } from '#/lib/table-label'
 import type { BoundaryStub, LabelSlot, RadialNode } from '#/lib/lens-layout'
-import type { SchemaGraphEdge } from '#/lib/types'
+import type { EdgeBasis, SchemaGraphEdge } from '#/lib/types'
 
 export const Route = createFileRoute('/lens/$schema/g/$group')({
   component: GroupPage,
@@ -608,7 +608,7 @@ function StubTable({
   group,
 }: {
   schema: string
-  search: { damp?: string; basis?: 'declared' | 'model' | 'convention'; focus?: string }
+  search: { damp?: string; basis?: EdgeBasis; focus?: string }
   stubs: BoundaryStub[]
   group: string
 }) {

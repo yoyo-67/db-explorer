@@ -19,7 +19,7 @@ export interface LensSearch {
 /** Damping off is an explicit value, because absent has to mean on. */
 export const DAMP_OFF = 'none'
 
-const BASES: readonly EdgeBasis[] = ['declared', 'model', 'convention']
+const BASES: readonly EdgeBasis[] = ['declared', 'catalog', 'model', 'convention']
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined

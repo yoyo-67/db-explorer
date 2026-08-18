@@ -37,6 +37,8 @@ export interface ColumnInfo {
 export interface TableInfo {
   name: string
   schema: string
+  /** A view has no rows of its own; the browser pages it, but never counts it. */
+  kind: 'table' | 'view'
   rowCount: number
   lastModified: string | null
   columns: ColumnInfo[]
@@ -169,7 +171,7 @@ export interface TableCatalog {
  * constraint, `model` a Django relation the constraint was stripped from,
  * `convention` a column-name rule applied only where no model edge exists.
  */
-export type EdgeBasis = 'declared' | 'model' | 'convention'
+export type EdgeBasis = 'declared' | 'model' | 'convention' | 'catalog'
 
 export type NodeKind = 'table' | 'view'
 

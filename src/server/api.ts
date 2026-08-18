@@ -221,12 +221,12 @@ export const $getPerfLog = createServerFn({ method: 'GET' })
     return sinceTs == null ? entries : entries.filter((e) => e.ts > sinceTs)
   })
 
-export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    const catalog = await readTableCatalog()
+export const $getTableCatalog = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string }) => data)
+  .handler(async ({ data }) => {
+    const catalog = await readTableCatalog(data.schema || 'public')
     return catalog ?? ({ groups: [], tables: {} } as TableCatalog)
-  },
-)
+  })
 
 /**
  * Table → Django module group, the lens's second-choice grouping. The catalog
@@ -234,8 +234,10 @@ export const $getTableCatalog = createServerFn({ method: 'GET' }).handler(
  * asking "what group is this table in?" needs this alongside the catalog to
  * answer the way the graph does. Names only — no edges, no DB round trip.
  */
-export const $getMapGroups = createServerFn({ method: 'GET' }).handler(async () => {
-  const map = await readSchemaMap()
+export const $getMapGroups = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string }) => data)
+  .handler(async ({ data }) => {
+  const map = await readSchemaMap(data.schema || 'public')
   const groups: Record<string, string> = {}
   for (const [table, meta] of Object.entries(map?.tables ?? {})) {
     if (meta.group) groups[table] = meta.group

@@ -47,14 +47,14 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
   })
 
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog'],
-    queryFn: () => $getTableCatalog(),
+    queryKey: ['tableCatalog', schema],
+    queryFn: () => $getTableCatalog({ data: { schema } }),
     staleTime: Infinity,
   })
 
   const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups'],
-    queryFn: () => $getMapGroups(),
+    queryKey: ['mapGroups', schema],
+    queryFn: () => $getMapGroups({ data: { schema } }),
     staleTime: Infinity,
   })
 
@@ -165,8 +165,10 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
                           }`}
                         >
                           <span className="truncate">{t.name}</span>
+                          {/* A view has no rows of its own, so its row slot says
+                              what it is instead of claiming a count of zero. */}
                           <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)] opacity-70 group-hover:opacity-100">
-                            {formatRowCount(t.rowCount)}
+                            {t.kind === 'view' ? 'view' : formatRowCount(t.rowCount)}
                           </span>
                         </Link>
                       </li>

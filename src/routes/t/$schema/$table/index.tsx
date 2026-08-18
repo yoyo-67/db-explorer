@@ -67,13 +67,13 @@ function formatSort(sort: TableSort | null): string | undefined {
  */
 function ShowInLens({ schema, table }: { schema: string; table: string }) {
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog'],
-    queryFn: () => $getTableCatalog(),
+    queryKey: ['tableCatalog', schema],
+    queryFn: () => $getTableCatalog({ data: { schema } }),
     staleTime: Infinity,
   })
   const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups'],
-    queryFn: () => $getMapGroups(),
+    queryKey: ['mapGroups', schema],
+    queryFn: () => $getMapGroups({ data: { schema } }),
     staleTime: Infinity,
   })
   const target = lensTargetForTable(table, catalogQuery.data, mapGroupsQuery.data)

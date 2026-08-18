@@ -10,6 +10,7 @@ function table(name: string, rowCount = 0): TableInfo {
   return {
     name,
     schema: 'public',
+    kind: 'table',
     rowCount,
     lastModified: null,
     columns: [],

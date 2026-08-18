@@ -13,6 +13,7 @@ import { sequenceHealth } from '#/lib/inspect/sequence'
 import { indexAuditTotals } from '#/lib/pressure/index-audit'
 import { vacuumLevel } from '#/lib/pressure/vacuum'
 import { analyzeState, isBlindAndLarge } from '#/lib/pressure/analyze'
+import { isSystemSchema } from '#/lib/system-schema'
 import type { SchemaPressure } from '#/lib/types'
 
 export const Route = createFileRoute('/pressure/$schema')({
@@ -28,11 +29,12 @@ export const Route = createFileRoute('/pressure/$schema')({
 function PressurePage() {
   const { schema } = Route.useParams()
   const { isChecking, isConnected } = useConnectionGuard()
+  const isSystem = isSystemSchema(schema)
 
   const pressureQuery = useQuery({
     queryKey: ['schemaPressure', schema],
     queryFn: () => $getSchemaPressure({ data: { schema } }),
-    enabled: isConnected,
+    enabled: isConnected && !isSystem,
     // Counters move; a minute is long enough to make tab-switching cheap and
     // short enough that a refresh after a vacuum shows something new.
     staleTime: 60_000,
@@ -46,6 +48,28 @@ function PressurePage() {
     )
   }
   if (!isConnected) return null
+
+  // The whole page is built on `pg_stat_user_*`, and `user` means "not system":
+  // every counter would read zero for `pg_catalog`, which is a page of confident
+  // wrong answers rather than an empty one.
+  if (isSystem) {
+    return (
+      <main className="px-4 pb-8 pt-6">
+        <div className="mx-auto max-w-2xl space-y-2">
+          <p className="island-kicker">Pressure</p>
+          <h1 className="text-lg font-semibold text-[var(--sea-ink)]">
+            Not measured for {schema}
+          </h1>
+          <p className="text-sm leading-relaxed text-[var(--sea-ink-soft)]">
+            This page reads the <code>pg_stat_user_*</code> views, which by
+            definition hold nothing for Postgres&rsquo;s own schemas. Index usage,
+            vacuum debt and sequence headroom are questions about your tables —
+            browse {schema} from the table list instead.
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   const pressure = pressureQuery.data
 

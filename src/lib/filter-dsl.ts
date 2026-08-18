@@ -52,7 +52,15 @@ function isTextType(dataType?: string): boolean {
     t.includes('char') ||
     t === 'text' ||
     t === 'citext' ||
-    t === 'name'
+    t === 'name' ||
+    // Types with no equality against a bare literal — an array column compared
+    // to `x` fails as "malformed array literal", which reads as a broken app
+    // rather than as a filter that cannot mean anything. Rendering them to text
+    // and matching on that always works, at the price of the index. These are
+    // Postgres's own column types (`aclitem[]`, `oidvector`, `pg_node_tree`),
+    // reachable only by browsing a system schema.
+    t === 'array' ||
+    t === 'user-defined'
   )
 }
 

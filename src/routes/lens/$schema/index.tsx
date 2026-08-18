@@ -12,7 +12,7 @@ import {
   DERIVED_GROUP_LABEL,
   edgesForGroupPair,
 } from '#/lib/schema-graph-metrics'
-import type { SchemaGraphEdge } from '#/lib/types'
+import type { EdgeBasis, SchemaGraphEdge } from '#/lib/types'
 
 export const Route = createFileRoute('/lens/$schema/')({
   component: MatrixPage,
@@ -317,7 +317,7 @@ function GroupLink({
 }: {
   schema: string
   group: string
-  search: { damp?: string; basis?: 'declared' | 'model' | 'convention' }
+  search: { damp?: string; basis?: EdgeBasis }
 }) {
   if (group === DERIVED_GROUP_LABEL) return <span>{group}</span>
   return (

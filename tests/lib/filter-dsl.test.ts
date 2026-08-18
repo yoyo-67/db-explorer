@@ -104,3 +104,21 @@ describe('compileFilters', () => {
     expect(sql).toBe(`age > '10'`)
   })
 })
+
+describe('types with no equality against a literal', () => {
+  it('matches array columns as text rather than failing', () => {
+    // `proacl = 'x'` is a malformed-array-literal error on the server
+    const sql = compilePredicate(parsePredicate('postgres')!, 'proacl', 'ARRAY')
+    expect(sql).toBe("proacl::text ILIKE '%postgres%'")
+  })
+
+  it('matches user-defined columns as text', () => {
+    const sql = compilePredicate(parsePredicate('unit')!, 'indpred', 'USER-DEFINED')
+    expect(sql).toBe("indpred::text ILIKE '%unit%'")
+  })
+
+  it('leaves oid columns comparing natively, so the index still applies', () => {
+    const sql = compilePredicate(parsePredicate('1259')!, 'oid', 'oid')
+    expect(sql).toBe("oid = '1259'")
+  })
+})

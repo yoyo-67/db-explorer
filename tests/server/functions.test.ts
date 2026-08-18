@@ -66,8 +66,20 @@ describe('getTables', () => {
     // First query: table list with row counts
     mockQuery.mockResolvedValueOnce({
       rows: [
-        { table_name: 'users', table_schema: 'public', row_count: '100', last_modified: null },
-        { table_name: 'posts', table_schema: 'public', row_count: '500', last_modified: null },
+        {
+          table_name: 'users',
+          schema_name: 'public',
+          relation_kind: 'BASE TABLE',
+          row_count: '100',
+          last_modified: null,
+        },
+        {
+          table_name: 'posts',
+          schema_name: 'public',
+          relation_kind: 'VIEW',
+          row_count: '500',
+          last_modified: null,
+        },
       ],
     })
     // Second query: columns for all tables
@@ -99,13 +111,15 @@ describe('getTables', () => {
         },
       ],
     })
-    // Third query: primary keys
+    // Third and fourth queries: declared primary keys, then the unique-index
+    // fallback that covers tables (the catalog's own) which declare none.
     mockQuery.mockResolvedValueOnce({
       rows: [
         { table_name: 'users', column_name: 'id' },
         { table_name: 'posts', column_name: 'id' },
       ],
     })
+    mockQuery.mockResolvedValueOnce({ rows: [] })
 
     const result = await getTables()
 
@@ -113,6 +127,7 @@ describe('getTables', () => {
     expect(result[0]).toEqual({
       name: 'users',
       schema: 'public',
+      kind: 'table',
       rowCount: 100,
       lastModified: null,
       columns: [
@@ -122,11 +137,13 @@ describe('getTables', () => {
       pkColumn: 'id',
     })
     expect(result[1].name).toBe('posts')
+    expect(result[1].kind).toBe('view')
     expect(result[1].columns).toHaveLength(2)
     expect(result[1].pkColumn).toBe('id')
   })
 
   it('returns empty array when no tables', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
     mockQuery.mockResolvedValueOnce({ rows: [] })
     mockQuery.mockResolvedValueOnce({ rows: [] })
     mockQuery.mockResolvedValueOnce({ rows: [] })
@@ -276,13 +293,14 @@ describe('resolveEntryTarget', () => {
   /** Route queries by the object each one reads, so order doesn't matter. */
   function stubCatalog(schemas: string[], tables: string[]) {
     mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes('information_schema.schemata')) {
+      if (sql.includes('pg_namespace')) {
         return { rows: schemas.map((schema_name) => ({ schema_name })) }
       }
       return {
         rows: tables.map((table_name) => ({
           table_name,
-          table_schema: schemas[0],
+          schema_name: schemas[0],
+          relation_kind: 'BASE TABLE',
           row_count: 0,
           last_modified: null,
         })),

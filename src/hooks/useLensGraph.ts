@@ -50,8 +50,8 @@ export function useLensGraph(
   })
 
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog'],
-    queryFn: () => $getTableCatalog(),
+    queryKey: ['tableCatalog', schema],
+    queryFn: () => $getTableCatalog({ data: { schema } }),
     staleTime: Infinity,
   })
 

@@ -12,12 +12,14 @@ export default function BasisTag({ basis }: { basis: EdgeBasis }) {
       'A Django relation whose constraint was stripped (simple_history / CrossDBForeignKey). Authoritative, but not enforced by the database.',
     convention:
       'Inferred from the column name, only where no model relation described the column.',
+    catalog:
+      'A join Postgres documents between its own catalog tables. Real and reliable, but no constraint enforces it — the catalog declares none.',
   }[basis]
   return (
     <span
       title={hint}
       className={`rounded-full border px-1.5 text-[10px] ${
-        basis === 'declared'
+        basis === 'declared' || basis === 'catalog'
           ? 'border-[var(--chip-line)] text-[var(--palm)]'
           : 'border-dashed border-[var(--line)] text-[var(--sea-ink-soft)]'
       }`}

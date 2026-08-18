@@ -8,6 +8,7 @@ import type {
   SchemaMap,
   TableCatalog,
 } from '#/lib/types'
+import { catalogEdgesFor } from '#/lib/catalog-edges'
 
 /**
  * Merging the schema graph. Pure: the SQL and file reads live in
@@ -75,11 +76,14 @@ export function edgeKey(table: string, column: string): string {
   return `${table}.${column}`
 }
 
-/** declared beats model beats convention — the merge order, as a number. */
+/** declared beats catalog beats model beats convention — the merge order, as a
+ *  number. `catalog` sits second because it only ever applies where nothing is
+ *  declared at all, and it is documented rather than inferred. */
 const BASIS_PRIORITY: Record<EdgeBasis, number> = {
   declared: 0,
-  model: 1,
-  convention: 2,
+  catalog: 1,
+  model: 2,
+  convention: 3,
 }
 
 export interface CandidateEdge {
@@ -184,13 +188,16 @@ export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
   // 1. declared — the live constraint is the truth wherever it exists
   for (const e of declaredEdges) candidates.push({ ...e, basis: 'declared' })
 
-  // 2. model — Django knows the target the constraint was stripped from
+  // 2. catalog — Postgres's own tables, which declare no constraints at all
+  for (const e of catalogEdgesFor(schema)) candidates.push(e)
+
+  // 3. model — Django knows the target the constraint was stripped from
   for (const e of map?.edges ?? []) {
     if (e.basis !== 'model') continue
     candidates.push({ ...e, basis: 'model' })
   }
 
-  // 3. convention — name rules; precedence drops these wherever 1 or 2 spoke
+  // 4. convention — name rules; precedence drops these wherever 1 or 2 spoke
   for (const t of liveTables) {
     for (const c of t.columns) {
       if (!isReferenceColumn(c.name, t.pkColumn)) continue

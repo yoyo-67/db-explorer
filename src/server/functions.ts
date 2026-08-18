@@ -85,13 +85,30 @@ export async function testConnection(
   }
 }
 
+/**
+ * Every schema this role can actually open, Postgres's own included.
+ *
+ * `information_schema.schemata` only lists schemas you own, which quietly hid
+ * both the catalog and any schema owned by someone else. This asks the question
+ * the picker is really asking — can I use it, and is there anything in it — so a
+ * schema never appears only to open onto nothing. `pg_toast` and the per-session
+ * `pg_temp_*` schemas are excluded: their contents are storage, not data anyone
+ * browses.
+ */
 export async function getSchemas(): Promise<string[]> {
   const result = await query(`
-    SELECT schema_name
-    FROM information_schema.schemata
-    WHERE schema_name NOT LIKE 'pg_%'
-      AND schema_name NOT IN ('information_schema')
-    ORDER BY schema_name
+    SELECT namespace.nspname AS schema_name
+    FROM pg_namespace AS namespace
+    WHERE has_schema_privilege(namespace.oid, 'USAGE')
+      AND namespace.nspname NOT LIKE 'pg_toast%'
+      AND namespace.nspname NOT LIKE 'pg_temp%'
+      AND EXISTS (
+        SELECT 1
+        FROM pg_class AS relation
+        WHERE relation.relnamespace = namespace.oid
+          AND relation.relkind IN ('r', 'v', 'm', 'p', 'f')
+      )
+    ORDER BY namespace.nspname
   `)
   return result.rows.map((row) => row.schema_name as string)
 }
@@ -125,25 +142,63 @@ async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInf
   return columnsByTable
 }
 
-/** First primary-key column per table in the schema. */
+/**
+ * First primary-key column per table in the schema, with a fallback.
+ *
+ * The catalog declares no primary keys — `pg_class` is identified by `oid`
+ * through a unique index, not a constraint — so a schema-wide lookup that only
+ * reads constraints leaves every system table without a row identity, and
+ * without one a row page cannot be linked to. Where no key is declared, a
+ * *single-column* unique index is the same promise by another name; `oid` wins
+ * when a table has more than one, since that is the identity everything else in
+ * the catalog joins on. Multi-column unique indexes are ignored: half of a
+ * composite key identifies nothing.
+ */
 async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
-  const result = await query(
-    `
-    SELECT kcu.table_name, kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name
-      AND tc.table_schema = kcu.table_schema
-      AND tc.table_name = kcu.table_name
-    WHERE tc.constraint_type = 'PRIMARY KEY'
-      AND tc.table_schema = $1
-    ORDER BY kcu.table_name, kcu.ordinal_position
-  `,
-    [schema],
-  )
+  const [declared, unique] = await Promise.all([
+    query(
+      `
+      SELECT
+        key_columns.table_name  AS table_name,
+        key_columns.column_name AS column_name
+      FROM information_schema.table_constraints AS constraints
+      JOIN information_schema.key_column_usage AS key_columns
+        ON constraints.constraint_name = key_columns.constraint_name
+        AND constraints.table_schema = key_columns.table_schema
+        AND constraints.table_name = key_columns.table_name
+      WHERE constraints.constraint_type = 'PRIMARY KEY'
+        AND constraints.table_schema = $1
+      ORDER BY key_columns.table_name, key_columns.ordinal_position
+    `,
+      [schema],
+    ),
+    query(
+      `
+      SELECT
+        relation.relname AS table_name,
+        column_row.attname AS column_name
+      FROM pg_index AS index_def
+      JOIN pg_class AS relation ON relation.oid = index_def.indrelid
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_attribute AS column_row
+        ON column_row.attrelid = index_def.indrelid
+        AND column_row.attnum = index_def.indkey[0]
+      WHERE namespace.nspname = $1
+        AND index_def.indisunique
+        AND array_length(index_def.indkey::int[], 1) = 1
+      ORDER BY relation.relname, (column_row.attname <> 'oid'), column_row.attname
+    `,
+      [schema],
+    ),
+  ])
 
   const pkByTable = new Map<string, string>()
-  for (const row of result.rows) {
+  for (const row of declared.rows) {
+    if (!pkByTable.has(row.table_name)) {
+      pkByTable.set(row.table_name, row.column_name)
+    }
+  }
+  for (const row of unique.rows) {
     if (!pkByTable.has(row.table_name)) {
       pkByTable.set(row.table_name, row.column_name)
     }
@@ -151,20 +206,37 @@ async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, strin
   return pkByTable
 }
 
+/**
+ * The tables of a schema, views included.
+ *
+ * Views are listed because leaving them out would make Postgres's own schemas
+ * unusable — `pg_catalog` is more view than table, and `information_schema` is
+ * nothing else — and because a view you can page through is a view worth
+ * showing anywhere. Statistics come from `pg_stat_all_tables` rather than the
+ * `user` variant, which by definition excludes system tables; a view has no
+ * statistics row at all and reports no count rather than zero.
+ */
 export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableInfo[]> {
   const tablesResult = await query(
     `
     SELECT
-      t.table_name,
-      t.table_schema,
-      COALESCE(s.n_live_tup, 0) AS row_count,
-      GREATEST(s.last_autoanalyze, s.last_autovacuum, s.last_analyze, s.last_vacuum) AS last_modified
-    FROM information_schema.tables t
-    LEFT JOIN pg_stat_user_tables s
-      ON s.relname = t.table_name AND s.schemaname = t.table_schema
-    WHERE t.table_schema = $1
-      AND t.table_type = 'BASE TABLE'
-    ORDER BY t.table_name
+      tables.table_name   AS table_name,
+      tables.table_schema AS schema_name,
+      tables.table_type   AS relation_kind,
+      COALESCE(table_stats.n_live_tup, 0) AS row_count,
+      GREATEST(
+        table_stats.last_autoanalyze,
+        table_stats.last_autovacuum,
+        table_stats.last_analyze,
+        table_stats.last_vacuum
+      ) AS last_modified
+    FROM information_schema.tables AS tables
+    LEFT JOIN pg_stat_all_tables AS table_stats
+      ON table_stats.relname = tables.table_name
+      AND table_stats.schemaname = tables.table_schema
+    WHERE tables.table_schema = $1
+      AND tables.table_type IN ('BASE TABLE', 'VIEW')
+    ORDER BY tables.table_name
   `,
     [schema],
   )
@@ -176,7 +248,8 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
 
   return tablesResult.rows.map((row) => ({
     name: row.table_name,
-    schema: row.table_schema,
+    schema: row.schema_name,
+    kind: row.relation_kind === 'VIEW' ? ('view' as const) : ('table' as const),
     rowCount: Number(row.row_count),
     lastModified: row.last_modified ? new Date(row.last_modified).toISOString() : null,
     columns: columnsByTable.get(row.table_name) ?? [],
@@ -333,8 +406,8 @@ export async function getSchemaGraph(
       fetchSchemaPrimaryKeys(schema),
       getForeignKeys(schema),
       fetchIndexedColumns(schema),
-      readSchemaMap(),
-      readTableCatalog(),
+      readSchemaMap(schema),
+      readTableCatalog(schema),
     ])
 
   const liveTables: LiveTable[] = tablesResult.rows.map((row) => ({
@@ -801,7 +874,7 @@ async function fetchTraceEdges(
   const tableColumns = columns.map((c) => ({ name: c.name, isNullable: c.isNullable }))
   const [declaredEdges, map] = await Promise.all([
     getForeignKeys(schema),
-    readSchemaMap(),
+    readSchemaMap(schema),
   ])
 
   const names = traceCandidateNames(table, tableColumns, pkColumn, declaredEdges, map)
