@@ -20,20 +20,21 @@ import type { SampleAttempt, SampleStrategy } from '#/lib/sample-plan'
 import type { LiveTable } from '#/lib/schema-graph'
 import type { TraceEdge } from '#/lib/row-trace'
 import type {
-  ConnectionConfig,
-  EntryTarget,
-  TableInfo,
   ColumnInfo,
-  TableData,
-  ForeignKey,
+  ConnectionConfig,
   ConsoleResult,
+  EntryTarget,
+  ForeignKey,
   IntrospectResult,
   JsonValue,
   RandomRowSample,
-  RowDetail,
   RowChildGroup,
+  RowDetail,
   RowOutgoingRef,
   SchemaGraph,
+  SchemaInfo,
+  TableData,
+  TableInfo,
   TablePage,
   TablePageRequest,
 } from '#/lib/types'
@@ -86,22 +87,46 @@ export async function testConnection(
 }
 
 /**
- * Every schema this role can actually open, Postgres's own included.
+ * Every schema this role can actually open, Postgres's own included, each with
+ * the facts that decide how the app treats it.
  *
  * `information_schema.schemata` only lists schemas you own, which quietly hid
- * both the catalog and any schema owned by someone else. This asks the question
- * the picker is really asking — can I use it, and is there anything in it — so a
- * schema never appears only to open onto nothing. `pg_toast` and the per-session
- * `pg_temp_*` schemas are excluded: their contents are storage, not data anyone
- * browses.
+ * both the catalog and any schema owned by someone else. This asks the two
+ * questions the picker is really asking — may I use it, and is there anything in
+ * it — so a schema never appears only to open onto nothing.
+ *
+ * That pair is enough on its own: `pg_toast` holds hundreds of relations and
+ * none of them are browsable (`relkind = 't'`), so it drops out without being
+ * named, and another session's temporary schema is excluded by asking Postgres
+ * whose it is. A schema you lack `USAGE` on is left out for the same reason —
+ * offering it would promise a page that can only answer "permission denied".
+ *
+ * Neither flag is a name match. "System" is read off the statistics views —
+ * present in `pg_stat_all_tables`, absent from `pg_stat_user_tables` — which is
+ * Postgres's own answer to the question and stays right whatever a schema is
+ * called. "Catalog" is wherever `pg_class` happens to live.
  */
-export async function getSchemas(): Promise<string[]> {
+export async function getSchemas(): Promise<SchemaInfo[]> {
   const result = await query(`
-    SELECT namespace.nspname AS schema_name
+    SELECT
+      namespace.nspname AS schema_name,
+      namespace.oid = (
+        SELECT relation.relnamespace FROM pg_class AS relation
+        WHERE relation.oid = 'pg_class'::regclass
+      ) AS is_catalog,
+      (
+        EXISTS (
+          SELECT 1 FROM pg_stat_all_tables AS all_stats
+          WHERE all_stats.schemaname = namespace.nspname
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_stat_user_tables AS user_stats
+          WHERE user_stats.schemaname = namespace.nspname
+        )
+      ) AS is_system
     FROM pg_namespace AS namespace
     WHERE has_schema_privilege(namespace.oid, 'USAGE')
-      AND namespace.nspname NOT LIKE 'pg_toast%'
-      AND namespace.nspname NOT LIKE 'pg_temp%'
+      AND NOT pg_is_other_temp_schema(namespace.oid)
       AND EXISTS (
         SELECT 1
         FROM pg_class AS relation
@@ -110,7 +135,16 @@ export async function getSchemas(): Promise<string[]> {
       )
     ORDER BY namespace.nspname
   `)
-  return result.rows.map((row) => row.schema_name as string)
+  return result.rows.map((row) => ({
+    name: row.schema_name as string,
+    isSystem: Boolean(row.is_system),
+    isCatalog: Boolean(row.is_catalog),
+  }))
+}
+
+/** Just the names, for the callers that only navigate. */
+export async function getSchemaNames(): Promise<string[]> {
+  return (await getSchemas()).map((schema) => schema.name)
 }
 
 /** Every column in the schema, grouped by table, in ordinal order. */
@@ -154,6 +188,20 @@ async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInf
  * the catalog joins on. Multi-column unique indexes are ignored: half of a
  * composite key identifies nothing.
  */
+/**
+ * Whether this schema is the one holding `pg_class` — where the catalog edge map
+ * applies. Asked of the server rather than compared against the name
+ * `pg_catalog`, so the rule stays true if the answer ever differs.
+ */
+async function isCatalogSchema(schema: string): Promise<boolean> {
+  const result = await query(`
+    SELECT relation.relnamespace::regnamespace::text AS schema_name
+    FROM pg_class AS relation
+    WHERE relation.oid = 'pg_class'::regclass
+  `)
+  return result.rows[0]?.schema_name === schema
+}
+
 async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
   const [declared, unique] = await Promise.all([
     query(
@@ -263,7 +311,7 @@ export async function getTables(schema: string = DEFAULT_SCHEMA): Promise<TableI
  * paths agree on where "the data" is.
  */
 export async function resolveEntryTarget(): Promise<EntryTarget> {
-  const schemas = await getSchemas()
+  const schemas = await getSchemaNames()
   const schema = schemas.includes(DEFAULT_SCHEMA) ? DEFAULT_SCHEMA : schemas[0]
   if (!schema) return { ok: false, error: 'Connected, but no schemas were found' }
 
@@ -425,6 +473,7 @@ export async function getSchemaGraph(
 
   return mergeSchemaGraph({
     schema,
+    isCatalogSchema: await isCatalogSchema(schema),
     liveTables,
     declaredEdges,
     map,
@@ -872,9 +921,10 @@ async function fetchTraceEdges(
   indexedColumns: Set<string>
 }> {
   const tableColumns = columns.map((c) => ({ name: c.name, isNullable: c.isNullable }))
-  const [declaredEdges, map] = await Promise.all([
+  const [declaredEdges, map, catalogSchema] = await Promise.all([
     getForeignKeys(schema),
     readSchemaMap(schema),
+    isCatalogSchema(schema),
   ])
 
   const names = traceCandidateNames(table, tableColumns, pkColumn, declaredEdges, map)
@@ -886,6 +936,7 @@ async function fetchTraceEdges(
 
   const edges = mergeTableEdges({
     table,
+    isCatalogSchema: catalogSchema,
     tableColumns,
     tablePkColumn: pkColumn,
     declaredEdges,

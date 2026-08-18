@@ -35,6 +35,7 @@ const emptyMap: SchemaMap = {
 function input(overrides: Partial<MergeInput> = {}): MergeInput {
   return {
     schema: 'public',
+    isCatalogSchema: false,
     liveTables: [],
     declaredEdges: [],
     map: null,

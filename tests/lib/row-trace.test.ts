@@ -28,6 +28,7 @@ function input(overrides: Partial<TraceMergeInput> = {}): TraceMergeInput {
     map: null,
     otherLiveColumns: new Map(),
     liveTables: new Set(['data_constructionproject']),
+    isCatalogSchema: false,
     ...overrides,
   }
 }

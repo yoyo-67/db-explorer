@@ -8,7 +8,7 @@ import type {
   SchemaMap,
   TableCatalog,
 } from '#/lib/types'
-import { catalogEdgesFor } from '#/lib/catalog-edges'
+import { catalogEdges } from '#/lib/catalog-edges'
 
 /**
  * Merging the schema graph. Pure: the SQL and file reads live in
@@ -49,6 +49,8 @@ export interface DeclaredEdgeInput {
 
 export interface MergeInput {
   schema: string
+  /** This schema is the one `pg_class` lives in — see `catalog-edges`. */
+  isCatalogSchema: boolean
   liveTables: LiveTable[]
   declaredEdges: DeclaredEdgeInput[]
   map: SchemaMap | null
@@ -160,7 +162,8 @@ export function resolveGroup(
 }
 
 export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
-  const { schema, liveTables, declaredEdges, map, catalog, indexedColumns } = input
+  const { schema, isCatalogSchema, liveTables, declaredEdges, map, catalog, indexedColumns } =
+    input
 
   const liveByName = new Map(liveTables.map((t) => [t.name, t]))
   const nullableByColumn = new Map<string, boolean>()
@@ -189,7 +192,7 @@ export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
   for (const e of declaredEdges) candidates.push({ ...e, basis: 'declared' })
 
   // 2. catalog — Postgres's own tables, which declare no constraints at all
-  for (const e of catalogEdgesFor(schema)) candidates.push(e)
+  for (const e of catalogEdges(isCatalogSchema)) candidates.push(e)
 
   // 3. model — Django knows the target the constraint was stripped from
   for (const e of map?.edges ?? []) {

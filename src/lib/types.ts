@@ -34,6 +34,23 @@ export interface ColumnInfo {
   references?: { table: string; column: string }
 }
 
+/**
+ * A schema, with the two facts about it that change how the app behaves —
+ * both asked of `pg_namespace` rather than matched against a list of names.
+ */
+export interface SchemaInfo {
+  name: string
+  /**
+   * Postgres's own. Derived, not named: a schema whose relations appear in
+   * `pg_stat_all_tables` and never in `pg_stat_user_tables` is exactly a schema
+   * the `*_user_*` views refuse to measure, which is the property that decides
+   * whether the pressure page can say anything true about it.
+   */
+  isSystem: boolean
+  /** The schema `pg_class` itself lives in — where the catalog edge map applies. */
+  isCatalog: boolean
+}
+
 export interface TableInfo {
   name: string
   schema: string

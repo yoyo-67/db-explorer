@@ -77,10 +77,15 @@ const CATALOG_EDGES: CatalogEdge[] = [
   { fromTable: 'pg_database', fromColumn: 'dattablespace', toTable: 'pg_tablespace' },
 ]
 
-/** The catalog's edges as merge candidates. Empty for every other schema — a
- *  user table called `pg_class` is not the catalog's. */
-export function catalogEdgesFor(schema: string): CandidateEdge[] {
-  if (schema !== 'pg_catalog') return []
+/**
+ * The catalog's edges as merge candidates, for the schema `pg_class` lives in.
+ *
+ * Takes the answer rather than the name: a user schema is free to contain a
+ * table called `pg_class`, and these edges would be nonsense there. The server
+ * decides which schema is the catalog by asking where `pg_class` is.
+ */
+export function catalogEdges(isCatalogSchema: boolean): CandidateEdge[] {
+  if (!isCatalogSchema) return []
   return CATALOG_EDGES.map((edge) => ({
     fromTable: edge.fromTable,
     fromColumn: edge.fromColumn,

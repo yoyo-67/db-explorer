@@ -4,6 +4,7 @@ import {
   isReferenceColumn,
   resolveEdgesByColumn,
 } from '#/lib/schema-graph'
+import { catalogEdges } from '#/lib/catalog-edges'
 import type { CandidateEdge, DeclaredEdgeInput, LiveColumn } from '#/lib/schema-graph'
 import type { EdgeBasis, SchemaMap } from '#/lib/types'
 
@@ -93,6 +94,8 @@ export interface TraceMergeInput {
   otherLiveColumns: ReadonlyMap<string, boolean>
   /** Tables confirmed to exist, so drift cannot produce a dead link. */
   liveTables: ReadonlySet<string>
+  /** This table lives in the schema `pg_class` does — see `catalog-edges`. */
+  isCatalogSchema: boolean
 }
 
 export type TraceEdge = CandidateEdge
@@ -124,6 +127,11 @@ export function mergeTableEdges(input: TraceMergeInput): TableEdges {
   }
 
   for (const e of declaredEdges) push({ ...e, basis: 'declared' })
+
+  // The catalog's own joins, which no constraint declares. The lens merges these
+  // too; a row page that skipped them would disagree with the diagram drawn from
+  // the same schema.
+  for (const e of catalogEdges(input.isCatalogSchema)) push(e)
 
   for (const e of map?.edges ?? []) {
     if (e.basis !== 'model') continue
@@ -194,6 +202,10 @@ export function countSkipReason(
   return null
 }
 
+/** `catalog` is documented by Postgres, not guessed — only the name-rule and
+ *  model bases are inferences, and the label has to keep them apart. */
 export function basisLabel(basis: EdgeBasis): string {
-  return basis === 'declared' ? 'declared' : `inferred (${basis})`
+  if (basis === 'declared') return 'declared'
+  if (basis === 'catalog') return 'catalog'
+  return `inferred (${basis})`
 }

@@ -5,7 +5,7 @@ import IndexSection from '#/components/pressure/IndexSection'
 import SequenceSection from '#/components/pressure/SequenceSection'
 import SizeSection from '#/components/pressure/SizeSection'
 import VacuumSection from '#/components/pressure/VacuumSection'
-import { $getSchemaPressure } from '#/server/api'
+import { $getSchemaPressure, $getSchemas } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { formatBytes } from '#/lib/pressure/bytes'
 import { formatPercent } from '#/lib/inspect/stats'
@@ -13,7 +13,6 @@ import { sequenceHealth } from '#/lib/inspect/sequence'
 import { indexAuditTotals } from '#/lib/pressure/index-audit'
 import { vacuumLevel } from '#/lib/pressure/vacuum'
 import { analyzeState, isBlindAndLarge } from '#/lib/pressure/analyze'
-import { isSystemSchema } from '#/lib/system-schema'
 import type { SchemaPressure } from '#/lib/types'
 
 export const Route = createFileRoute('/pressure/$schema')({
@@ -29,12 +28,20 @@ export const Route = createFileRoute('/pressure/$schema')({
 function PressurePage() {
   const { schema } = Route.useParams()
   const { isChecking, isConnected } = useConnectionGuard()
-  const isSystem = isSystemSchema(schema)
+  // Whether this schema is one Postgres keeps to itself is the server's answer,
+  // read from the statistics views — not a name this page recognises.
+  const schemasQuery = useQuery({
+    queryKey: ['schemas'],
+    queryFn: () => $getSchemas(),
+    staleTime: Infinity,
+  })
+  const isSystem =
+    schemasQuery.data?.find((entry) => entry.name === schema)?.isSystem ?? false
 
   const pressureQuery = useQuery({
     queryKey: ['schemaPressure', schema],
     queryFn: () => $getSchemaPressure({ data: { schema } }),
-    enabled: isConnected && !isSystem,
+    enabled: isConnected && !isSystem && schemasQuery.isSuccess,
     // Counters move; a minute is long enough to make tab-switching cheap and
     // short enough that a refresh after a vacuum shows something new.
     staleTime: 60_000,

@@ -207,7 +207,7 @@ function useActiveSchema(): string | undefined {
     queryFn: () => $getSchemas(),
     staleTime: Infinity,
   })
-  return resolveActiveSchema(pathname, schemasQuery.data ?? [])
+  return resolveActiveSchema(pathname, (schemasQuery.data ?? []).map((s) => s.name))
 }
 
 /** Entry point into the lens, for whichever schema the current route is about. */
@@ -258,7 +258,11 @@ function SchemaPicker() {
   const schemas = schemasQuery.data ?? []
   if (schemas.length === 0) return null
 
-  const selected = resolveActiveSchema(pathname, schemas) ?? schemas[0]
+  const selected =
+    resolveActiveSchema(
+      pathname,
+      schemas.map((s) => s.name),
+    ) ?? schemas[0].name
 
   const handleChange = async (nextSchema: string) => {
     // On the lens, a schema switch keeps the view you were reading. A Group that
@@ -292,9 +296,11 @@ function SchemaPicker() {
       className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none"
       title="Schema"
     >
+      {/* Postgres's own schemas are listed like any other, and say so — the
+          flag is read off the server, never matched against a name. */}
       {schemas.map((s) => (
-        <option key={s} value={s}>
-          {s}
+        <option key={s.name} value={s.name}>
+          {s.isSystem ? `${s.name} (system)` : s.name}
         </option>
       ))}
     </select>

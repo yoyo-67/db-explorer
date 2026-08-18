@@ -364,6 +364,8 @@ function mockRowDetailMetadata(opts: {
   mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] }) // resolvePrimaryKey
   mockQuery.mockResolvedValueOnce({ rows: opts.root ? [opts.root] : [] }) // root row
   mockQuery.mockResolvedValueOnce({ rows: opts.fks ?? [] }) // getForeignKeys
+  // which schema holds pg_class — the catalog edge map applies to that one only
+  mockQuery.mockResolvedValueOnce({ rows: [{ schema_name: 'pg_catalog' }] })
   mockQuery.mockResolvedValueOnce({
     rows: Object.entries(opts.stats ?? { [opts.table ?? 'parent']: 0 }).map(
       ([table_name, row_count]) => ({ table_name, row_count: String(row_count) }),

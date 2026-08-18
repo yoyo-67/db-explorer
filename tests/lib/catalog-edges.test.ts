@@ -1,33 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { catalogEdgesFor } from '#/lib/catalog-edges'
-import { isCatalogSchema, isSystemSchema } from '#/lib/system-schema'
-
-describe('system schemas', () => {
-  it('names the schemas Postgres owns', () => {
-    expect(isSystemSchema('pg_catalog')).toBe(true)
-    expect(isSystemSchema('information_schema')).toBe(true)
-    expect(isSystemSchema('pg_toast')).toBe(true)
-    expect(isSystemSchema('pg_temp_3')).toBe(true)
-  })
-
-  it('leaves user schemas alone, including lookalikes', () => {
-    expect(isSystemSchema('public')).toBe(false)
-    expect(isSystemSchema('aggs_staged')).toBe(false)
-    // a user schema is free to be called something catalog-ish
-    expect(isSystemSchema('pgcatalog')).toBe(false)
-    expect(isCatalogSchema('information_schema')).toBe(false)
-  })
-})
+import { catalogEdges } from '#/lib/catalog-edges'
 
 describe('catalog edges', () => {
-  it('applies to pg_catalog only', () => {
-    expect(catalogEdgesFor('pg_catalog').length).toBeGreaterThan(20)
-    expect(catalogEdgesFor('public')).toEqual([])
-    expect(catalogEdgesFor('information_schema')).toEqual([])
+  it('applies only where the server says the catalog lives', () => {
+    expect(catalogEdges(true).length).toBeGreaterThan(20)
+    expect(catalogEdges(false)).toEqual([])
   })
 
   it('points every edge at an oid, under the catalog basis', () => {
-    for (const edge of catalogEdgesFor('pg_catalog')) {
+    for (const edge of catalogEdges(true)) {
       expect(edge.toColumn).toBe('oid')
       expect(edge.basis).toBe('catalog')
       expect(edge.fromTable.startsWith('pg_')).toBe(true)
@@ -36,7 +17,7 @@ describe('catalog edges', () => {
   })
 
   it('describes the joins the row pages depend on', () => {
-    const edges = catalogEdgesFor('pg_catalog')
+    const edges = catalogEdges(true)
     const has = (fromTable: string, fromColumn: string, toTable: string) =>
       edges.some(
         (e) =>
@@ -49,7 +30,7 @@ describe('catalog edges', () => {
   })
 
   it('carries no duplicate source columns — one edge per column', () => {
-    const keys = catalogEdgesFor('pg_catalog').map((e) => `${e.fromTable}.${e.fromColumn}`)
+    const keys = catalogEdges(true).map((e) => `${e.fromTable}.${e.fromColumn}`)
     expect(new Set(keys).size).toBe(keys.length)
   })
 })
