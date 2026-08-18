@@ -104,8 +104,9 @@ export default function LensNav({
             }
             className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-1.5 py-0.5 text-xs text-[var(--sea-ink)] outline-none"
           >
-            <option value="">all three</option>
+            <option value="">every basis</option>
             <option value="declared">declared only</option>
+            <option value="catalog">catalog only</option>
             <option value="model">model only</option>
             <option value="convention">convention only</option>
           </select>
