@@ -147,6 +147,24 @@ export interface TablePageRequest {
   sort?: TableSort | null
 }
 
+export interface ColumnValuesRequest {
+  schema: string
+  table: string
+  column: string
+  /** The grid's other column filters; the named column's own entry is ignored. */
+  filter?: Record<string, string>
+}
+
+/** The distinct values of one column, as far as the cap and the time budget got. */
+export interface ColumnValues {
+  /** Rendered as text, `null` for the null member. Ordered by the database. */
+  values: (string | null)[]
+  /** More values exist than the cap allows — the list is not the whole set. */
+  truncated: boolean
+  /** The scan hit its statement_timeout; nothing was read. */
+  timedOut: boolean
+}
+
 export interface TablePage {
   schema: string
   table: string

@@ -6,7 +6,7 @@ import {
   queryWithTimeout,
   StatementTimeoutError,
 } from '#/server/db'
-import { compileFilters } from '#/lib/filter-dsl'
+import { compileFilters } from '#/server/filter-sql'
 import { appendPerfEntry } from '#/server/perf-log'
 import { mergeSchemaGraph } from '#/lib/schema-graph'
 import {
@@ -21,6 +21,8 @@ import type { LiveTable } from '#/lib/schema-graph'
 import type { TraceEdge } from '#/lib/row-trace'
 import type {
   ColumnInfo,
+  ColumnValues,
+  ColumnValuesRequest,
   ConnectionConfig,
   ConsoleResult,
   EntryTarget,
@@ -585,6 +587,69 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
     count,
     isCountApproximate,
     totalPages,
+  }
+}
+
+/** How many distinct values a column may offer before its picker gives up and
+ *  hands the column back to the text filter. A list longer than this is not a
+ *  list anyone scrolls — it is a search box. */
+export const DISTINCT_VALUE_LIMIT = 200
+
+/** Same budget as the single-row sample: a value list nobody waited for is worth
+ *  no more than the page it was meant to narrow. */
+export const DISTINCT_VALUES_TIMEOUT_MS = 3_000
+
+/**
+ * The distinct values of one column, for its set filter.
+ *
+ * The column's own filter is left out of the WHERE clause — including it would
+ * narrow the list to whatever is already picked, so unpicking would be a
+ * one-way door. Every other column's filter applies, so the picker offers what
+ * the grid can actually show.
+ */
+export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnValues> {
+  const schema = req.schema || DEFAULT_SCHEMA
+  const { table, column } = req
+
+  const columns = await fetchColumns(schema, table)
+  const validColumnNames = new Set(columns.map((c) => c.name))
+  if (!validColumnNames.has(column)) {
+    throw new Error(`Column ${column} does not exist on ${schema}.${table}`)
+  }
+
+  const otherFilters: Record<string, string> = {}
+  for (const [col, input] of Object.entries(req.filter ?? {})) {
+    if (col !== column && validColumnNames.has(col)) otherFilters[col] = input
+  }
+  const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
+  const whereBody = compileFilters(otherFilters, columnTypes)
+  const whereClause = whereBody ? `WHERE ${whereBody}` : ''
+
+  // `::text` so every type comes back as a string the filter DSL can round-trip
+  // — an unknown literal is coerced back to the column's own type on the way in.
+  const sql = format(
+    'SELECT DISTINCT %I::text AS value FROM %I.%I %s ORDER BY 1 LIMIT %s',
+    column,
+    schema,
+    table,
+    whereClause,
+    DISTINCT_VALUE_LIMIT + 1,
+  )
+
+  try {
+    const result = await queryWithTimeout(sql, DISTINCT_VALUES_TIMEOUT_MS)
+    const rows = result.rows as { value: string | null }[]
+    const truncated = rows.length > DISTINCT_VALUE_LIMIT
+    return {
+      values: rows.slice(0, DISTINCT_VALUE_LIMIT).map((r) => r.value),
+      truncated,
+      timedOut: false,
+    }
+  } catch (err) {
+    if (err instanceof StatementTimeoutError) {
+      return { values: [], truncated: false, timedOut: true }
+    }
+    throw err
   }
 }
 

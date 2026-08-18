@@ -5,6 +5,7 @@ import {
   testConnection,
   getSchemas,
   getTables,
+  getColumnValues,
   getTablePage,
   getTablePreview,
   getForeignKeys,
@@ -27,6 +28,7 @@ import type {
   ConnectionConfig,
   ConnectionPreset,
   TableCatalog,
+  ColumnValuesRequest,
   TablePageRequest,
 } from '#/lib/types'
 
@@ -117,6 +119,16 @@ export const $getTablePage = createServerFn({ method: 'GET' })
   .inputValidator((data: TablePageRequest) => data)
   .handler(async ({ data }) => {
     return getTablePage(data)
+  })
+
+/**
+ * The distinct values of one column, for its set filter. Fetched only when the
+ * filter panel opens — the scan is not worth paying for on a page load.
+ */
+export const $getColumnValues = createServerFn({ method: 'GET' })
+  .inputValidator((data: ColumnValuesRequest) => data)
+  .handler(async ({ data }) => {
+    return getColumnValues(data)
   })
 
 /**

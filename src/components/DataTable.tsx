@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import LinkableValue from '#/components/LinkableValue'
+import FilterDropdown from '#/components/table/FilterDropdown'
 import { formatJsonText } from '#/lib/json-text'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
@@ -89,6 +90,9 @@ export default function DataTable({
                     sortable={!!onSortChange}
                     onSort={() => handleSort(col.name)}
                     filterable={!!onFilterChange}
+                    filters={filter}
+                    schema={schema}
+                    table={table}
                     filterValue={filterValue}
                     onFilter={(v) => onFilterChange?.(col.name, v)}
                     isFilterOpen={openFilter === col.name}
@@ -129,7 +133,8 @@ export default function DataTable({
 type SortDir = 'asc' | 'desc' | null
 
 function ColumnHeader({
-  col, sortDir, sortable, onSort, filterable, filterValue, onFilter, isFilterOpen, onToggleFilter,
+  col, sortDir, sortable, onSort, filterable, filters, schema, table,
+  filterValue, onFilter, isFilterOpen, onToggleFilter,
 }: {
   col: ColumnInfo
   sortDir: SortDir
@@ -138,17 +143,16 @@ function ColumnHeader({
   sortable: boolean
   onSort: () => void
   filterable: boolean
+  filters: Record<string, string>
+  schema?: string
+  table?: string
   filterValue: string
   onFilter: (v: string) => void
   isFilterOpen: boolean
   onToggleFilter: () => void
 }) {
-  const filterRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const hasFilter = filterValue.length > 0
-
-  useEffect(() => {
-    if (isFilterOpen) filterRef.current?.focus()
-  }, [isFilterOpen])
 
   return (
     <th className="whitespace-nowrap px-3 py-2 text-xs font-bold tracking-wide text-[var(--sea-ink)]">
@@ -178,6 +182,7 @@ function ColumnHeader({
         {filterable && (
         <button
           type="button"
+          ref={triggerRef}
           data-filter-trigger
           onClick={(e) => { e.stopPropagation(); onToggleFilter() }}
           className={`ml-auto rounded p-0.5 transition ${
@@ -194,54 +199,16 @@ function ColumnHeader({
 
       {isFilterOpen && (
         <FilterDropdown
-          filterRef={filterRef}
           col={col}
           filterValue={filterValue}
           onFilter={onFilter}
-          hasFilter={hasFilter}
+          filters={filters}
+          schema={schema}
+          table={table}
+          anchorRef={triggerRef}
         />
       )}
     </th>
-  )
-}
-
-function FilterDropdown({
-  filterRef, col, filterValue, onFilter, hasFilter,
-}: {
-  filterRef: React.RefObject<HTMLInputElement | null>
-  col: ColumnInfo
-  filterValue: string
-  onFilter: (v: string) => void
-  hasFilter: boolean
-}) {
-  return (
-    <div
-      data-filter-dropdown
-      className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-[var(--line)] bg-[var(--bg-base)] p-2 shadow-xl"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <input
-        ref={filterRef}
-        type="text"
-        value={filterValue}
-        onChange={(e) => onFilter(e.target.value)}
-        placeholder={`>10, <5, null, ~regex, ...`}
-        className="w-full rounded border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none placeholder:text-[var(--sea-ink-soft)]/50 focus:border-[var(--lagoon)]"
-        onKeyDown={(e) => { if (e.key === 'Escape') onFilter('') }}
-      />
-      <p className="mt-1 px-0.5 text-[10px] text-[var(--sea-ink-soft)]">
-        Filter on {col.name}. Plain text = ILIKE.
-      </p>
-      {hasFilter && (
-        <button
-          type="button"
-          onClick={() => onFilter('')}
-          className="mt-1.5 w-full rounded px-2 py-1 text-[10px] font-medium text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
-        >
-          Clear filter
-        </button>
-      )}
-    </div>
   )
 }
 

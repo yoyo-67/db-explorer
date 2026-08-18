@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
@@ -154,6 +154,10 @@ function TablePage() {
       }),
     enabled: isConnected,
     staleTime: 30_000,
+    // Keep the previous page on screen while the next one loads. Not only to
+    // avoid the flash: unmounting the grid would close the filter panel that is
+    // still open, so ticking a second value would be impossible.
+    placeholderData: keepPreviousData,
   })
 
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)

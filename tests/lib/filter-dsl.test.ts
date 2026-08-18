@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  compileFilters,
-  compilePredicate,
-  parsePredicate,
-} from '#/lib/filter-dsl'
+import { encodeInFilter, parsePredicate } from '#/lib/filter-dsl'
 
 describe('parsePredicate', () => {
   it('returns null for empty / whitespace input', () => {
@@ -40,85 +36,63 @@ describe('parsePredicate', () => {
   })
 })
 
-describe('compilePredicate', () => {
-  it('compiles null / not null', () => {
-    expect(compilePredicate({ kind: 'null', negated: false }, 'email')).toBe(
-      'email IS NULL',
-    )
-    expect(compilePredicate({ kind: 'null', negated: true }, 'email')).toBe(
-      'email IS NOT NULL',
-    )
+
+
+describe('in predicate (set filter)', () => {
+  it('parses a pipe-separated value list', () => {
+    expect(parsePredicate('in:alpha|beta')).toEqual({
+      kind: 'in',
+      values: ['alpha', 'beta'],
+      hasNull: false,
+    })
   })
 
-  it('emits raw numeric comparison when value parses as a number', () => {
-    expect(compilePredicate({ kind: 'cmp', op: '>', value: '10' }, 'age')).toBe(
-      `age > '10'`,
-    )
+  it('reads the \\N token as the NULL member rather than the literal text', () => {
+    expect(parsePredicate('in:alpha|\\N')).toEqual({
+      kind: 'in',
+      values: ['alpha'],
+      hasNull: true,
+    })
   })
 
-  it('falls back to ::text for non-numeric comparisons', () => {
-    expect(compilePredicate({ kind: 'cmp', op: '=', value: 'foo' }, 'name')).toBe(
-      `name::text = 'foo'`,
-    )
+  it('unescapes \\| and \\\\ so values may contain the separator', () => {
+    expect(parsePredicate('in:a\\|b|c\\\\d')).toEqual({
+      kind: 'in',
+      values: ['a|b', 'c\\d'],
+      hasNull: false,
+    })
   })
 
-  it('compiles regex via ::text ~', () => {
-    expect(compilePredicate({ kind: 'regex', pattern: '^a' }, 'slug')).toBe(
-      `slug::text ~ '^a'`,
-    )
+  it('keeps a value that merely looks like the null token', () => {
+    // `\\N` is the token; `\\\\N` is a backslash followed by N.
+    expect(parsePredicate('in:\\\\N')).toEqual({
+      kind: 'in',
+      values: ['\\N'],
+      hasNull: false,
+    })
   })
 
-  it('compiles ILIKE wrapping the pattern with %', () => {
-    expect(compilePredicate({ kind: 'ilike', pattern: 'bar' }, 'title')).toBe(
-      `title::text ILIKE '%bar%'`,
-    )
+  it('treats an empty selection as no filter at all', () => {
+    expect(parsePredicate('in:')).toBeNull()
   })
 
-  it('escapes single quotes inside ILIKE patterns', () => {
-    expect(compilePredicate({ kind: 'ilike', pattern: "o'brien" }, 'name')).toBe(
-      `name::text ILIKE '%o''brien%'`,
-    )
+  it('leaves text merely containing in: alone', () => {
+    expect(parsePredicate('checking in: later')).toEqual({
+      kind: 'ilike',
+      pattern: 'checking in: later',
+    })
   })
 
-  it('quotes identifiers that are not safe bare identifiers', () => {
-    // Mixed case forces quoting via pg-format %I.
-    expect(
-      compilePredicate({ kind: 'ilike', pattern: 'x' }, 'WeirdName'),
-    ).toBe(`"WeirdName"::text ILIKE '%x%'`)
-  })
-})
-
-describe('compileFilters', () => {
-  it('returns empty string when nothing parses', () => {
-    expect(compileFilters({})).toBe('')
-    expect(compileFilters({ x: '', y: '   ' })).toBe('')
+  it('round-trips through encodeInFilter', () => {
+    const input = encodeInFilter(['a|b', 'c\\d', '\\N', null])
+    expect(parsePredicate(input)).toEqual({
+      kind: 'in',
+      values: ['a|b', 'c\\d', '\\N'],
+      hasNull: true,
+    })
   })
 
-  it('joins multiple predicates with AND', () => {
-    const sql = compileFilters({ age: '>10', name: 'alice' })
-    expect(sql).toBe(`age > '10' AND name::text ILIKE '%alice%'`)
-  })
-
-  it('skips columns whose input is empty', () => {
-    const sql = compileFilters({ age: '>10', name: '' })
-    expect(sql).toBe(`age > '10'`)
-  })
-})
-
-describe('types with no equality against a literal', () => {
-  it('matches array columns as text rather than failing', () => {
-    // `proacl = 'x'` is a malformed-array-literal error on the server
-    const sql = compilePredicate(parsePredicate('postgres')!, 'proacl', 'ARRAY')
-    expect(sql).toBe("proacl::text ILIKE '%postgres%'")
-  })
-
-  it('matches user-defined columns as text', () => {
-    const sql = compilePredicate(parsePredicate('unit')!, 'indpred', 'USER-DEFINED')
-    expect(sql).toBe("indpred::text ILIKE '%unit%'")
-  })
-
-  it('leaves oid columns comparing natively, so the index still applies', () => {
-    const sql = compilePredicate(parsePredicate('1259')!, 'oid', 'oid')
-    expect(sql).toBe("oid = '1259'")
+  it('encodes an empty selection as the empty string, which clears the filter', () => {
+    expect(encodeInFilter([])).toBe('')
   })
 })

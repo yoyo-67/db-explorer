@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { filterInputForValue, isFilterableValue } from '#/lib/inspect/value-filter'
-import { compileFilters } from '#/lib/filter-dsl'
+import { compileFilters } from '#/server/filter-sql'
 
 describe('filterInputForValue', () => {
   it('asks the DSL for a null test', () => {
