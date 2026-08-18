@@ -21,14 +21,15 @@ export const columnProfileTopic: HelpTopic = {
     {
       id: 'identity',
       clause:
-        'SELECT\n  a.attname                                AS name,\n  format_type(a.atttypid, a.atttypmod)     AS data_type,\n  a.attnotnull                             AS not_null,\n  col_description(a.attrelid, a.attnum)    AS comment,',
+        'SELECT\n  column_row.attname                                AS name,\n  format_type(column_row.atttypid, column_row.atttypmod)     AS data_type,\n  column_row.attnotnull                             AS not_null,\n  col_description(column_row.attrelid, column_row.attnum)    AS comment,',
       title: 'The column itself',
       detail:
         '`format_type` renders a type the way you would write it — `numeric(10,2)`, `varchar(255)` — from the type id plus its modifier, which are stored separately. `col_description` fetches the `COMMENT ON COLUMN` text if anyone wrote one.',
     },
     {
       id: 'shape',
-      clause: '  s.null_frac,\n  s.n_distinct,\n  s.avg_width,\n  s.correlation,',
+      clause:
+        '  column_stats.null_frac    AS null_fraction,\n  column_stats.n_distinct   AS distinct_values,\n  column_stats.avg_width    AS average_width_bytes,\n  column_stats.correlation  AS physical_correlation,',
       title: 'The four numbers that describe the column',
       detail:
         '`null_frac` is the fraction of rows that are null. `n_distinct` is the number of distinct values — or, when negative, distinct values as a fraction of the table, which is how Postgres expresses "grows with the table" (−1 means unique). `avg_width` is average bytes per value. `correlation` compares the column\'s order to the physical order of rows on disk: near 1 or −1 means a range scan on it reads sequential pages, which is why the same index is fast on one column and slow on another.',
@@ -36,7 +37,7 @@ export const columnProfileTopic: HelpTopic = {
     {
       id: 'distribution',
       clause:
-        '  s.most_common_vals::text::text[]         AS common_vals,\n  s.most_common_freqs                      AS common_freqs,\n  s.histogram_bounds::text::text[]         AS histogram',
+        '  column_stats.most_common_vals::text::text[]         AS common_vals,\n  column_stats.most_common_freqs                      AS common_freqs,\n  column_stats.histogram_bounds::text::text[]         AS histogram',
       title: 'The values themselves',
       detail:
         'The most common values with their frequencies, then a histogram of everything else — bucket boundaries chosen so that each bucket holds roughly the same number of rows. The double cast `::text::text[]` is a workaround: these columns have the pseudo-type `anyarray`, which the driver cannot decode, so they are rendered to text and reparsed as a text array.',
@@ -44,7 +45,7 @@ export const columnProfileTopic: HelpTopic = {
     {
       id: 'joins',
       clause:
-        'FROM pg_attribute a\nJOIN pg_class c ON c.oid = a.attrelid\nJOIN pg_namespace n ON n.oid = c.relnamespace\nLEFT JOIN pg_stats s\n  ON s.schemaname = n.nspname\n  AND s.tablename = c.relname\n  AND s.attname = a.attname',
+        'FROM pg_attribute AS column_row\nJOIN pg_class AS table_rel ON table_rel.oid = column_row.attrelid\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nLEFT JOIN pg_stats AS column_stats\n  ON column_stats.schemaname = schema_ns.nspname\n  AND column_stats.tablename = table_rel.relname\n  AND column_stats.attname = column_row.attname',
       title: 'Every column, statistics where they exist',
       detail:
         'The column list comes from the catalog and the statistics are joined on by name. `LEFT` is what makes an unanalyzed column appear at all — it is listed with empty statistics rather than dropped, so the tab can say the difference between "no data" and "no column".',
@@ -52,7 +53,7 @@ export const columnProfileTopic: HelpTopic = {
     {
       id: 'where',
       clause:
-        'WHERE n.nspname = $1\n  AND c.relname = $2\n  AND a.attnum > 0\n  AND NOT a.attisdropped\nORDER BY a.attnum',
+        'WHERE schema_ns.nspname = $1\n  AND table_rel.relname = $2\n  AND column_row.attnum > 0\n  AND NOT column_row.attisdropped\nORDER BY column_row.attnum',
       title: 'Real, current columns only',
       detail:
         '`attnum > 0` skips the system columns Postgres keeps at negative positions (`ctid`, `xmin` and friends). `attisdropped` marks a dropped column: the catalog keeps the row so existing rows on disk stay readable, but showing it would be showing a column that no longer exists.',

@@ -113,6 +113,12 @@ function HelpTopicPage() {
               </div>
             </div>
             <SqlWalkthrough steps={topic.steps} />
+            <p className="text-[12px] text-[var(--sea-ink-soft)]">
+              Written out in full: every table is aliased with a readable name and
+              every column comes back under an explicit <code>AS</code>. The app
+              sends the same statement with the short aliases the catalog
+              documentation uses — same tables, same columns, same plan.
+            </p>
           </section>
 
           <section className="space-y-2">

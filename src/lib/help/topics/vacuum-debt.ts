@@ -20,14 +20,15 @@ export const vacuumDebtTopic: HelpTopic = {
     {
       id: 'tuples',
       clause:
-        'SELECT\n  s.relname             AS table_name,\n  s.n_live_tup          AS live_tuples,\n  s.n_dead_tup          AS dead_tuples,',
+        'SELECT\n  table_stats.relname             AS table_name,\n  table_stats.n_live_tup          AS live_tuples,\n  table_stats.n_dead_tup          AS dead_tuples,',
       title: 'Live and dead row counts',
       detail:
         '"Tuple" is the Postgres word for a row version. `n_live_tup` is the versions that are still visible, `n_dead_tup` the ones waiting to be reclaimed. Dead divided by the total is the ratio the page shows — a tenth of a table being dead is worth watching; a third is a table that scans slower than it should for its size.',
     },
     {
       id: 'mods',
-      clause: '  s.n_mod_since_analyze AS mods_since_analyze,',
+      clause:
+        '  table_stats.n_mod_since_analyze AS mods_since_analyze,',
       title: 'Changes since the last statistics update',
       detail:
         'Inserts, updates and deletes counted since `ANALYZE` last ran. It belongs to the analyze finding rather than the vacuum one, but it comes from the same statistics row, so it is fetched once and used twice rather than costing a second query.',
@@ -35,7 +36,7 @@ export const vacuumDebtTopic: HelpTopic = {
     {
       id: 'timestamps',
       clause:
-        '  s.last_vacuum,\n  s.last_autovacuum,\n  s.last_analyze,\n  s.last_autoanalyze,\n  c.reltuples::float8   AS est_rows,',
+        '  table_stats.last_vacuum       AS last_manual_vacuum,\n  table_stats.last_autovacuum   AS last_auto_vacuum,\n  table_stats.last_analyze      AS last_manual_analyze,\n  table_stats.last_autoanalyze  AS last_auto_analyze,\n  table_rel.reltuples::float8   AS est_rows,',
       title: 'When it was last cleaned, by hand or by daemon',
       detail:
         'Manual and automatic runs are counted separately, and either one counts as "cleaned" — the page takes the later of the two. A table with dead rows piling up and no recent autovacuum in either column is the shape of autovacuum being disabled, starved of workers, or blocked by a long-running transaction that keeps the old versions visible.',
@@ -43,7 +44,7 @@ export const vacuumDebtTopic: HelpTopic = {
     {
       id: 'settings',
       clause:
-        "  COALESCE(\n    (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o\n      WHERE o.option_name = 'autovacuum_vacuum_threshold'),\n    current_setting('autovacuum_vacuum_threshold')\n  )::float8 AS vac_threshold,\n  COALESCE(\n    (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o\n      WHERE o.option_name = 'autovacuum_vacuum_scale_factor'),\n    current_setting('autovacuum_vacuum_scale_factor')\n  )::float8 AS vac_scale_factor,",
+        "  COALESCE(\n    (SELECT reloption.option_value FROM pg_options_to_table(table_rel.reloptions) AS reloption\n      WHERE reloption.option_name = 'autovacuum_vacuum_threshold'),\n    current_setting('autovacuum_vacuum_threshold')\n  )::float8 AS vac_threshold,\n  COALESCE(\n    (SELECT reloption.option_value FROM pg_options_to_table(table_rel.reloptions) AS reloption\n      WHERE reloption.option_name = 'autovacuum_vacuum_scale_factor'),\n    current_setting('autovacuum_vacuum_scale_factor')\n  )::float8 AS vac_scale_factor,",
       title: 'The threshold this table is actually judged by',
       detail:
         'Autovacuum fires when dead rows exceed `threshold + scale_factor × rows` — by default 50 plus 20% of the table, which on a large table is a lot of dead rows before anything happens. Any table can override those settings for itself, stored in `reloptions`. `pg_options_to_table` unpacks that list; `COALESCE` falls back to the server-wide value when the table sets nothing. Reading the effective value per table is the difference between a real finding and a guess.',
@@ -51,7 +52,7 @@ export const vacuumDebtTopic: HelpTopic = {
     {
       id: 'enabled',
       clause:
-        "  COALESCE(\n    (SELECT o.option_value FROM pg_options_to_table(c.reloptions) o\n      WHERE o.option_name = 'autovacuum_enabled'),\n    'true'\n  ) AS autovacuum_enabled",
+        "  COALESCE(\n    (SELECT reloption.option_value FROM pg_options_to_table(table_rel.reloptions) AS reloption\n      WHERE reloption.option_name = 'autovacuum_enabled'),\n    'true'\n  ) AS autovacuum_enabled",
       title: 'Whether autovacuum is switched on for it at all',
       detail:
         'A table can have autovacuum turned off — sometimes deliberately, for a bulk-load table, sometimes as a temporary fix nobody undid. When it is off there is no trigger to be past, so the page reports no threshold rather than one nothing will ever act on.',
@@ -59,7 +60,7 @@ export const vacuumDebtTopic: HelpTopic = {
     {
       id: 'from',
       clause:
-        'FROM pg_stat_user_tables s\nJOIN pg_class c ON c.oid = s.relid\nWHERE s.schemaname = $1',
+        'FROM pg_stat_user_tables AS table_stats\nJOIN pg_class AS table_rel ON table_rel.oid = table_stats.relid\nWHERE table_stats.schemaname = $1',
       title: 'The statistics row, joined to the table itself',
       detail:
         '`pg_stat_user_tables` is the per-table activity view; `pg_class` holds `reloptions` and `reltuples`, which the statistics view does not carry. `relid` is the link between them. Both are in memory — this is not reading your tables.',

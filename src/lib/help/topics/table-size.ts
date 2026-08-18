@@ -19,35 +19,40 @@ export const tableSizeTopic: HelpTopic = {
   steps: [
     {
       id: 'table-bytes',
-      clause: 'SELECT\n  c.relname AS table_name,\n  pg_table_size(c.oid)    AS table_bytes,',
+      clause:
+        'SELECT\n  table_rel.relname AS table_name,\n  pg_table_size(table_rel.oid)    AS table_bytes,',
       title: 'The table without its indexes',
       detail:
         '`pg_table_size` is the heap plus its TOAST and the small maps Postgres keeps alongside it — everything except the indexes. `c.oid` is the internal object id; every size function takes one of those rather than a name, which is why the join to `pg_class` comes first.',
     },
     {
       id: 'index-bytes',
-      clause: '  pg_indexes_size(c.oid)  AS index_bytes,',
+      clause:
+        '  pg_indexes_size(table_rel.oid)  AS index_bytes,',
       title: 'Everything indexed on it',
       detail:
         'The sum of every index on the table. Compared against the heap this is the ratio worth watching: a table carrying more index than data is either heavily searched on purpose, or has collected indexes nobody removed. The audit on the same page tells you which.',
     },
     {
       id: 'toast-bytes',
-      clause: '  COALESCE(pg_total_relation_size(c.reltoastrelid), 0) AS toast_bytes,',
+      clause:
+        '  COALESCE(pg_total_relation_size(table_rel.reltoastrelid), 0) AS toast_bytes,',
       title: 'The oversized values, stored to the side',
       detail:
         'When a value will not fit in an 8 KB page — a long `text`, a big `jsonb` — Postgres compresses it and stores it in a companion TOAST table, leaving a pointer behind. `reltoastrelid` is that companion, and it is null for tables that never needed one, which is what `COALESCE(..., 0)` is handling. A table that looks small but reads slowly is often mostly TOAST.',
     },
     {
       id: 'total-bytes',
-      clause: '  pg_total_relation_size(c.oid) AS total_bytes,',
+      clause:
+        '  pg_total_relation_size(table_rel.oid) AS total_bytes,',
       title: 'The whole thing',
       detail:
         'Heap plus TOAST plus every index — the number that matches what the table costs you on the volume. The page subtracts TOAST out of `table_bytes` so heap, indexes and TOAST add up to exactly this, rather than overlapping in a way nobody can check.',
     },
     {
       id: 'est-rows',
-      clause: '  c.reltuples::float8     AS est_rows',
+      clause:
+        '  table_rel.reltuples::float8     AS est_rows',
       title: 'Roughly how many rows',
       detail:
         '`reltuples` is the planner\'s row estimate, maintained by `ANALYZE` and vacuum — not a count, and `-1` on a table that has never been analyzed. It is here for bytes-per-row, which is what exposes a table with few rows and enormous values in them.',
@@ -55,7 +60,7 @@ export const tableSizeTopic: HelpTopic = {
     {
       id: 'from-where',
       clause:
-        "FROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE n.nspname = $1\n  AND c.relkind = 'r'\nORDER BY total_bytes DESC",
+        "FROM pg_class AS table_rel\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nWHERE schema_ns.nspname = $1\n  AND table_rel.relkind = 'r'\nORDER BY total_bytes DESC",
       title: 'Ordinary tables in this schema, biggest first',
       detail:
         '`pg_class` lists every relation in the database, so the join to `pg_namespace` narrows it to one schema and `relkind = \'r\'` to ordinary tables. Sorting by total size puts the tables that decide your storage bill at the top, where the reason to look at this page usually is.',

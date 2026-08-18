@@ -26,15 +26,16 @@ export const queryBoardTopic: HelpTopic = {
   steps: [
     {
       id: 'select-identity',
-      clause: 'SELECT\n  s.queryid::text   AS query_id,\n  s.query           AS query,',
+      clause:
+        'SELECT\n  statements.queryid::text AS query_id,\n  statements.query         AS query_text,',
       title: 'Which query this row is about',
       detail:
-        '`SELECT` lists the values we want back, one per column of the board. `queryid` is a hash Postgres computes from the *structure* of the statement — same structure, same id, forever — and `::text` casts it to a string so JavaScript does not round the big number. `query` is the normalized text, with the literal values replaced by `$1`, `$2` placeholders. `AS query_id` renames the column in the result; that name is what the code reads.',
+        '`SELECT` lists the values we want back, one per column of the board. `queryid` is a hash Postgres computes from the *structure* of the statement — same structure, same id, forever — and `::text` casts it to a string so JavaScript does not round the big number. `query` is the normalized text, with the literal values replaced by `$1`, `$2` placeholders. `AS query_id` names the column in the result; every column here is named that way, so the result reads without having to know which expression produced it.',
     },
     {
       id: 'select-time',
       clause:
-        '  s.calls           AS calls,\n  s.total_exec_time AS total_ms,\n  s.mean_exec_time  AS mean_ms,\n  s.min_exec_time   AS min_ms,\n  s.max_exec_time   AS max_ms,\n  s.stddev_exec_time AS stddev_ms,',
+        '  statements.calls             AS call_count,\n  statements.total_exec_time   AS total_milliseconds,\n  statements.mean_exec_time    AS mean_milliseconds,\n  statements.min_exec_time     AS min_milliseconds,\n  statements.max_exec_time     AS max_milliseconds,\n  statements.stddev_exec_time  AS stddev_milliseconds,',
       title: 'How often, and how long',
       detail:
         'These counters are cumulative since the statistics were last reset. `calls` is how many times this shape ran. `total_exec_time` is every millisecond it has ever spent, which is the honest measure of cost — a 2 ms query called ten million times beats a 3-second report nobody runs. `mean`, `min`, `max` and `stddev` describe the spread: a large `stddev` means the same query is sometimes fast and sometimes not, which usually points at a plan that flips or a cache that sometimes misses.',
@@ -42,28 +43,28 @@ export const queryBoardTopic: HelpTopic = {
     {
       id: 'select-work',
       clause:
-        '  s.rows            AS rows,\n  s.shared_blks_hit  AS shared_blks_hit,\n  s.shared_blks_read AS shared_blks_read,\n  s.shared_blk_read_time  AS io_read_ms,\n  s.shared_blk_write_time AS io_write_ms,',
+        '  statements.rows                    AS rows_returned,\n  statements.shared_blks_hit         AS blocks_from_cache,\n  statements.shared_blks_read        AS blocks_from_disk,\n  statements.shared_blk_read_time    AS io_read_milliseconds,\n  statements.shared_blk_write_time   AS io_write_milliseconds,',
       title: 'How much work it did to get there',
       detail:
         'Postgres reads data in 8 KB blocks. A *hit* was already in memory; a *read* had to be fetched from the operating system, which is slower by orders of magnitude. Divide hits by hits + reads and you get the cache hit ratio the board shows. `rows` is the total rows returned across all calls, so `rows / calls` tells you whether one call brings back three rows or three hundred thousand. The two `_time` columns are only filled in when the server has `track_io_timing` on; when it is off they read as zero, and the board hides them rather than showing a zero that means "not measured".',
     },
     {
       id: 'select-role',
-      clause: '  r.rolname         AS role',
+      clause: '  roles.rolname AS role_name',
       title: 'Who ran it',
       detail:
         'The view stores the user as an internal numeric id (`userid`). The name comes from a different table, which is what the join on the next line is for.',
     },
     {
       id: 'from',
-      clause: 'FROM pg_stat_statements s',
+      clause: 'FROM pg_stat_statements AS statements',
       title: 'The source: one row per query shape',
       detail:
-        '`FROM` says where the rows come from. This is not a table you wrote — it is a view the extension exposes, kept in shared memory, holding one row per normalized statement (a few thousand at most; the oldest are evicted). `s` is an alias, a short nickname so the rest of the statement can say `s.calls` instead of repeating the full name.',
+        '`FROM` says where the rows come from. This is not a table you wrote — it is a view the extension exposes, kept in shared memory, holding one row per normalized statement (a few thousand at most; the oldest are evicted). `AS statements` names it for the rest of the statement, so every reference reads `statements.calls` rather than repeating the view name — the app sends the same query with a one-letter alias.',
     },
     {
       id: 'join',
-      clause: 'LEFT JOIN pg_roles r ON r.oid = s.userid',
+      clause: 'LEFT JOIN pg_roles AS roles\n  ON roles.oid = statements.userid',
       title: 'Turning the user id into a name',
       detail:
         '`pg_roles` is the catalog of database users. `ON r.oid = s.userid` is the matching rule: pair each statistics row with the role whose internal id it stores. `LEFT` means keep the statistics row even when no role matches — a user can be dropped while their statistics live on, and losing the row entirely would be worse than showing a blank name.',
@@ -71,14 +72,14 @@ export const queryBoardTopic: HelpTopic = {
     {
       id: 'where',
       clause:
-        'WHERE s.dbid = (SELECT oid FROM pg_database WHERE datname = current_database())',
+        'WHERE statements.dbid = (\n  SELECT pg_database.oid\n  FROM pg_database\n  WHERE pg_database.datname = current_database()\n)',
       title: 'Only this database',
       detail:
         'One Postgres server can hold many databases, and the view collects all of them together. `WHERE` filters rows out. The part in parentheses is a subquery: it looks up the internal id of the database you are connected to right now, and only rows carrying that id survive. Without this line the board would mix in statements from databases you are not even looking at.',
     },
     {
       id: 'order',
-      clause: 'ORDER BY s.total_exec_time DESC',
+      clause: 'ORDER BY statements.total_exec_time DESC',
       title: 'Worst first',
       detail:
         '`ORDER BY ... DESC` sorts from largest down. Ranking by total time rather than mean time is a deliberate choice: it puts the query the database really spends its life on at the top. The board can re-sort by other columns afterwards, but that happens in the browser, over the rows this ordering already selected.',

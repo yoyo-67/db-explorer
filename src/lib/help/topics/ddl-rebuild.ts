@@ -20,7 +20,7 @@ export const ddlRebuildTopic: HelpTopic = {
     {
       id: 'columns',
       clause:
-        'SELECT\n  a.attname                            AS name,\n  format_type(a.atttypid, a.atttypmod) AS type,\n  a.attnotnull                         AS not_null,\n  pg_get_expr(ad.adbin, ad.adrelid)    AS default_expr,\n  col_description(a.attrelid, a.attnum) AS comment\nFROM pg_attribute a\nJOIN pg_class c ON c.oid = a.attrelid\nJOIN pg_namespace n ON n.oid = c.relnamespace\nLEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum\nWHERE n.nspname = $1 AND c.relname = $2\n  AND a.attnum > 0 AND NOT a.attisdropped\nORDER BY a.attnum',
+        'SELECT\n  column_row.attname                            AS name,\n  format_type(column_row.atttypid, column_row.atttypmod) AS type,\n  column_row.attnotnull                         AS not_null,\n  pg_get_expr(column_default.adbin, column_default.adrelid)    AS default_expr,\n  col_description(column_row.attrelid, column_row.attnum) AS comment\nFROM pg_attribute AS column_row\nJOIN pg_class AS table_rel ON table_rel.oid = column_row.attrelid\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nLEFT JOIN pg_attrdef AS column_default ON column_default.adrelid = column_row.attrelid AND column_default.adnum = column_row.attnum\nWHERE schema_ns.nspname = $1 AND table_rel.relname = $2\n  AND column_row.attnum > 0 AND NOT column_row.attisdropped\nORDER BY column_row.attnum;',
       title: 'The columns, with their defaults',
       detail:
         'Defaults live in their own catalog, `pg_attrdef`, stored as a parsed expression tree rather than text. `pg_get_expr` renders that tree back into SQL — which is how `now()` comes back as `now()` and not as a blob. The server version decides two extra columns the code asks for here: identity (`GENERATED ... AS IDENTITY`, Postgres 10) and generated columns (Postgres 12), both skipped on servers that predate them.',
@@ -28,7 +28,7 @@ export const ddlRebuildTopic: HelpTopic = {
     {
       id: 'constraints',
       clause:
-        'SELECT\n  con.conname                    AS name,\n  con.contype::text              AS contype,\n  pg_get_constraintdef(con.oid)  AS definition\nFROM pg_constraint con\nJOIN pg_class c ON c.oid = con.conrelid\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE n.nspname = $1 AND c.relname = $2\nORDER BY con.conname',
+        'SELECT\n  constraint_row.conname                    AS name,\n  constraint_row.contype::text              AS contype,\n  pg_get_constraintdef(constraint_row.oid)  AS definition\nFROM pg_constraint AS constraint_row\nJOIN pg_class AS table_rel ON table_rel.oid = constraint_row.conrelid\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nWHERE schema_ns.nspname = $1 AND table_rel.relname = $2\nORDER BY constraint_row.conname;',
       title: 'Primary keys, uniques, checks and foreign keys',
       detail:
         '`pg_get_constraintdef` does the hard part: it prints the constraint exactly as it would appear in a `CREATE TABLE` — `FOREIGN KEY (project_id) REFERENCES data_project(id) ON DELETE CASCADE` — from the catalog rows behind it. `contype` groups them by kind so the tab can order the output the way a definition reads.',
@@ -36,7 +36,7 @@ export const ddlRebuildTopic: HelpTopic = {
     {
       id: 'indexes',
       clause:
-        'SELECT\n  i.relname                            AS name,\n  pg_get_indexdef(x.indexrelid)        AS definition,\n  x.indisprimary                       AS is_primary,\n  x.indisunique                        AS is_unique,\n  EXISTS (\n    SELECT 1 FROM pg_constraint con WHERE con.conindid = x.indexrelid\n  )                                    AS constraint_backed\nFROM pg_index x\nJOIN pg_class i ON i.oid = x.indexrelid\nJOIN pg_class c ON c.oid = x.indrelid\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE n.nspname = $1 AND c.relname = $2\nORDER BY x.indisprimary DESC, i.relname',
+        'SELECT\n  index_rel.relname                            AS name,\n  pg_get_indexdef(index_def.indexrelid)        AS definition,\n  index_def.indisprimary                       AS is_primary,\n  index_def.indisunique                        AS is_unique,\n  EXISTS (\n    SELECT 1 FROM pg_constraint AS constraint_row WHERE constraint_row.conindid = index_def.indexrelid\n  )                                    AS constraint_backed\nFROM pg_index AS index_def\nJOIN pg_class AS index_rel ON index_rel.oid = index_def.indexrelid\nJOIN pg_class AS table_rel ON table_rel.oid = index_def.indrelid\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nWHERE schema_ns.nspname = $1 AND table_rel.relname = $2\nORDER BY index_def.indisprimary DESC, index_rel.relname;',
       title: 'The indexes, as CREATE INDEX statements',
       detail:
         '`pg_get_indexdef` prints each index the way you would create it. The `constraint_backed` flag is what stops the tab from printing an index twice: the index behind a primary key or unique constraint has already been shown as part of that constraint, so it is listed but not re-emitted as a separate statement.',
@@ -44,7 +44,7 @@ export const ddlRebuildTopic: HelpTopic = {
     {
       id: 'comment',
       clause:
-        "SELECT obj_description(c.oid, 'pg_class') AS comment\nFROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE n.nspname = $1 AND c.relname = $2",
+        "SELECT obj_description(table_rel.oid, 'pg_class') AS comment\nFROM pg_class AS table_rel\nJOIN pg_namespace AS schema_ns ON schema_ns.oid = table_rel.relnamespace\nWHERE schema_ns.nspname = $1 AND table_rel.relname = $2;",
       title: 'The comment on the table',
       detail:
         '`obj_description` fetches the `COMMENT ON` text for any catalog object; the second argument says which catalog the id belongs to, since object ids are only unique within one. Often empty — and where it is not, it is usually the only documentation the schema has.',

@@ -19,21 +19,24 @@ export const randomRowTopic: HelpTopic = {
   steps: [
     {
       id: 'sampled',
-      clause: 'SELECT * FROM "public"."data_element" TABLESAMPLE SYSTEM (0.1) LIMIT 1',
+      clause:
+        'SELECT * FROM "public"."data_element" TABLESAMPLE SYSTEM (0.1) LIMIT 1;',
       title: 'Big table: sample a fraction of the pages',
       detail:
         '`TABLESAMPLE SYSTEM (0.1)` tells Postgres to read a random 0.1% of the table\'s *pages* and return the rows in them. It never scans the whole table, so the cost is set by the percentage rather than by the table size. The trade-off is clustering — you get whole pages, so the rows you see were physically stored together — and the possibility of drawing nothing at all, which is why the app widens the percentage and tries again.',
     },
     {
       id: 'random',
-      clause: 'SELECT * FROM "public"."data_element" ORDER BY random() LIMIT 1',
+      clause:
+        'SELECT * FROM "public"."data_element" ORDER BY random() LIMIT 1;',
       title: 'Small table: shuffle it properly',
       detail:
         'Assigns a random value to every row, sorts by it and takes the first — genuinely uniform, and genuinely a full scan plus a sort. Perfectly fine on a few thousand rows, which is exactly where the plan uses it, and never chosen for a table where it would hurt.',
     },
     {
       id: 'first',
-      clause: 'SELECT * FROM "public"."data_element" LIMIT 1',
+      clause:
+        'SELECT * FROM "public"."data_element" LIMIT 1;',
       title: 'Last resort: whatever comes first',
       detail:
         'Not random at all, and labelled that way in the UI. It is the answer when sampling is unavailable — `TABLESAMPLE` is rejected on a plain view — or when every random draw came back empty. Showing a row and saying it was not randomly chosen beats showing nothing.',
@@ -41,7 +44,7 @@ export const randomRowTopic: HelpTopic = {
     {
       id: 'size',
       clause:
-        'SELECT GREATEST(COALESCE(s.n_live_tup, 0), COALESCE(c.reltuples, 0))::bigint AS row_count\nFROM pg_stat_user_tables s\nJOIN pg_class c ON c.oid = s.relid\nWHERE s.schemaname = $1 AND s.relname = $2',
+        'SELECT GREATEST(COALESCE(table_stats.n_live_tup, 0), COALESCE(table_rel.reltuples, 0))::bigint AS row_count\nFROM pg_stat_user_tables AS table_stats\nJOIN pg_class AS table_rel ON table_rel.oid = table_stats.relid\nWHERE table_stats.schemaname = $1 AND table_stats.relname = $2;',
       title: 'The estimate that picks the strategy',
       detail:
         'Read first, and free. The larger of the two estimates is used on purpose: mistaking a huge unanalyzed table for an empty one would send it down the `ORDER BY random()` path, which is the one case this whole design exists to avoid.',
