@@ -139,9 +139,12 @@ function MatrixPage() {
 
         {lens.graph && matrix.groups.length === 0 && (
           <div className="island-shell rounded-xl px-6 py-8 text-center text-sm text-[var(--sea-ink-soft)]">
-            No grouped tables in {schema}. The catalog in{' '}
-            <code className="font-mono">local/table-catalog.json</code> covers no table
-            here.
+            No grouped tables in {schema}. No catalog covers this schema — metadata is
+            filed per connection and database, at{' '}
+            <code className="font-mono">
+              local/&lt;connection&gt;/&lt;database&gt;/{schema}/table-catalog.json
+            </code>
+            .
           </div>
         )}
 

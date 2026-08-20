@@ -1,24 +1,30 @@
 #!/usr/bin/env node
 /**
- * Write one grouping file per schema into `local/<schema>/table-catalog.json`.
+ * Write one grouping file per schema, for every database on a connection:
  *
- * The lens groups tables, and a grouping only means something within one schema:
- * `public`'s Django modules say nothing about `pg_catalog`, and neither says
- * anything about an aggregation schema. So each schema is explored on its own
- * terms and gets its own file.
+ *   local/<connection>/<database>/<schema>/table-catalog.json
  *
- * How a schema is grouped depends on what it is, and that is asked of the server
- * rather than matched against a name:
+ * Keyed the same way the app reads it (`src/lib/local-metadata-path.ts`) — per
+ * connection, per database, per schema, because all three change what the names
+ * mean. Two databases on one server have unrelated `public` schemas.
+ *
+ * The grouping a schema gets depends on what it is, and that is asked of the
+ * server rather than matched against a name:
  *   - the schema holding `pg_class` → grouped by catalog area
  *   - a schema whose relations never appear in `pg_stat_user_tables` (Postgres's
  *     own, by the statistics views' own definition) → grouped by subject
  *   - anything else → grouped by the longest shared name prefix, which is what
  *     application schemas tend to encode (`data_`, `auth_`, `agg16_`)
  *
- * Existing files are left alone unless --force is passed: `public`'s grouping is
- * hand-curated and worth more than anything derived here.
+ * Existing files are left alone unless --force is passed: a hand-curated
+ * grouping is worth more than anything derived here.
  *
- *   node scripts/generate-schema-mapping.mjs [--force] [--schema NAME]
+ * `schema-map.json` is NOT written here — that is an external extractor's
+ * output, and only means anything for a database whose tables have an ORM's
+ * models behind them.
+ *
+ *   node scripts/generate-schema-mapping.mjs [--force] [--preset NAME]
+ *                                           [--database NAME] [--schema NAME]
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -26,19 +32,57 @@ import pg from 'pg'
 
 const args = process.argv.slice(2)
 const force = args.includes('--force')
-const only = args.includes('--schema') ? args[args.indexOf('--schema') + 1] : null
+const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
+const onlySchema = flag('--schema')
+const onlyDatabase = flag('--database')
+const presetName = flag('--preset')
 
 const presets = JSON.parse(readFileSync(resolve('presets.json'), 'utf-8'))
-const preset = presets.find((p) => !p.host.startsWith('127.') && !p.host.startsWith('localhost')) ?? presets[0]
+const preset = presetName
+  ? presets.find((p) => p.name === presetName)
+  : (presets.find((p) => !p.host.startsWith('127.') && !p.host.startsWith('localhost')) ??
+    presets[0])
+if (!preset) {
+  console.error(`No preset named ${presetName}. Known: ${presets.map((p) => p.name).join(', ')}`)
+  process.exit(1)
+}
 
-const client = new pg.Client({
-  host: preset.host,
-  port: preset.port,
-  database: preset.database,
-  user: preset.user,
-  password: preset.password,
-  ssl: preset.ssl ? { rejectUnauthorized: false } : undefined,
-})
+/**
+ * Folder names, kept in step with `src/lib/local-metadata-path.ts` — that module
+ * is the authority the app reads through, this is the writer's copy of it. The
+ * paths written are printed below so a drift shows up as a file the app cannot
+ * find.
+ */
+const slugify = (value) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unnamed'
+
+const connectionSlug = preset.name ? slugify(preset.name) : slugify(`${preset.host}-${preset.port}`)
+
+const connect = async (database) => {
+  const client = new pg.Client({
+    host: preset.host,
+    port: preset.port,
+    database,
+    user: preset.user,
+    password: preset.password,
+    ssl: preset.ssl ? { rejectUnauthorized: false } : undefined,
+  })
+  await client.connect()
+  return client
+}
+
+/** Every database this role may open — templates and no-CONNECT ones dropped. */
+const DATABASES_SQL = `
+  SELECT datname AS name
+  FROM pg_database
+  WHERE NOT datistemplate
+    AND datallowconn
+    AND has_database_privilege(oid, 'CONNECT')
+  ORDER BY datname
+`
 
 /** The same classification the app uses — derived, never a list of names. */
 const SCHEMAS_SQL = `
@@ -186,43 +230,71 @@ function groupByAreas(names, areas) {
   return groups
 }
 
-await client.connect()
-const schemas = (await client.query(SCHEMAS_SQL)).rows.filter(
-  (row) => !only || row.schema_name === only,
-)
+const directory = await connect(preset.database)
+const databases = (await directory.query(DATABASES_SQL)).rows
+  .map((row) => row.name)
+  .filter((name) => !onlyDatabase || name === onlyDatabase)
+await directory.end()
 
-for (const schema of schemas) {
-  const name = schema.schema_name
-  const path = resolve('local', name, 'table-catalog.json')
-  if (existsSync(path) && !force) {
-    console.log(`${name.padEnd(20)} skipped — ${path} exists (use --force to replace)`)
+if (databases.length === 0) {
+  console.error(onlyDatabase ? `Cannot open database ${onlyDatabase}` : 'No databases to read')
+  process.exit(1)
+}
+
+console.log(`connection ${connectionSlug} — ${databases.length} database(s)\n`)
+
+for (const database of databases) {
+  let client
+  try {
+    client = await connect(database)
+  } catch (err) {
+    console.log(`${database.padEnd(36)} skipped — ${err.message}`)
     continue
   }
 
-  const relations = (await client.query(RELATIONS_SQL, [name])).rows.map((r) => r.name)
-  const groups = schema.is_catalog
-    ? groupByAreas(relations, CATALOG_AREAS)
-    : schema.is_system
-      ? groupByAreas(relations, STANDARD_AREAS)
-      : groupByPrefix(relations)
+  const schemas = (await client.query(SCHEMAS_SQL)).rows.filter(
+    (row) => !onlySchema || row.schema_name === onlySchema,
+  )
 
-  const how = schema.is_catalog ? 'catalog areas' : schema.is_system ? 'standard areas' : 'name prefix'
-  mkdirSync(resolve('local', name), { recursive: true })
-  writeFileSync(
-    path,
-    JSON.stringify(
-      {
-        source: `generated by scripts/generate-schema-mapping.mjs from the live schema, grouped by ${how}`,
-        groups,
-        tables: {},
-      },
-      null,
-      2,
-    ) + '\n',
-  )
-  console.log(
-    `${name.padEnd(20)} ${String(relations.length).padStart(4)} relations → ${groups.length} groups (${how})`,
-  )
+  for (const schema of schemas) {
+    const name = schema.schema_name
+    const dir = resolve('local', connectionSlug, slugify(database), name)
+    const path = resolve(dir, 'table-catalog.json')
+    if (existsSync(path) && !force) {
+      console.log(`${database}/${name}`.padEnd(56) + 'skipped — exists (--force to replace)')
+      continue
+    }
+
+    const relations = (await client.query(RELATIONS_SQL, [name])).rows.map((r) => r.name)
+    const groups = schema.is_catalog
+      ? groupByAreas(relations, CATALOG_AREAS)
+      : schema.is_system
+        ? groupByAreas(relations, STANDARD_AREAS)
+        : groupByPrefix(relations)
+
+    const how = schema.is_catalog
+      ? 'catalog areas'
+      : schema.is_system
+        ? 'standard areas'
+        : 'name prefix'
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      path,
+      JSON.stringify(
+        {
+          source: `generated by scripts/generate-schema-mapping.mjs from the live schema of ${database}, grouped by ${how}`,
+          groups,
+          tables: {},
+        },
+        null,
+        2,
+      ) + '\n',
+    )
+    console.log(
+      `${database}/${name}`.padEnd(56) +
+        `${String(relations.length).padStart(4)} relations → ${groups.length} groups (${how})`,
+    )
+  }
+
+  await client.end()
 }
-
-await client.end()
