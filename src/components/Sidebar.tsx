@@ -1,14 +1,27 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { $getMapGroups, $getTableCatalog, $introspect } from '#/server/api'
+import {
+  $getMapGroups,
+  $getTableActivity,
+  $getTableCatalog,
+  $introspect,
+} from '#/server/api'
 import {
   filterGroups,
   groupTablesByCatalog,
   UNCATEGORIZED_GROUP_NAME,
 } from '#/lib/catalog-grouping'
+import { describeChange, formatMods, rankByRecentChange } from '#/lib/table-activity'
 
 const EXPANDED_KEY = 'sidebar:expandedGroups'
+
+/**
+ * How the sidebar orders tables. Grouped is the catalog's own structure;
+ * changed asks the statistics views what has been written lately, which no
+ * grouping can tell you.
+ */
+type View = 'grouped' | 'changed'
 
 export default function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -21,6 +34,7 @@ export default function Sidebar() {
 
 function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: string }) {
   const [filter, setFilter] = useState('')
+  const [view, setView] = useState<View>('grouped')
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
     try {
@@ -58,12 +72,33 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
     staleTime: Infinity,
   })
 
+  // Only asked for while the changed view is on: it is one cheap catalog query,
+  // but a stats read on every sidebar render would still be a read nobody asked
+  // for. Ten seconds stale is fine for something measured in ANALYZE cycles.
+  const activityQuery = useQuery({
+    queryKey: ['tableActivity', schema],
+    queryFn: () => $getTableActivity({ data: { schema } }),
+    staleTime: 10_000,
+    enabled: view === 'changed',
+  })
+
   const tables = introspectQuery.data?.tables ?? []
   const groups = useMemo(
     () => groupTablesByCatalog(tables, catalogQuery.data, mapGroupsQuery.data),
     [tables, catalogQuery.data, mapGroupsQuery.data],
   )
   const visibleGroups = useMemo(() => filterGroups(groups, filter), [groups, filter])
+
+  // Ranked by the statistics views, then narrowed to tables this schema actually
+  // lists — `pg_stat_all_tables` counts partitions and TOAST-side relations the
+  // browser has no page for.
+  const changed = useMemo(() => {
+    const listed = new Set(tables.map((t) => t.name))
+    const needle = filter.trim().toLowerCase()
+    return rankByRecentChange(activityQuery.data?.tables ?? [])
+      .filter((entry) => listed.has(entry.table))
+      .filter((entry) => !needle || entry.table.toLowerCase().includes(needle))
+  }, [activityQuery.data, tables, filter])
 
   // Keep the active table's group expanded automatically
   useEffect(() => {
@@ -95,6 +130,19 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
         className="mb-2 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
       />
 
+      <div className="mb-2 flex items-center gap-1">
+        <ViewChip active={view === 'grouped'} onClick={() => setView('grouped')} title="The catalog's own grouping">
+          Grouped
+        </ViewChip>
+        <ViewChip
+          active={view === 'changed'}
+          onClick={() => setView('changed')}
+          title="Tables with rows changed since their last ANALYZE, most first"
+        >
+          Changed
+        </ViewChip>
+      </div>
+
       <Link
         to="/lens/$schema"
         params={{ schema }}
@@ -120,6 +168,18 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
         <div className="px-2 py-1 text-xs text-[var(--sea-ink-soft)]">No tables in {schema}.</div>
       )}
 
+      {view === 'changed' && (
+        <ChangedList
+          schema={schema}
+          activeTable={activeTable}
+          entries={changed}
+          isLoading={activityQuery.isLoading}
+          error={activityQuery.error}
+          statsReset={activityQuery.data?.statsReset ?? null}
+        />
+      )}
+
+      {view === 'grouped' && (
       <ul className="space-y-1">
         {visibleGroups.map((g, idx) => {
           const isUngrouped = g.name === ''
@@ -180,7 +240,106 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
           )
         })}
       </ul>
+      )}
     </aside>
+  )
+}
+
+function ViewChip({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+        active
+          ? 'border-[var(--lagoon)]/60 bg-[rgba(79,184,178,0.16)] text-[var(--sea-ink)]'
+          : 'border-[var(--line)] text-[var(--sea-ink-soft)] hover:text-[var(--sea-ink)]'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * A flat list, deliberately: the question "what changed" is not a question about
+ * the catalog's areas, and grouping the answer would bury it.
+ */
+function ChangedList({
+  schema,
+  activeTable,
+  entries,
+  isLoading,
+  error,
+  statsReset,
+}: {
+  schema: string
+  activeTable?: string
+  entries: ReturnType<typeof rankByRecentChange>
+  isLoading: boolean
+  error: unknown
+  statsReset: string | null
+}) {
+  // Read once per render rather than per row, so every age on screen is measured
+  // from the same instant.
+  const now = Date.now()
+
+  if (isLoading) {
+    return <div className="px-2 py-1 text-xs text-[var(--sea-ink-soft)]">Reading statistics...</div>
+  }
+  if (error) {
+    return <div className="px-2 py-1 text-xs text-red-500">Failed: {String(error)}</div>
+  }
+  if (entries.length === 0) {
+    return (
+      <div className="space-y-1 px-2 py-1 text-xs text-[var(--sea-ink-soft)]">
+        <p>Nothing changed since these tables were last analyzed.</p>
+        {statsReset && (
+          <p className="text-[10px]">Counters reset {new Date(statsReset).toLocaleString()}.</p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <ul className="space-y-0.5">
+      {entries.map((entry) => {
+        const isActive = entry.table === activeTable
+        return (
+          <li key={entry.table}>
+            <Link
+              to="/t/$schema/$table"
+              params={{ schema, table: entry.table }}
+              title={describeChange(entry, now)}
+              className={`group flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] no-underline transition ${
+                isActive
+                  ? 'bg-[rgba(79,184,178,0.18)] text-[var(--lagoon-deep)]'
+                  : 'text-[var(--sea-ink)] hover:bg-[var(--surface-strong)]'
+              }`}
+            >
+              <span className="truncate">{entry.table}</span>
+              {/* The count, not a time: the timestamp belongs to the ANALYZE it
+                  is counted from, and lives in the row's title. */}
+              <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)] opacity-70 group-hover:opacity-100">
+                {formatMods(entry.modsSinceAnalyze)}
+              </span>
+            </Link>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

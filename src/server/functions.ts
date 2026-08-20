@@ -11,6 +11,7 @@ import { appendPerfEntry } from '#/server/perf-log'
 import { mergeSchemaGraph } from '#/lib/schema-graph'
 import type { CandidateEdge } from '#/lib/schema-graph'
 import { resolveSchemaFks } from '#/lib/schema-fks'
+import type { TableActivity } from '#/lib/table-activity'
 import {
   countSkipReason,
   mergeTableEdges,
@@ -112,6 +113,51 @@ export async function testConnection(
  * Postgres's own answer to the question and stays right whatever a schema is
  * called. "Catalog" is wherever `pg_class` happens to live.
  */
+/**
+ * Write activity per table, read off the statistics views.
+ *
+ * One query against `pg_stat_all_tables`, which lives in shared memory — no heap
+ * access, no locks, and nothing here touches a row of user data. See
+ * `#/lib/table-activity` for why this reports a count and a maintenance
+ * timestamp rather than a "last changed" time Postgres does not keep.
+ */
+export async function getTableActivity(schema: string): Promise<TableActivity> {
+  const [stats, reset] = await Promise.all([
+    query(
+      `
+      SELECT
+        s.relname AS table_name,
+        s.n_mod_since_analyze AS mods_since_analyze,
+        COALESCE(s.n_tup_ins, 0) + COALESCE(s.n_tup_upd, 0) + COALESCE(s.n_tup_del, 0) AS writes,
+        GREATEST(s.last_analyze, s.last_autoanalyze) AS last_analyzed,
+        GREATEST(s.last_vacuum, s.last_autovacuum) AS last_vacuumed
+      FROM pg_stat_all_tables AS s
+      WHERE s.schemaname = $1
+      ORDER BY s.n_mod_since_analyze DESC
+    `,
+      [schema],
+    ),
+    query(`SELECT stats_reset FROM pg_stat_database WHERE datname = current_database()`),
+  ])
+
+  return {
+    statsReset: reset.rows[0]?.stats_reset
+      ? new Date(reset.rows[0].stats_reset as string).toISOString()
+      : null,
+    tables: stats.rows.map((row) => ({
+      table: row.table_name as string,
+      modsSinceAnalyze: Number(row.mods_since_analyze ?? 0),
+      writes: Number(row.writes ?? 0),
+      lastAnalyzed: row.last_analyzed
+        ? new Date(row.last_analyzed as string).toISOString()
+        : null,
+      lastVacuumed: row.last_vacuumed
+        ? new Date(row.last_vacuumed as string).toISOString()
+        : null,
+    })),
+  }
+}
+
 export async function getSchemas(): Promise<SchemaInfo[]> {
   const result = await query(`
     SELECT

@@ -12,6 +12,7 @@ import {
   getRowDetail,
   getRowChildren,
   getSchemaGraph,
+  getTableActivity,
   introspect,
   listDatabases,
   resolveEntryTarget,
@@ -143,6 +144,16 @@ export const $getTables = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => {
     return getTables(data.schema)
+  })
+
+/**
+ * Which tables have unanalyzed change, for the sidebar's "changed" filter. Not
+ * cached long: the point of it is recency.
+ */
+export const $getTableActivity = createServerFn({ method: 'GET' })
+  .inputValidator((data: { schema?: string } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    return getTableActivity(data.schema || 'public')
   })
 
 export const $getTablePreview = createServerFn({ method: 'GET' })
