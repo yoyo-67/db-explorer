@@ -42,7 +42,7 @@ export async function currentScope(): Promise<{
   connection: string | null
   database: string | null
 }> {
-  const { getLastConfig, getPresetName } = await import('#/server/db')
+  const { getLastConfig, getPresetName, resolveDatabase } = await import('#/server/db')
   const config = getLastConfig()
   if (!config) return { connection: null, database: null }
 
@@ -53,9 +53,14 @@ export async function currentScope(): Promise<{
   const { findPresetName } = await import('#/server/presets')
   const presetName = getPresetName() ?? (await findPresetName(config))
 
+  // The database THIS request is about, not the one the session happened to
+  // connect with. Reading `config.database` here filed every page's metadata
+  // under the session's database, so a tab on another one was handed the wrong
+  // catalog — its tables then fell back to prefix grouping, or to a curated
+  // grouping that named none of them.
   return {
     connection: connectionSlug({ presetName, host: config.host, port: config.port }),
-    database: config.database,
+    database: resolveDatabase() ?? config.database,
   }
 }
 

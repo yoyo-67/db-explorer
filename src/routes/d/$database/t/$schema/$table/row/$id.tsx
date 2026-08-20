@@ -3,9 +3,16 @@ import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import LinkableValue from '#/components/LinkableValue'
-import { $getChildCount, $getRowChildren, $getRowDetail, $introspect } from '#/server/api'
+import {
+  $getChildCount,
+  $getCrossDbRefs,
+  $getRowChildren,
+  $getRowDetail,
+  $introspect,
+} from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
+import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import { formatJsonText } from '#/lib/json-text'
 import { getRowLabel } from '#/lib/row-label'
 import type {
@@ -51,6 +58,16 @@ function RowDetailPage() {
     enabled: isConnected,
     staleTime: Infinity,
   })
+
+  // Hand-written references out of this database, cached for the session: one
+  // read serves the root row and every child table below it.
+  const crossRefsQuery = useQuery({
+    queryKey: ['crossDbRefs', database],
+    queryFn: () => $getCrossDbRefs({ data: { database } }),
+    enabled: isConnected,
+    staleTime: Infinity,
+  })
+  const crossRefs = crossRefsQuery.data?.refs ?? []
 
   const detail = detailQuery.data
   const fks = introspectQuery.data?.fks ?? []
@@ -138,7 +155,11 @@ function RowDetailPage() {
         {detail && root && (
           <section className="island-shell rounded-xl">
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-5 py-4 font-mono text-[13px]">
-              {enrichColumnsWithFks(detail.columns, fks, table).map((col) => {
+              {enrichColumnsWithCrossDbRefs(
+                enrichColumnsWithFks(detail.columns, fks, table),
+                crossRefs,
+                { database, schema, table },
+              ).map((col) => {
                 const isPk = !!rootPkColumn && col.name === rootPkColumn
                 const target = col.references
                   ? { schema, ...col.references }
@@ -151,6 +172,7 @@ function RowDetailPage() {
                     value={root[col.name]}
                     prettyJson={prettyJson}
                     target={target}
+                    crossTarget={col.crossRef}
                     variant={variant}
                   />
                 )
@@ -219,12 +241,14 @@ function FieldRow({
   value,
   prettyJson,
   target,
+  crossTarget,
   variant = 'fk',
 }: {
   col: ColumnInfo
   value: JsonValue | undefined
   prettyJson: boolean
   target?: { schema: string; table: string; column: string }
+  crossTarget?: ColumnInfo['crossRef']
   variant?: 'fk' | 'pk' | 'self-pk'
 }) {
   // A `text` column holding a JSON document lays out like a `jsonb` one — the
@@ -248,6 +272,7 @@ function FieldRow({
             value={value}
             prettyJson={prettyJson}
             target={target}
+            crossTarget={crossTarget}
             variant={variant}
           />
         )}
@@ -484,11 +509,23 @@ function ChildGroup({
     staleTime: 30_000,
   })
 
+  const crossRefsQuery = useQuery({
+    queryKey: ['crossDbRefs', database],
+    queryFn: () => $getCrossDbRefs({ data: { database } }),
+    staleTime: Infinity,
+  })
+  const crossRefs = crossRefsQuery.data?.refs ?? []
+
   const rows = rowsQuery.data?.rows ?? []
   const childColumns = rowsQuery.data?.columns ?? childTableInfo?.columns ?? []
   const enrichedChildColumns = useMemo(
-    () => enrichColumnsWithFks(childColumns, fks, child.table),
-    [childColumns, fks, child.table],
+    () =>
+      enrichColumnsWithCrossDbRefs(
+        enrichColumnsWithFks(childColumns, fks, child.table),
+        crossRefs,
+        { database, schema, table: child.table },
+      ),
+    [childColumns, fks, child.table, crossRefs, database, schema],
   )
   const childPkColumn = childTableInfo?.pkColumn ?? null
   const start = total === 0 ? 0 : offset + 1

@@ -11,11 +11,14 @@ import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 vi.mock('#/server/db', () => ({
   getLastConfig: () => scope.config,
   getPresetName: () => scope.presetName,
+  resolveDatabase: () => scope.requestDatabase ?? scope.config?.database,
 }))
 
 const scope: {
   config: { host: string; port: number; database: string; user: string } | null
   presetName: string | null
+  /** The database the request named, which is what a page is about. */
+  requestDatabase?: string
 } = { config: null, presetName: null }
 
 describe('local metadata lookup', () => {
@@ -32,6 +35,7 @@ describe('local metadata lookup', () => {
       user: 'reporter',
     }
     scope.presetName = 'Reporting (prod)'
+    scope.requestDatabase = undefined
   })
 
   afterEach(() => {
@@ -93,6 +97,18 @@ describe('local metadata lookup', () => {
     scope.presetName = null
     write('reporting-internal-5432/reporting-db/public/schema-map.json', { tables: {} })
     expect(await readSchemaMap('public')).not.toBeNull()
+  })
+
+  // The bug this guards: metadata was filed under the database the session
+  // connected with, so a page about another database on the same connection was
+  // handed a catalog that named none of its tables.
+  it('reads the database the request is about, not the one the session opened', async () => {
+    write(
+      'reporting-prod/archive-db/public/table-catalog.json',
+      { groups: [{ name: 'Archive' }], tables: {} },
+    )
+    scope.requestDatabase = 'archive_db'
+    expect((await readTableCatalog('public'))?.groups[0].name).toBe('Archive')
   })
 
   it('reads nothing while disconnected rather than throwing', async () => {
