@@ -7,6 +7,7 @@ import {
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import Header from '../components/Header'
+import { usePerfLogSync } from '#/hooks/usePerfLogging'
 import Sidebar from '../components/Sidebar'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
@@ -49,6 +50,8 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootComponent() {
+  // The server logs queries only while this browser asked for the HUD.
+  usePerfLogSync()
   return <Outlet />
 }
 

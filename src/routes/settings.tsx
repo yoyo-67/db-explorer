@@ -15,12 +15,13 @@ function SettingsPage() {
         </h1>
         <p className="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)]">
           Kept in this browser, shared by every tab. Nothing here touches the
-          database or the server.
+          database — the query log is the one exception: the server writes it
+          only while a browser has the HUD on.
         </p>
 
         <Toggle
           label="Query stats HUD"
-          hint="Shows the ⚡ counter in the header. While on, every open tab polls the query log once a second."
+          hint="Shows the ⚡ counter in the header. While on, the server logs every query it runs and each open tab polls that log once a second."
           checked={settings.queryHud}
           onChange={(next) => setSetting('queryHud', next)}
         />

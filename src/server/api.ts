@@ -21,7 +21,7 @@ import {
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { getSchemaPressure } from '#/server/schema-pressure'
 import { getQueryStats } from '#/server/query-board'
-import { readPerfLog } from '#/server/perf-log'
+import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { readPresets } from '#/server/presets'
 import { runWithDatabase } from '#/server/db-context'
@@ -257,6 +257,18 @@ export const $getPerfLog = createServerFn({ method: 'GET' })
     const entries = await readPerfLog(data.limit ?? 500)
     const sinceTs = data.sinceTs
     return sinceTs == null ? entries : entries.filter((e) => e.ts > sinceTs)
+  })
+
+/**
+ * Turn query logging on or off, following the browser's own HUD setting — the
+ * server cannot read `localStorage`, so the client tells it. Sent on load and on
+ * every change, from one place in the root route.
+ */
+export const $setPerfLogging = createServerFn({ method: 'POST' })
+  .inputValidator((data: { enabled: boolean }) => data)
+  .handler(({ data }) => {
+    setPerfLogging(data.enabled === true)
+    return { enabled: data.enabled === true }
   })
 
 export const $getTableCatalog = createServerFn({ method: 'GET' })
