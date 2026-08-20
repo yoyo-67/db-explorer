@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_STATEMENT_TIMEOUT_MS,
+  MAX_STATEMENT_TIMEOUT_MS,
+  MIN_STATEMENT_TIMEOUT_MS,
   SETTINGS_KEY,
   readSettings,
   writeSetting,
@@ -67,5 +70,31 @@ describe('writeSetting', () => {
 
   it('is a no-op without storage', () => {
     expect(() => writeSetting('queryHud', true, null)).not.toThrow()
+  })
+})
+
+describe('statementTimeoutMs', () => {
+  it('defaults to the shared timeout when storage says nothing', () => {
+    expect(readSettings(fakeStorage()).statementTimeoutMs).toBe(DEFAULT_STATEMENT_TIMEOUT_MS)
+  })
+
+  it('reads a stored choice back', () => {
+    const storage = fakeStorage()
+    writeSetting('statementTimeoutMs', 15_000, storage)
+    expect(readSettings(storage).statementTimeoutMs).toBe(15_000)
+  })
+
+  // Storage is user-editable, and a zero means "no timeout at all" to Postgres —
+  // the one outcome this setting exists to rule out.
+  it('clamps whatever storage happens to hold', () => {
+    expect(readSettings(fakeStorage('{"statementTimeoutMs":0}')).statementTimeoutMs).toBe(
+      MIN_STATEMENT_TIMEOUT_MS,
+    )
+    expect(
+      readSettings(fakeStorage('{"statementTimeoutMs":99999999}')).statementTimeoutMs,
+    ).toBe(MAX_STATEMENT_TIMEOUT_MS)
+    expect(readSettings(fakeStorage('{"statementTimeoutMs":"soon"}')).statementTimeoutMs).toBe(
+      DEFAULT_STATEMENT_TIMEOUT_MS,
+    )
   })
 })

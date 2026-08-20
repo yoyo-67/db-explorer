@@ -6,10 +6,39 @@
 export interface AppSettings {
   /** Show the ⚡ query-stats HUD. While on, every tab polls the perf log each second. */
   queryHud: boolean
+  /**
+   * The `statement_timeout` every query runs under. Not a browser preference
+   * like the rest of this file — it is mirrored to the server, which is the only
+   * place it can be enforced. Kept here anyway so it is set where the other
+   * knobs are, and remembered the same way.
+   */
+  statementTimeoutMs: number
+}
+
+/** Offered in the settings page; any value in range is honoured. */
+export const STATEMENT_TIMEOUT_CHOICES = [5_000, 15_000, 30_000, 60_000, 300_000] as const
+
+/** A page nobody is waiting for is a page nobody wanted: half a minute is long
+ *  past the point where an explorer should have answered, and short enough that
+ *  a runaway scan gives the connection back. */
+export const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000
+export const MIN_STATEMENT_TIMEOUT_MS = 1_000
+export const MAX_STATEMENT_TIMEOUT_MS = 600_000
+
+/**
+ * The stored value made usable. Storage is user-editable and the number arrives
+ * from a browser, so it is clamped rather than trusted: a zero would mean "no
+ * timeout at all" to Postgres, which is the one thing this setting exists to
+ * prevent.
+ */
+export function clampStatementTimeout(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_STATEMENT_TIMEOUT_MS
+  return Math.min(MAX_STATEMENT_TIMEOUT_MS, Math.max(MIN_STATEMENT_TIMEOUT_MS, Math.round(value)))
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   queryHud: false,
+  statementTimeoutMs: DEFAULT_STATEMENT_TIMEOUT_MS,
 }
 
 export const SETTINGS_KEY = 'db-explorer.settings'
@@ -45,6 +74,7 @@ export function readSettings(
   return {
     queryHud:
       typeof raw.queryHud === 'boolean' ? raw.queryHud : DEFAULT_SETTINGS.queryHud,
+    statementTimeoutMs: clampStatementTimeout(raw.statementTimeoutMs),
   }
 }
 

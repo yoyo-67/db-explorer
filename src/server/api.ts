@@ -260,15 +260,18 @@ export const $getPerfLog = createServerFn({ method: 'GET' })
   })
 
 /**
- * Turn query logging on or off, following the browser's own HUD setting — the
- * server cannot read `localStorage`, so the client tells it. Sent on load and on
- * every change, from one place in the root route.
+ * Hand the server the settings it is the only one able to act on: whether
+ * queries are logged, and the `statement_timeout` they run under. The server
+ * cannot read `localStorage`, so the client tells it — on load and on every
+ * change, from one place in the root route.
  */
-export const $setPerfLogging = createServerFn({ method: 'POST' })
-  .inputValidator((data: { enabled: boolean }) => data)
-  .handler(({ data }) => {
-    setPerfLogging(data.enabled === true)
-    return { enabled: data.enabled === true }
+export const $setServerSettings = createServerFn({ method: 'POST' })
+  .inputValidator((data: { perfLog: boolean; statementTimeoutMs: number }) => data)
+  .handler(async ({ data }) => {
+    const { setStatementTimeout, getStatementTimeout } = await import('#/server/db')
+    setPerfLogging(data.perfLog === true)
+    setStatementTimeout(data.statementTimeoutMs)
+    return { perfLog: data.perfLog === true, statementTimeoutMs: getStatementTimeout() }
   })
 
 export const $getTableCatalog = createServerFn({ method: 'GET' })

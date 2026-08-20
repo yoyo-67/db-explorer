@@ -29,8 +29,18 @@ vi.mock('pg', () => ({
 }))
 
 // Import after mock
-const { createConnection, ensureConnection, getConnection, disconnect, query } =
-  await import('#/server/db')
+const {
+  createConnection,
+  ensureConnection,
+  getConnection,
+  disconnect,
+  query,
+  setStatementTimeout,
+  getStatementTimeout,
+  StatementTimeoutError,
+} = await import('#/server/db')
+const { MAX_STATEMENT_TIMEOUT_MS, MIN_STATEMENT_TIMEOUT_MS, DEFAULT_STATEMENT_TIMEOUT_MS } =
+  await import('#/lib/app-settings')
 
 const validConfig: ConnectionConfig = {
   host: 'localhost',
@@ -49,6 +59,7 @@ describe('db module', () => {
       release: vi.fn(),
     })
     // Ensure clean state
+    setStatementTimeout(DEFAULT_STATEMENT_TIMEOUT_MS)
     await disconnect()
   })
 
@@ -226,27 +237,95 @@ describe('db module', () => {
   })
 
   describe('query', () => {
-    it('delegates to pool.query', async () => {
-      const client = { query: vi.fn(), release: vi.fn() }
+    /** A pooled client whose queries answer, and which records what it was asked. */
+    function liveClient(result: unknown = { rows: [], fields: [] }) {
+      const client = {
+        query: vi.fn().mockResolvedValue(result),
+        release: vi.fn(),
+      }
       mockConnect.mockResolvedValue(client)
-      mockQuery.mockResolvedValue({ rows: [{ id: 1 }], fields: [] })
+      return client
+    }
+
+    it('runs the query on a pooled client and releases it', async () => {
+      const client = liveClient({ rows: [{ id: 1 }], fields: [] })
 
       await createConnection(validConfig)
       const result = await query('SELECT * FROM users')
 
-      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users', undefined)
+      expect(client.query).toHaveBeenCalledWith('SELECT * FROM users', undefined)
       expect(result.rows).toEqual([{ id: 1 }])
+      expect(client.release).toHaveBeenCalled()
     })
 
-    it('passes parameters to pool.query', async () => {
-      const client = { query: vi.fn(), release: vi.fn() }
-      mockConnect.mockResolvedValue(client)
-      mockQuery.mockResolvedValue({ rows: [], fields: [] })
+    it('passes parameters through', async () => {
+      const client = liveClient()
 
       await createConnection(validConfig)
       await query('SELECT * FROM users WHERE id = $1', [1])
 
-      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', [1])
+      expect(client.query).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', [1])
+    })
+
+    // The bound is session state on the physical connection, so a client is only
+    // told again once the setting changes — otherwise every query would pay a
+    // round trip to say what the connection already knows.
+    it('bounds the connection by the configured timeout, once', async () => {
+      const client = liveClient()
+
+      await createConnection(validConfig)
+      setStatementTimeout(15_000)
+      await query('SELECT 1')
+      await query('SELECT 2')
+
+      const sets = client.query.mock.calls.filter(
+        ([sql]) => typeof sql === 'string' && sql.startsWith('SET statement_timeout'),
+      )
+      expect(sets).toEqual([['SET statement_timeout = 15000']])
+    })
+
+    it('tells the connection again after the setting changes', async () => {
+      const client = liveClient()
+
+      await createConnection(validConfig)
+      setStatementTimeout(15_000)
+      await query('SELECT 1')
+      setStatementTimeout(60_000)
+      await query('SELECT 2')
+
+      const sets = client.query.mock.calls
+        .map(([sql]) => sql)
+        .filter((sql) => typeof sql === 'string' && sql.startsWith('SET statement_timeout'))
+      expect(sets).toEqual([
+        'SET statement_timeout = 15000',
+        'SET statement_timeout = 60000',
+      ])
+    })
+
+    it('clamps a timeout that would mean no timeout at all', async () => {
+      setStatementTimeout(0)
+      expect(getStatementTimeout()).toBe(MIN_STATEMENT_TIMEOUT_MS)
+      setStatementTimeout(Number.MAX_SAFE_INTEGER)
+      expect(getStatementTimeout()).toBe(MAX_STATEMENT_TIMEOUT_MS)
+    })
+
+    // A cancelled statement arrives as a plain pg error; callers that degrade
+    // gracefully on a timeout recognise the type, not the code.
+    it('raises a cancelled statement as StatementTimeoutError', async () => {
+      const client = liveClient()
+      await createConnection(validConfig)
+      setStatementTimeout(5_000)
+      // Keyed on the statement, not queued: the fake pool re-runs its session
+      // setup on every acquire, and a queued rejection would land on that.
+      client.query.mockImplementation(async (sql: string) => {
+        if (sql !== 'SELECT pg_sleep(60)') return { rows: [], fields: [] }
+        throw Object.assign(new Error('canceling statement due to statement timeout'), {
+          code: '57014',
+        })
+      })
+
+      await expect(query('SELECT pg_sleep(60)')).rejects.toBeInstanceOf(StatementTimeoutError)
+      expect(client.release).toHaveBeenCalled()
     })
 
     it('throws when not connected', async () => {

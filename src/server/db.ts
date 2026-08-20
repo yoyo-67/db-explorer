@@ -2,6 +2,10 @@ import pg from 'pg'
 import type { ConnectionConfig } from '#/lib/types'
 import { appendPerfEntry } from '#/server/perf-log'
 import { currentDatabase } from '#/server/db-context'
+import {
+  DEFAULT_STATEMENT_TIMEOUT_MS,
+  clampStatementTimeout,
+} from '#/lib/app-settings'
 
 /**
  * One pool per database, not one per connection.
@@ -231,6 +235,53 @@ export async function disconnect(): Promise<void> {
   await closeAllPools()
 }
 
+/**
+ * The `statement_timeout` every query runs under, in milliseconds.
+ *
+ * A read-only explorer has no business holding a connection open forever: an
+ * unindexed sort or a COUNT on a billion rows would otherwise run until someone
+ * noticed, with the page that asked for it long since abandoned. The bound is a
+ * setting rather than a constant because the right number is a judgement about
+ * the database in front of you — the client mirrors it over (`$setServerSettings`)
+ * and until it does, the shared default applies.
+ */
+let sessionTimeoutMs = DEFAULT_STATEMENT_TIMEOUT_MS
+
+/** Follow the browser's setting. Clamped here too: this is the last stop before
+ *  a number becomes SQL. */
+export function setStatementTimeout(ms: number): void {
+  sessionTimeoutMs = clampStatementTimeout(ms)
+}
+
+export function getStatementTimeout(): number {
+  return sessionTimeoutMs
+}
+
+/**
+ * The bound each pooled connection is currently under.
+ *
+ * `statement_timeout` is session state, so it survives on the physical
+ * connection and costs nothing to reuse — a client is only told again after the
+ * setting changes. Weak, so a pool that ends takes its bookkeeping with it.
+ */
+const clientTimeouts = new WeakMap<pg.PoolClient, number>()
+
+/** A pooled client already bounded by the current setting. */
+async function acquire(): Promise<pg.PoolClient> {
+  const pool = await activePool()
+  const client = await pool.connect()
+  const wanted = sessionTimeoutMs
+  if (clientTimeouts.get(client) === wanted) return client
+  try {
+    await client.query(`SET statement_timeout = ${wanted}`)
+    clientTimeouts.set(client, wanted)
+  } catch (err) {
+    client.release()
+    throw err
+  }
+  return client
+}
+
 /** Thrown when a bounded query hits its `statement_timeout`. */
 export class StatementTimeoutError extends Error {
   constructor(readonly timeoutMs: number) {
@@ -241,6 +292,10 @@ export class StatementTimeoutError extends Error {
 
 /** Postgres `query_canceled`. */
 const QUERY_CANCELED = '57014'
+
+function isQueryCanceled(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === QUERY_CANCELED
+}
 
 /**
  * Run one query under a `statement_timeout`, on its own client so the bound
@@ -278,8 +333,7 @@ export async function queryWithTimeout(
     } catch {
       /* ignore — the transaction is already gone */
     }
-    const timedOut =
-      typeof err === 'object' && err !== null && 'code' in err && err.code === QUERY_CANCELED
+    const timedOut = isQueryCanceled(err)
     void appendPerfEntry({
       ts: started,
       preset: presetLabel(),
@@ -298,11 +352,20 @@ export async function queryWithTimeout(
   }
 }
 
+/**
+ * Run one query, bounded by the configured `statement_timeout`.
+ *
+ * Taken from the pool by hand rather than through `pool.query`, which is the
+ * only way the bound can be put on the connection before the statement goes
+ * out. A cancelled statement is raised as {@link StatementTimeoutError}, the
+ * same type the tighter per-call bound raises, so nothing has to know which of
+ * the two ran out.
+ */
 export async function query(sql: string, params?: unknown[]): Promise<pg.QueryResult> {
-  const pool = await activePool()
+  const client = await acquire()
   const started = Date.now()
   try {
-    const result = await pool.query(sql, params)
+    const result = await client.query(sql, params)
     void appendPerfEntry({
       ts: started,
       preset: presetLabel(),
@@ -313,14 +376,21 @@ export async function query(sql: string, params?: unknown[]): Promise<pg.QueryRe
     })
     return result
   } catch (err) {
+    const timedOut = isQueryCanceled(err)
     void appendPerfEntry({
       ts: started,
       preset: presetLabel(),
       sql,
       ms: Date.now() - started,
       ok: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: timedOut
+        ? `statement_timeout ${sessionTimeoutMs}ms`
+        : err instanceof Error
+          ? err.message
+          : String(err),
     })
-    throw err
+    throw timedOut ? new StatementTimeoutError(sessionTimeoutMs) : err
+  } finally {
+    client.release()
   }
 }
