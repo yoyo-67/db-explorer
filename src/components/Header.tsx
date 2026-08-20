@@ -4,16 +4,19 @@ import { useEffect, useState } from 'react'
 import {
   $connect,
   $disconnect,
+  $getDatabases,
   $getPresets,
   $getSchemas,
   $getTables,
   $resolveEntryTarget,
+  $switchDatabase,
   $testConnection,
 } from '#/server/api'
 import { connectionStatusKey, useConnectionState } from '#/hooks/useConnectionStatus'
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath } from '#/lib/lens-links'
 import { resolveActiveSchema } from '#/lib/active-schema'
+import { menuHoldsRoute } from '#/lib/menu-routes'
 import TextScale from './TextScale'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
@@ -21,9 +24,9 @@ import QueryHud from './QueryHud/QueryHud'
 /**
  * The bar carries only what a session actually navigates between — Console and
  * Lens — plus the controls that say which database you are looking at. The
- * once-a-session entries (query board, pressure, help, settings, disconnect)
- * live behind the overflow menu, so the bar stops competing with the data for
- * attention and no longer needs the whole viewport to fit.
+ * once-a-session entries (query board, pressure, help, settings, text size,
+ * theme, disconnect) live behind the menu, so the bar stops competing with the
+ * data for attention and no longer needs the whole viewport to fit.
  */
 export default function Header() {
   return (
@@ -43,13 +46,14 @@ export default function Header() {
           <ConnectionState />
         </div>
 
+        {/* Widest scope first: which connection, then which database on it,
+            then which schema in that. */}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <OptionalQueryHud />
           <ConnectionSwitcher />
+          <DatabasePicker />
           <SchemaPicker />
-          <OverflowMenu />
-          <TextScale />
-          <ThemeToggle />
+          <Menu />
         </div>
       </nav>
     </header>
@@ -195,26 +199,37 @@ function LensLink() {
 const MENU_ITEM_CLASS =
   'block w-full rounded-lg px-3 py-2 text-left text-xs text-[var(--sea-ink)] no-underline transition hover:bg-[rgba(79,184,178,0.12)]'
 
+const MENU_ITEM_ACTIVE_CLASS = `${MENU_ITEM_CLASS} bg-[rgba(79,184,178,0.16)] font-medium`
+
+const MENU_HINT_CLASS = 'block text-[10px] text-[var(--sea-ink-soft)]'
+
 /**
- * Everything a session reaches for once, if at all. A menu rather than more bar:
- * these entries are not worth permanent width, and Disconnect in particular is
- * safer one deliberate click away from the links you use all day.
+ * Everything a session reaches for once, if at all: the rarely-visited pages,
+ * the two display controls, and the way out. A menu rather than more bar — none
+ * of it is worth permanent width, and Disconnect in particular is safer one
+ * deliberate click away from the links used all day.
  */
-function OverflowMenu() {
+function Menu() {
   const [open, setOpen] = useState(false)
   const schema = useActiveSchema()
   const state = useConnectionState()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
+  // The selected route is inside here on those pages, and a bar that shows no
+  // selection at all reads as "nowhere" — so the trigger carries the mark.
+  const holdsSelectedRoute = menuHoldsRoute(pathname)
+
   // Any navigation closes it, including the entries below — the panel outliving
-  // the page it was opened from is the one thing a menu must not do.
+  // the page it was opened from is the one thing a menu must not do. The display
+  // controls navigate nowhere, so they leave it open, which is what you want
+  // while stepping the text size.
   useEffect(() => setOpen(false), [pathname])
 
   useEffect(() => {
     if (!open) return
     const onPointerDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('[data-overflow-menu]') && !target.closest('[data-overflow-trigger]')) {
+      if (!target.closest('[data-menu]') && !target.closest('[data-menu-trigger]')) {
         setOpen(false)
       }
     }
@@ -233,30 +248,41 @@ function OverflowMenu() {
     <div className="relative">
       <button
         type="button"
-        data-overflow-trigger
+        data-menu-trigger
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`cursor-pointer rounded-lg border border-[var(--line)] px-2 py-1 text-xs leading-none transition ${
-          open
-            ? 'bg-[rgba(79,184,178,0.12)] text-[var(--sea-ink)]'
-            : 'bg-[var(--surface-strong)] text-[var(--sea-ink-soft)] hover:text-[var(--sea-ink)]'
+        className={`relative cursor-pointer rounded-lg border px-2 py-1 text-xs leading-none transition ${
+          open || holdsSelectedRoute
+            ? 'border-[var(--lagoon)]/60 bg-[rgba(79,184,178,0.12)] text-[var(--sea-ink)]'
+            : 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--sea-ink-soft)] hover:text-[var(--sea-ink)]'
         }`}
-        title="More"
+        title="Menu"
       >
         <span aria-hidden>•••</span>
-        <span className="sr-only">More</span>
+        <span className="sr-only">Menu</span>
+        {holdsSelectedRoute && (
+          <span
+            aria-hidden
+            className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-[var(--lagoon)]"
+          />
+        )}
       </button>
 
       {open && (
         <div
-          data-overflow-menu
+          data-menu
           role="menu"
-          className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-1.5 shadow-lg shadow-black/10"
+          className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl"
         >
-          <Link to="/queries" role="menuitem" className={MENU_ITEM_CLASS}>
+          <Link
+            to="/queries"
+            role="menuitem"
+            className={MENU_ITEM_CLASS}
+            activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+          >
             Query board
-            <span className="block text-[10px] text-[var(--sea-ink-soft)]">
+            <span className={MENU_HINT_CLASS}>
               What this database spends its time running
             </span>
           </Link>
@@ -267,20 +293,40 @@ function OverflowMenu() {
               params={{ schema }}
               role="menuitem"
               className={MENU_ITEM_CLASS}
+              activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
             >
               Schema pressure
-              <span className="block text-[10px] text-[var(--sea-ink-soft)]">
+              <span className={MENU_HINT_CLASS}>
                 Unread indexes, disk, vacuum debt, sequences running out
               </span>
             </Link>
           )}
 
-          <Link to="/help" role="menuitem" className={MENU_ITEM_CLASS}>
+          <Link
+            to="/help"
+            role="menuitem"
+            className={MENU_ITEM_CLASS}
+            activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+          >
             Help
           </Link>
-          <Link to="/settings" role="menuitem" className={MENU_ITEM_CLASS}>
+          <Link
+            to="/settings"
+            role="menuitem"
+            className={MENU_ITEM_CLASS}
+            activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+          >
             Settings
           </Link>
+
+          <div className="my-1.5 border-t border-[var(--line)]" />
+
+          <MenuRow label="Text size">
+            <TextScale />
+          </MenuRow>
+          <MenuRow label="Theme">
+            <ThemeToggle />
+          </MenuRow>
 
           {state === 'connected' && (
             <>
@@ -290,6 +336,16 @@ function OverflowMenu() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** A named slot for a control that acts in place rather than navigating. */
+function MenuRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg px-3 py-2">
+      <span className="text-xs text-[var(--sea-ink)]">{label}</span>
+      {children}
     </div>
   )
 }
@@ -328,6 +384,81 @@ function DisconnectItem() {
     >
       {disconnecting ? 'Disconnecting...' : 'Disconnect'}
     </button>
+  )
+}
+
+/**
+ * Which database on this server, discovered rather than configured.
+ *
+ * The host and credentials in hand already decide what is reachable, so the list
+ * comes off `pg_database` — nothing to keep in sync, and a database created this
+ * morning is in the list this afternoon. Hidden on a one-database server: a
+ * picker with a single option only takes up room.
+ */
+function DatabasePicker() {
+  const queryClient = useQueryClient()
+  const openFirstTable = useOpenFirstTable()
+  const state = useConnectionState()
+  const [switching, setSwitching] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const databasesQuery = useQuery({
+    queryKey: ['databases'],
+    queryFn: () => $getDatabases(),
+    staleTime: 60_000,
+    enabled: state === 'connected',
+  })
+
+  const databases = databasesQuery.data ?? []
+  if (databases.length < 2) return null
+
+  const current = databases.find((db) => db.isCurrent)?.name ?? ''
+
+  const handleChange = async (next: string) => {
+    if (!next || next === current) return
+    setSwitching(next)
+    setError(null)
+    try {
+      const result = await $switchDatabase({ data: { database: next } })
+      if (!result.success) {
+        setError(result.error)
+        return
+      }
+      // Schemas, tables and rows all belonged to the database we just left.
+      await queryClient.invalidateQueries()
+      queryClient.setQueryData(connectionStatusKey, { connected: true })
+      await openFirstTable()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        value={current}
+        disabled={switching !== null}
+        onChange={(e) => handleChange(e.target.value)}
+        className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
+        title="Database on this server"
+      >
+        {switching && <option value="">{`Switching to ${switching}...`}</option>}
+        {databases.map((db) => (
+          // A database that refuses connections is still listed, disabled — the
+          // absence of one you know exists is the more confusing answer.
+          <option key={db.name} value={db.name} disabled={!db.canConnect}>
+            {db.canConnect ? db.name : `${db.name} (no access)`}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span title={error} className="text-xs text-red-500">
+          ⚠
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -440,9 +571,9 @@ function ConnectionSwitcher() {
         disabled={switching !== null}
         onChange={(e) => handleSelect(e.target.value)}
         className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
-        title="Switch connection"
+        title="Switch to another configured connection"
       >
-        <option value="">{switching ? `Switching to ${switching}...` : 'Switch DB...'}</option>
+        <option value="">{switching ? `Switching to ${switching}...` : 'Switch connection...'}</option>
         {presets.map((p) => (
           <option key={p.name} value={p.name}>
             {p.name}
