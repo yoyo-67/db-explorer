@@ -88,9 +88,9 @@ export interface OrphanReport {
   framework: SchemaGraphNode[]
   /**
    * Edge-free views. A view cannot carry a constraint and nothing declares an FK
-   * *to* one, so calling it an orphan says nothing about the schema. Measured
-   * against devgrounds this is what the DBA helper views (`lockview`,
-   * `pg_stat_statements`, `bloat_view`, …) would otherwise inflate the claim by.
+   * *to* one, so calling it an orphan says nothing about the schema. On a schema
+   * carrying the usual DBA helper views this is what they would otherwise
+   * inflate the orphan claim by.
    */
   views: SchemaGraphNode[]
 }

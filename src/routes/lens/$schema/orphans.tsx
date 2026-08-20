@@ -211,7 +211,7 @@ function StalenessPanel({
           schema={schema}
           label="Live but unmapped"
           tables={staleness.liveNotMapped}
-          hint="Rerun the extractor: python3 ~/Work/buildots/pycode/local_dev/schema_map/extract.py"
+          hint="Rerun the extractor that writes schema-map.json"
         />
         <Delta
           schema={schema}

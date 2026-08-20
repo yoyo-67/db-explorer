@@ -18,7 +18,7 @@ presets.json
 # Local query perf instrumentation
 perf-log.jsonl
 
-# Internal schema metadata — do not commit (this repo is public).
-# Lives in local/, which is its own private git repo, mirroring pycode/local_dev.
-# Regenerate with: python3 ~/Work/buildots/pycode/local_dev/schema_map/extract.py
+# Private schema metadata — do not commit (this repo is public).
+# Lives in local/, which is expected to be its own private git repo.
+# Regenerate schema-map.json with your own extractor.
 local/

@@ -38,6 +38,15 @@ export interface ColumnInfo {
  * A schema, with the two facts about it that change how the app behaves —
  * both asked of `pg_namespace` rather than matched against a list of names.
  */
+/** One database on the connected server, as `pg_database` sees it. */
+export interface DatabaseInfo {
+  name: string
+  /** The one the current pool is attached to. */
+  isCurrent: boolean
+  /** `CONNECT` is revoked, or the database is in single-user mode. */
+  canConnect: boolean
+}
+
 export interface SchemaInfo {
   name: string
   /**
@@ -534,7 +543,7 @@ export interface QueryStats {
   entries: QueryStatEntry[]
 }
 
-/** Shape of `local/schema-map.json`, emitted by pycode/local_dev/schema_map/extract.py. */
+/** Shape of `local/schema-map.json`, emitted by an external schema extractor. */
 export interface SchemaMap {
   source?: string
   tables: Record<string, { model: string; module: string; group: string }>

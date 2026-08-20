@@ -28,6 +28,7 @@ import type {
   ColumnValuesRequest,
   ConnectionConfig,
   ConsoleResult,
+  DatabaseInfo,
   EntryTarget,
   ForeignKey,
   IntrospectResult,
@@ -144,6 +145,32 @@ export async function getSchemas(): Promise<SchemaInfo[]> {
     name: row.schema_name as string,
     isSystem: Boolean(row.is_system),
     isCatalog: Boolean(row.is_catalog),
+  }))
+}
+
+/**
+ * Every database on the server we are already connected to.
+ *
+ * Read off `pg_database` rather than configured anywhere: the host and the
+ * credentials in hand already decide what is reachable, so a list typed into
+ * `presets.json` could only be a stale copy of this one. Templates are dropped
+ * (nothing to browse), and a database that refuses connections is still listed
+ * so that switching to it fails with a reason rather than by omission.
+ */
+export async function listDatabases(): Promise<DatabaseInfo[]> {
+  const result = await query(`
+    SELECT
+      db.datname AS name,
+      db.datname = current_database() AS is_current,
+      (db.datallowconn AND has_database_privilege(db.oid, 'CONNECT')) AS can_connect
+    FROM pg_database AS db
+    WHERE NOT db.datistemplate
+    ORDER BY db.datname
+  `)
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    isCurrent: row.is_current as boolean,
+    canConnect: row.can_connect as boolean,
   }))
 }
 

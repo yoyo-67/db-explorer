@@ -17,7 +17,7 @@ import type { EdgeBasis, SchemaMap } from '#/lib/types'
  * column points.
  *
  * The subtle part is precedence for *incoming* convention edges. A rule saying
- * `project_id → data_constructionproject.id` must not apply to a table whose
+ * `project_id → app_project.id` must not apply to a table whose
  * `project_id` has a declared or model edge pointing somewhere else — so the
  * candidate set deliberately includes those competing edges even though they do
  * not touch the row's table, and lets precedence drop the convention guess.

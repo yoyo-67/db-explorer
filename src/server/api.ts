@@ -1,6 +1,4 @@
 import { createServerFn } from '@tanstack/react-start'
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
 import {
   testConnection,
   getSchemas,
@@ -15,6 +13,7 @@ import {
   getRowChildren,
   getSchemaGraph,
   introspect,
+  listDatabases,
   resolveEntryTarget,
   runReadOnlyQuery,
 } from '#/server/functions'
@@ -23,10 +22,9 @@ import { getSchemaPressure } from '#/server/schema-pressure'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
-import { resolvePresets } from '#/lib/preset-resolver'
+import { readPresets } from '#/server/presets'
 import type {
   ConnectionConfig,
-  ConnectionPreset,
   TableCatalog,
   ColumnValuesRequest,
   TablePageRequest,
@@ -84,6 +82,44 @@ export const $resolveEntryTarget = createServerFn({ method: 'GET' }).handler(
     return resolveEntryTarget()
   },
 )
+
+export const $getDatabases = createServerFn({ method: 'GET' }).handler(async () => {
+  return listDatabases()
+})
+
+/**
+ * Move the pool to another database on the same server, reusing the credentials
+ * we already hold — the point of discovering the list is that you never retype
+ * the host and password to look next door.
+ *
+ * There is no dry run first: connecting IS the test — `createConnection` drops
+ * the live pool before it builds the new one, so a check would already have cost
+ * the session it was meant to protect. Instead a failure puts the old config
+ * back, and a bad switch costs a message rather than the connection.
+ */
+export const $switchDatabase = createServerFn({ method: 'POST' })
+  .inputValidator((data: { database: string }) => data)
+  .handler(async ({ data }) => {
+    const { createConnection, ensureConnection, getLastConfig } = await import('#/server/db')
+    const current = getLastConfig()
+    if (!current) return { success: false as const, error: 'Not connected' }
+    if (current.database === data.database) return { success: true as const }
+
+    const next = { ...current, database: data.database }
+    try {
+      await createConnection(next)
+    } catch (err) {
+      // The pool the switch tore down is rebuilt from the config that was
+      // working a moment ago, so the tab we came from keeps its session.
+      await ensureConnection(current).catch(() => {})
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) }
+    }
+
+    // The preset name stays: it names the connection, and the connection is what
+    // did not change. It is also the folder private metadata lives under, which
+    // must not move because you looked at the database next door.
+    return { success: true as const }
+  })
 
 export const $disconnect = createServerFn({ method: 'POST' }).handler(
   async () => {
@@ -203,27 +239,9 @@ export const $getRowDetail = createServerFn({ method: 'GET' })
     )
   })
 
-export const $getPresets = createServerFn({ method: 'GET' }).handler(
-  async () => {
-    let raw: string
-    try {
-      const presetsPath = resolve(process.cwd(), 'presets.json')
-      raw = await readFile(presetsPath, 'utf-8')
-    } catch {
-      return { presets: [] as ConnectionPreset[], error: null as string | null }
-    }
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      const presets = resolvePresets(parsed, process.env)
-      return { presets, error: null as string | null }
-    } catch (err) {
-      return {
-        presets: [] as ConnectionPreset[],
-        error: err instanceof Error ? err.message : String(err),
-      }
-    }
-  },
-)
+export const $getPresets = createServerFn({ method: 'GET' }).handler(async () => {
+  return readPresets()
+})
 
 export const $getPerfLog = createServerFn({ method: 'GET' })
   .inputValidator((data: { sinceTs?: number; limit?: number } | undefined) => data ?? {})
