@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router'
+import CrossDbLink from '#/components/CrossDbLink'
+import type { CrossDbTarget } from '#/lib/cross-db-refs'
 import type { JsonValue } from '#/lib/types'
 
 export interface LinkableTarget {
@@ -11,6 +13,9 @@ interface LinkableValueProps {
   value: JsonValue | undefined
   prettyJson?: boolean
   target?: LinkableTarget
+  /** A reference out of this database — see `CrossDbLink` for why it is not a
+   *  plain link. */
+  crossTarget?: CrossDbTarget & { note?: string }
   variant?: 'fk' | 'pk' | 'self-pk'
   className?: string
   onClick?: (e: React.MouseEvent) => void
@@ -26,11 +31,28 @@ export default function LinkableValue({
   value,
   prettyJson = false,
   target,
+  crossTarget,
   variant = 'fk',
   className,
   onClick,
 }: LinkableValueProps) {
   const inner = <CellValue value={value} prettyJson={prettyJson} />
+
+  // A cross-database reference wins over a same-database one: a column carrying
+  // both would be a rule written by hand about a column Postgres already
+  // constrains, and the hand-written statement is the deliberate one.
+  if (crossTarget && value !== null && value !== undefined) {
+    return (
+      <CrossDbLink
+        target={crossTarget}
+        value={String(value)}
+        note={crossTarget.note}
+        className={className}
+      >
+        {inner}
+      </CrossDbLink>
+    )
+  }
 
   if (target && variant !== 'self-pk' && value !== null && value !== undefined) {
     const linkClass =

@@ -4,6 +4,8 @@ import LinkableValue from '#/components/LinkableValue'
 import FilterDropdown from '#/components/table/FilterDropdown'
 import { formatJsonText } from '#/lib/json-text'
 import { isLinkableFkValue } from '#/lib/fk-resolver'
+import { describeCrossDbTarget } from '#/lib/cross-db-refs'
+import CrossDbLink from '#/components/CrossDbLink'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
@@ -184,6 +186,19 @@ function ColumnHeader({
           </span>
         )}
 
+        {/* Hand-written, and labelled so: no constraint backs a reference that
+            leaves the database. */}
+        {col.crossRef && (
+          <span
+            title={`References ${describeCrossDbTarget(col.crossRef)} — another database on this connection, mapped by hand${
+              col.crossRef.note ? `: ${col.crossRef.note}` : ''
+            }`}
+            className="rounded border border-dashed border-[var(--lagoon)]/60 px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]"
+          >
+            ↗ {col.crossRef.database}.{col.crossRef.table}
+          </span>
+        )}
+
         {filterable && (
         <button
           type="button"
@@ -272,6 +287,7 @@ function ExpandableRow({
               value={row[col.name]}
               prettyJson={prettyJson}
               fkTarget={fkTarget ?? pkTarget}
+              crossTarget={col.crossRef}
               isPk={isPkCell}
             />
           )
@@ -296,6 +312,7 @@ function ExpandableRow({
                     value={row[col.name]}
                     prettyJson={prettyJson}
                     target={target}
+                    crossTarget={col.crossRef}
                     variant={isPkCell ? 'pk' : 'fk'}
                   />
                 )
@@ -313,12 +330,14 @@ function ExpandedField({
   value,
   prettyJson,
   target,
+  crossTarget,
   variant,
 }: {
   col: ColumnInfo
   value: JsonValue
   prettyJson: boolean
   target?: { schema: string; table: string; column: string }
+  crossTarget?: ColumnInfo['crossRef']
   variant: 'fk' | 'pk'
 }) {
   // Covers a `text` column carrying a JSON document as well as a real json/jsonb
@@ -336,7 +355,13 @@ function ExpandedField({
             {pretty}
           </pre>
         ) : (
-          <LinkableValue value={value} prettyJson={prettyJson} target={target} variant={variant} />
+          <LinkableValue
+            value={value}
+            prettyJson={prettyJson}
+            target={target}
+            crossTarget={crossTarget}
+            variant={variant}
+          />
         )}
       </span>
     </>
@@ -347,11 +372,13 @@ function HoverExpandCell({
   value,
   prettyJson,
   fkTarget,
+  crossTarget,
   isPk = false,
 }: {
   value: JsonValue
   prettyJson: boolean
   fkTarget?: { schema: string; table: string; column: string }
+  crossTarget?: ColumnInfo['crossRef']
   isPk?: boolean
 }) {
   const [hovered, setHovered] = useState(false)
@@ -381,7 +408,15 @@ function HoverExpandCell({
       onMouseLeave={() => setHovered(false)}
     >
       <div className="max-w-[300px] truncate whitespace-nowrap">
-        {isFkLinkable && fkTarget ? (
+        {crossTarget && value !== null && value !== undefined ? (
+          <CrossDbLink
+            target={crossTarget}
+            value={String(value)}
+            note={crossTarget.note}
+          >
+            <CellValue value={value} />
+          </CrossDbLink>
+        ) : isFkLinkable && fkTarget ? (
           <Link
             to="/t/$schema/$table/row/$id"
             params={{

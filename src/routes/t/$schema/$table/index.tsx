@@ -8,6 +8,7 @@ import TableInspector from '#/components/inspect/TableInspector'
 import { parseInspectorTab } from '#/lib/inspect/tabs'
 import type { InspectorTab } from '#/lib/inspect/tabs'
 import {
+  $getCrossDbRefs,
   $getMapGroups,
   $getTableCatalog,
   $getTablePage,
@@ -15,6 +16,7 @@ import {
 } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
+import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import { lensTargetForTable } from '#/lib/lens-links'
 import type { TableSort } from '#/lib/types'
 
@@ -166,10 +168,25 @@ function TablePage() {
   const pageData = pageQuery.data
   const displayColumns = pageData?.columns ?? []
   const displayRows = pageData?.rows ?? []
-  const enrichedColumns = useMemo(
-    () => enrichColumnsWithFks(displayColumns, fks, table),
-    [displayColumns, fks, table],
-  )
+  // Hand-written references out of this database. Connection-level and rarely
+  // edited, so it is cached for the session rather than per table.
+  const crossRefsQuery = useQuery({
+    queryKey: ['crossDbRefs'],
+    queryFn: () => $getCrossDbRefs(),
+    staleTime: Infinity,
+    enabled: isConnected,
+  })
+
+  const enrichedColumns = useMemo(() => {
+    const withFks = enrichColumnsWithFks(displayColumns, fks, table)
+    const database = crossRefsQuery.data?.database
+    if (!database) return withFks
+    return enrichColumnsWithCrossDbRefs(withFks, crossRefsQuery.data?.refs ?? [], {
+      database,
+      schema,
+      table,
+    })
+  }, [displayColumns, fks, table, schema, crossRefsQuery.data])
 
   if (isChecking) {
     return (

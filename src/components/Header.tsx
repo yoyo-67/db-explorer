@@ -424,8 +424,10 @@ function DatabasePicker() {
         setError(result.error)
         return
       }
-      // Schemas, tables and rows all belonged to the database we just left.
-      await queryClient.invalidateQueries()
+      // Dropped rather than invalidated: invalidating refetches the page we are
+      // still on, against a database that may not have its table, and that
+      // rejection would leave us switched but not moved.
+      queryClient.clear()
       queryClient.setQueryData(connectionStatusKey, { connected: true })
       await openFirstTable()
     } catch (err) {
@@ -553,8 +555,9 @@ function ConnectionSwitcher() {
         return
       }
       await $connect({ data: { config: preset, presetName: preset.name } })
-      // Everything cached belongs to the connection we just left.
-      await queryClient.invalidateQueries()
+      // Everything cached belongs to the connection we just left. Cleared, not
+      // invalidated, for the same reason as the database switch above.
+      queryClient.clear()
       queryClient.setQueryData(connectionStatusKey, { connected: true })
       await openFirstTable()
     } catch (err) {

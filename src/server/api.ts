@@ -150,6 +150,20 @@ export const $getTables = createServerFn({ method: 'GET' })
  * Which tables have unanalyzed change, for the sidebar's "changed" filter. Not
  * cached long: the point of it is recency.
  */
+/**
+ * The hand-written cross-database references for this connection, plus which
+ * database is live — a rule is written about a column in a named database, so
+ * the client needs both to know which rules apply.
+ */
+export const $getCrossDbRefs = createServerFn({ method: 'GET' }).handler(async () => {
+  const [{ readCrossDbRefs }, { currentScope }] = await Promise.all([
+    import('#/server/cross-db-refs'),
+    import('#/server/local-metadata'),
+  ])
+  const [refs, scope] = await Promise.all([readCrossDbRefs(), currentScope()])
+  return { database: scope.database, refs }
+})
+
 export const $getTableActivity = createServerFn({ method: 'GET' })
   .inputValidator((data: { schema?: string } | undefined) => data ?? {})
   .handler(async ({ data }) => {

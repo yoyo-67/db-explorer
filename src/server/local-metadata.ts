@@ -38,7 +38,10 @@ async function readLocalJson<T>(segments: string[]): Promise<T | null> {
  * theirs to know. Nothing connected means nothing to read, which is not an
  * error — the lens reports missing metadata as a gap.
  */
-async function currentScope(): Promise<{ connection: string | null; database: string | null }> {
+export async function currentScope(): Promise<{
+  connection: string | null
+  database: string | null
+}> {
   const { getLastConfig, getPresetName } = await import('#/server/db')
   const config = getLastConfig()
   if (!config) return { connection: null, database: null }

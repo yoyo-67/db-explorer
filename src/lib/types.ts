@@ -32,6 +32,13 @@ export interface ColumnInfo {
   dataType: string
   isNullable: boolean
   references?: { table: string; column: string; basis?: EdgeBasis }
+  /**
+   * A reference that leaves the database — never a Postgres constraint, always
+   * hand-written (`local/<connection>/cross-db-refs.json`). Kept apart from
+   * `references` so nothing that reasons about the schema's own edges (the lens,
+   * the row trace) mistakes it for one.
+   */
+  crossRef?: { database: string; schema: string; table: string; column: string; note?: string }
 }
 
 /**
