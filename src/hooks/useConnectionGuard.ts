@@ -1,20 +1,27 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { useConnectionStatus } from '#/hooks/useConnectionStatus'
+import { useConnectionState } from '#/hooks/useConnectionStatus'
+import type { ConnectionState } from '#/lib/connection-state'
 
-export function useConnectionGuard() {
+export function useConnectionGuard(): {
+  state: ConnectionState
+  isChecking: boolean
+  isConnected: boolean
+} {
   const navigate = useNavigate()
-
-  const connectionCheck = useConnectionStatus()
+  const state = useConnectionState()
 
   useEffect(() => {
-    if (connectionCheck.data && !connectionCheck.data.connected) {
+    // Only a check that answered "no" sends you to the form. Bouncing on a
+    // pending check races the connect that is still landing.
+    if (state === 'disconnected') {
       navigate({ to: '/' })
     }
-  }, [connectionCheck.data, navigate])
+  }, [state, navigate])
 
   return {
-    isChecking: connectionCheck.isLoading,
-    isConnected: connectionCheck.data?.connected ?? false,
+    state,
+    isChecking: state === 'pending',
+    isConnected: state === 'connected',
   }
 }

@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   $connect,
   $disconnect,
@@ -10,7 +10,7 @@ import {
   $resolveEntryTarget,
   $testConnection,
 } from '#/server/api'
-import { connectionStatusKey, useConnectionStatus } from '#/hooks/useConnectionStatus'
+import { connectionStatusKey, useConnectionState } from '#/hooks/useConnectionStatus'
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath } from '#/lib/lens-links'
 import { resolveActiveSchema } from '#/lib/active-schema'
@@ -18,14 +18,20 @@ import TextScale from './TextScale'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
 
+/**
+ * The bar carries only what a session actually navigates between — Console and
+ * Lens — plus the controls that say which database you are looking at. The
+ * once-a-session entries (query board, pressure, help, settings, disconnect)
+ * live behind the overflow menu, so the bar stops competing with the data for
+ * attention and no longer needs the whole viewport to fit.
+ */
 export default function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-4 backdrop-blur-lg">
-      <nav className="page-wrap flex items-center gap-x-3 py-2">
+    <header className="sticky top-0 z-50 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-3 backdrop-blur-lg sm:px-4">
+      <nav className="mx-auto flex w-full max-w-[1680px] items-center gap-x-3 py-2">
         <HomeLink />
 
-        <div className="flex items-center gap-x-3 text-xs font-medium">
-          <ConnectionAction />
+        <div className="scrollbar-none flex min-w-0 items-center gap-x-3 overflow-x-auto whitespace-nowrap text-xs font-medium">
           <Link
             to="/console"
             className="nav-link"
@@ -33,31 +39,15 @@ export default function Header() {
           >
             Console
           </Link>
-          <Link
-            to="/queries"
-            className="nav-link"
-            activeProps={{ className: 'nav-link is-active' }}
-            title="Query board — what this database spends its time running"
-          >
-            Queries
-          </Link>
           <LensLink />
-          <PressureLink />
-          <Link
-            to="/help"
-            className="nav-link"
-            activeProps={{ className: 'nav-link is-active' }}
-            title="What this app asks your database, explained"
-          >
-            Help
-          </Link>
+          <ConnectionState />
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <OptionalQueryHud />
           <ConnectionSwitcher />
           <SchemaPicker />
-          <SettingsLink />
+          <OverflowMenu />
           <TextScale />
           <ThemeToggle />
         </div>
@@ -76,28 +66,15 @@ function OptionalQueryHud() {
   return <QueryHud />
 }
 
-function SettingsLink() {
-  return (
-    <Link
-      to="/settings"
-      className="nav-link"
-      activeProps={{ className: 'nav-link is-active' }}
-      title="Settings for this browser"
-    >
-      ⚙
-    </Link>
-  )
-}
-
 const WORDMARK = (
   <>
     <span className="h-1.5 w-1.5 rounded-full bg-[var(--lagoon)]" />
-    DB Explorer
+    Tables
   </>
 )
 
 const WORDMARK_CLASS =
-  'inline-flex items-center gap-1.5 text-sm font-medium text-[var(--sea-ink)] no-underline'
+  'inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-[var(--sea-ink)] no-underline'
 
 /**
  * The wordmark goes home, and home is wherever the app actually is: the data
@@ -105,10 +82,16 @@ const WORDMARK_CLASS =
  * connected user back to a form they already filled in is a dead end.
  */
 function HomeLink() {
-  const status = useConnectionStatus()
+  const state = useConnectionState()
   const openFirstTable = useOpenFirstTable()
 
-  if (!status.data?.connected) {
+  // While the check is in flight the wordmark leads nowhere: a link to the form
+  // is wrong if we turn out to be connected, and the table target is not known
+  // yet either.
+  if (state === 'pending') {
+    return <span className={`${WORDMARK_CLASS} opacity-60`}>{WORDMARK}</span>
+  }
+  if (state === 'disconnected') {
     return (
       <Link to="/" className={WORDMARK_CLASS}>
         {WORDMARK}
@@ -145,53 +128,35 @@ function useOpenFirstTable() {
 }
 
 /**
- * Connect while disconnected, Disconnect while connected — never a Connect link
- * that does nothing because you already are. Disconnecting is a real logout: the
- * server drops the pool and forgets the config, so nothing silently reconnects.
+ * Only the states that need an answer from the user reach the bar: a way in
+ * while there is no connection, and "still asking" while we do not know yet.
+ * Being connected is already said by the switcher and the schema picker, so it
+ * says nothing — and leaving is a menu entry, not a button under your cursor.
  */
-function ConnectionAction() {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const status = useConnectionStatus()
-  const [disconnecting, setDisconnecting] = useState(false)
+function ConnectionState() {
+  const state = useConnectionState()
 
-  if (!status.data?.connected) {
+  if (state === 'pending') {
     return (
-      <Link
-        to="/"
-        className="nav-link"
-        activeProps={{ className: 'nav-link is-active' }}
-        activeOptions={{ exact: true }}
+      <span
+        className="nav-link inline-flex items-center gap-1.5 opacity-70"
+        title="Checking the connection"
       >
-        Connect
-      </Link>
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--lagoon)]" />
+        Connecting...
+      </span>
     )
   }
-
-  const handleDisconnect = async () => {
-    setDisconnecting(true)
-    try {
-      await $disconnect()
-      // The cached schemas, tables and rows all belong to the connection that
-      // just went away, so they go with it rather than flashing on the next one.
-      queryClient.clear()
-      queryClient.setQueryData(connectionStatusKey, { connected: false })
-      navigate({ to: '/' })
-    } finally {
-      setDisconnecting(false)
-    }
-  }
-
+  if (state !== 'disconnected') return null
   return (
-    <button
-      type="button"
-      onClick={handleDisconnect}
-      disabled={disconnecting}
-      className="nav-link cursor-pointer disabled:opacity-50"
-      title="Disconnect and forget this connection"
+    <Link
+      to="/"
+      className="nav-link"
+      activeProps={{ className: 'nav-link is-active' }}
+      activeOptions={{ exact: true }}
     >
-      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-    </button>
+      Connect
+    </Link>
   )
 }
 
@@ -227,20 +192,142 @@ function LensLink() {
   )
 }
 
-/** Index sprawl, disk, vacuum debt, sequence headroom — for the current schema. */
-function PressureLink() {
+const MENU_ITEM_CLASS =
+  'block w-full rounded-lg px-3 py-2 text-left text-xs text-[var(--sea-ink)] no-underline transition hover:bg-[rgba(79,184,178,0.12)]'
+
+/**
+ * Everything a session reaches for once, if at all. A menu rather than more bar:
+ * these entries are not worth permanent width, and Disconnect in particular is
+ * safer one deliberate click away from the links you use all day.
+ */
+function OverflowMenu() {
+  const [open, setOpen] = useState(false)
   const schema = useActiveSchema()
-  if (!schema) return null
+  const state = useConnectionState()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+
+  // Any navigation closes it, including the entries below — the panel outliving
+  // the page it was opened from is the one thing a menu must not do.
+  useEffect(() => setOpen(false), [pathname])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-overflow-menu]') && !target.closest('[data-overflow-trigger]')) {
+        setOpen(false)
+      }
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
   return (
-    <Link
-      to="/pressure/$schema"
-      params={{ schema }}
-      className="nav-link"
-      activeProps={{ className: 'nav-link is-active' }}
-      title="Schema pressure — unread indexes, disk, vacuum debt, sequences running out"
+    <div className="relative">
+      <button
+        type="button"
+        data-overflow-trigger
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`cursor-pointer rounded-lg border border-[var(--line)] px-2 py-1 text-xs leading-none transition ${
+          open
+            ? 'bg-[rgba(79,184,178,0.12)] text-[var(--sea-ink)]'
+            : 'bg-[var(--surface-strong)] text-[var(--sea-ink-soft)] hover:text-[var(--sea-ink)]'
+        }`}
+        title="More"
+      >
+        <span aria-hidden>•••</span>
+        <span className="sr-only">More</span>
+      </button>
+
+      {open && (
+        <div
+          data-overflow-menu
+          role="menu"
+          className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-1.5 shadow-lg shadow-black/10"
+        >
+          <Link to="/queries" role="menuitem" className={MENU_ITEM_CLASS}>
+            Query board
+            <span className="block text-[10px] text-[var(--sea-ink-soft)]">
+              What this database spends its time running
+            </span>
+          </Link>
+
+          {schema && (
+            <Link
+              to="/pressure/$schema"
+              params={{ schema }}
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+            >
+              Schema pressure
+              <span className="block text-[10px] text-[var(--sea-ink-soft)]">
+                Unread indexes, disk, vacuum debt, sequences running out
+              </span>
+            </Link>
+          )}
+
+          <Link to="/help" role="menuitem" className={MENU_ITEM_CLASS}>
+            Help
+          </Link>
+          <Link to="/settings" role="menuitem" className={MENU_ITEM_CLASS}>
+            Settings
+          </Link>
+
+          {state === 'connected' && (
+            <>
+              <div className="my-1.5 border-t border-[var(--line)]" />
+              <DisconnectItem />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Disconnecting is a real logout: the server drops the pool and forgets the
+ * config, so nothing silently reconnects.
+ */
+function DisconnectItem() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true)
+    try {
+      await $disconnect()
+      // The cached schemas, tables and rows all belong to the connection that
+      // just went away, so they go with it rather than flashing on the next one.
+      queryClient.clear()
+      queryClient.setQueryData(connectionStatusKey, { connected: false })
+      navigate({ to: '/' })
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={handleDisconnect}
+      disabled={disconnecting}
+      className={`${MENU_ITEM_CLASS} cursor-pointer disabled:opacity-50`}
+      title="Disconnect and forget this connection"
     >
-      Pressure
-    </Link>
+      {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+    </button>
   )
 }
 
@@ -293,7 +380,7 @@ function SchemaPicker() {
     <select
       value={selected}
       onChange={(e) => handleChange(e.target.value)}
-      className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none"
+      className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none"
       title="Schema"
     >
       {/* Postgres's own schemas are listed like any other, and say so — the
@@ -335,7 +422,9 @@ function ConnectionSwitcher() {
         return
       }
       await $connect({ data: { config: preset, presetName: preset.name } })
+      // Everything cached belongs to the connection we just left.
       await queryClient.invalidateQueries()
+      queryClient.setQueryData(connectionStatusKey, { connected: true })
       await openFirstTable()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -350,7 +439,7 @@ function ConnectionSwitcher() {
         value=""
         disabled={switching !== null}
         onChange={(e) => handleSelect(e.target.value)}
-        className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
+        className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
         title="Switch connection"
       >
         <option value="">{switching ? `Switching to ${switching}...` : 'Switch DB...'}</option>

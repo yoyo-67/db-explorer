@@ -164,10 +164,21 @@ export default function ConnectionForm({
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)] disabled:opacity-50 disabled:hover:translate-y-0"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)] disabled:opacity-50 disabled:hover:translate-y-0"
       >
+        {isLoading && (
+          <span
+            aria-hidden
+            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+          />
+        )}
         {isLoading ? 'Connecting...' : 'Connect'}
       </button>
+      {isLoading && (
+        <p aria-live="polite" className="text-center text-xs text-[var(--sea-ink-soft)]">
+          Opening the connection and reading the schema...
+        </p>
+      )}
     </form>
   )
 }

@@ -1,7 +1,8 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import ConnectionForm from '#/components/ConnectionForm'
+import { connectionStatusKey } from '#/hooks/useConnectionStatus'
 import {
   $connect,
   $getPresets,
@@ -15,7 +16,7 @@ import type { ConnectionConfig } from '#/lib/types'
  * The pool lives on the server, so a second tab is already connected the moment
  * it loads. Send it to the data instead of a connect form it doesn't need —
  * filling that form in would rebuild the pool the first tab is using. Reaching
- * the form again is what Disconnect in the header is for.
+ * the form again is what Disconnect in the header menu is for.
  */
 export const Route = createFileRoute('/')({
   loader: async () => {
@@ -34,6 +35,7 @@ export const Route = createFileRoute('/')({
 
 function HomePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,22 +52,30 @@ function HomePage() {
       const result = await $testConnection({ data: config })
       if (!result.success) {
         setError('error' in result ? result.error : 'Connection failed')
+        setIsLoading(false)
         return
       }
 
       await $connect({ data: { config, presetName } })
+      // The status query answered "not connected" moments ago and holds that for
+      // 30s. Leaving it there sent the page we are about to open straight back
+      // here, through the guard. The connect we just did IS the newer answer.
+      queryClient.setQueryData(connectionStatusKey, { connected: true })
       const target = await $resolveEntryTarget()
       if (!target.ok) {
         setError(target.error)
+        setIsLoading(false)
         return
       }
-      navigate({
+      // Stay on "Connecting..." until the next screen is actually mounted —
+      // flipping the button back first is what made the form look idle while
+      // the connection was still being set up.
+      await navigate({
         to: '/t/$schema/$table',
         params: { schema: target.schema, table: target.table },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')
-    } finally {
       setIsLoading(false)
     }
   }

@@ -345,3 +345,13 @@ a {
     color: var(--foreground);
   }
 }
+
+/* The header link row scrolls when the window is too narrow for it. A visible
+   scrollbar inside a 36px bar is worse than the overflow it reports. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
