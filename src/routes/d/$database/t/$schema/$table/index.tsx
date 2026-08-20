@@ -11,6 +11,7 @@ import type { InspectorTab } from '#/lib/inspect/tabs'
 import {
   $getCrossDbRefs,
   $getMapGroups,
+  $getMapModels,
   $getTableCatalog,
   $getTablePage,
   $introspect,
@@ -19,6 +20,7 @@ import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import { lensTargetForTable } from '#/lib/lens-links'
+import { tableLabel } from '#/lib/table-label'
 import type { TableSort } from '#/lib/types'
 
 interface TableSearch {
@@ -133,6 +135,15 @@ function TablePage() {
     staleTime: Infinity,
   })
 
+  // The Django model behind the flat Postgres name, for the heading. One fetch
+  // per schema, shared with every other page reading the map.
+  const mapModelsQuery = useQuery({
+    queryKey: ['mapModels', database, schema],
+    queryFn: () => $getMapModels({ data: { database, schema } }),
+    enabled: isConnected,
+    staleTime: Infinity,
+  })
+
   const pageQuery = useQuery({
     queryKey: [
       'tablePage',
@@ -202,7 +213,6 @@ function TablePage() {
   if (!isConnected) return null
 
   const updateSearch = (next: Partial<TableSearch>) => {
-    const database = useDatabaseParam()
     navigate({
       to: '/d/$database/t/$schema/$table',
       params: { database, schema, table },
@@ -268,9 +278,11 @@ function TablePage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-lg font-semibold text-[var(--sea-ink)]">
-            <span className="text-[var(--sea-ink-soft)]">{schema}.</span>
-            {table}
+            {tableLabel(table, mapModelsQuery.data?.[table])}
           </h1>
+          <span className="font-mono text-xs text-[var(--sea-ink-soft)]">
+            {schema}.{table}
+          </span>
           {tableInfo && (
             <span className="text-xs text-[var(--sea-ink-soft)]">
               {tableInfo.columns.length} cols

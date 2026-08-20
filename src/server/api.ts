@@ -288,6 +288,26 @@ export const $getMapGroups = createServerFn({ method: 'GET' })
   )
 
 /**
+ * Table → Django model name, for pages that show one table by name. Postgres
+ * names are flat and prefixed (`data_hiddenactivitylocation`); the model behind
+ * it reads as words. Names only, straight off `schema-map.json` — no DB round
+ * trip, and cacheable for the whole schema so a table page pays nothing per
+ * table it visits.
+ */
+export const $getMapModels = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string }) => data)
+  .handler(
+    scoped(async (data) => {
+      const map = await readSchemaMap(data.schema || 'public')
+      const models: Record<string, string> = {}
+      for (const [table, meta] of Object.entries(map?.tables ?? {})) {
+        if (meta.model) models[table] = meta.model
+      }
+      return models
+    }),
+  )
+
+/**
  * One whole-schema fetch behind both lens views (BUILD-SPEC §2.1). Cached on the
  * client by database + schema with a long staleTime; no server cache, so a reran
  * extractor shows up on the next reload.
