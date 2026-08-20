@@ -24,7 +24,7 @@ export interface ConnectionConfig {
 /** Where a connected session should land: the first table worth showing, or why
  *  there isn't one. */
 export type EntryTarget =
-  | { ok: true; schema: string; table: string }
+  | { ok: true; schema: string; table: string; database?: string }
   | { ok: false; error: string }
 
 export interface ColumnInfo {

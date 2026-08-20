@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import { $getRandomRow } from '#/server/api'
@@ -29,11 +30,12 @@ export default function RandomRow({
   references: Map<string, { table: string; column: string }>
   enabled: boolean
 }) {
+  const database = useDatabaseParam()
   const [draw, setDraw] = useState(0)
 
   const sampleQuery = useQuery({
-    queryKey: ['randomRow', schema, table, draw],
-    queryFn: () => $getRandomRow({ data: { schema, table } }),
+    queryKey: ['randomRow', database, schema, table, draw],
+    queryFn: () => $getRandomRow({ data: { database, schema, table } }),
     enabled,
     staleTime: Infinity,
   })

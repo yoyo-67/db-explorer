@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo } from 'react'
 import { $getSchemaGraph, $getTableCatalog } from '#/server/api'
 import {
@@ -42,16 +43,17 @@ export function useLensGraph(
   schema: string,
   opts: { enabled: boolean; damp?: string; basis?: EdgeBasis },
 ): LensGraph {
+  const database = useDatabaseParam()
   const graphQuery = useQuery({
-    queryKey: ['schemaGraph', schema],
-    queryFn: () => $getSchemaGraph({ data: { schema } }),
+    queryKey: ['schemaGraph', database, schema],
+    queryFn: () => $getSchemaGraph({ data: { database, schema } }),
     enabled: opts.enabled,
     staleTime: Infinity,
   })
 
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', schema],
-    queryFn: () => $getTableCatalog({ data: { schema } }),
+    queryKey: ['tableCatalog', database, schema],
+    queryFn: () => $getTableCatalog({ data: { database, schema } }),
     staleTime: Infinity,
   })
 

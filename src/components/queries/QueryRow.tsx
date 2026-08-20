@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useNavigate } from '@tanstack/react-router'
 import CopyButton from '#/components/CopyButton'
 import { stageConsoleSql } from '#/lib/console-handoff'
@@ -32,6 +33,7 @@ export default function QueryRow({
   rank: number
   totalMs: number
 }) {
+  const database = useDatabaseParam()
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const share = shareOfTime(entry.totalMs, totalMs)
@@ -114,7 +116,7 @@ export default function QueryRow({
                 type="button"
                 onClick={() => {
                   stageConsoleSql(`EXPLAIN ${entry.query}`)
-                  navigate({ to: '/console' })
+                  navigate({ to: '/d/$database/console', params: { database } })
                 }}
                 className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
                 title="Open the console with EXPLAIN in front of this statement. Its placeholders still need real values."

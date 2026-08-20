@@ -25,14 +25,25 @@ type View = 'grouped' | 'changed'
 
 export default function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const match = pathname.match(/^\/t\/([^/]+)(?:\/([^/]+))?/)
+  // The table browser only: the database and schema both come off the path, so a
+  // route without them has no sidebar to draw.
+  const match = pathname.match(/^\/d\/([^/]+)\/t\/([^/]+)(?:\/([^/]+))?/)
   if (!match) return null
-  const schema = decodeURIComponent(match[1])
-  const activeTable = match[2] ? decodeURIComponent(match[2]) : undefined
-  return <SidebarBody schema={schema} activeTable={activeTable} />
+  const database = decodeURIComponent(match[1])
+  const schema = decodeURIComponent(match[2])
+  const activeTable = match[3] ? decodeURIComponent(match[3]) : undefined
+  return <SidebarBody database={database} schema={schema} activeTable={activeTable} />
 }
 
-function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: string }) {
+function SidebarBody({
+  database,
+  schema,
+  activeTable,
+}: {
+  database: string
+  schema: string
+  activeTable?: string
+}) {
   const [filter, setFilter] = useState('')
   const [view, setView] = useState<View>('grouped')
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -55,20 +66,20 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
   }, [expanded])
 
   const introspectQuery = useQuery({
-    queryKey: ['introspect', schema],
-    queryFn: () => $introspect({ data: { schema } }),
+    queryKey: ['introspect', database, schema],
+    queryFn: () => $introspect({ data: { database, schema } }),
     staleTime: Infinity,
   })
 
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', schema],
-    queryFn: () => $getTableCatalog({ data: { schema } }),
+    queryKey: ['tableCatalog', database, schema],
+    queryFn: () => $getTableCatalog({ data: { database, schema } }),
     staleTime: Infinity,
   })
 
   const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups', schema],
-    queryFn: () => $getMapGroups({ data: { schema } }),
+    queryKey: ['mapGroups', database, schema],
+    queryFn: () => $getMapGroups({ data: { database, schema } }),
     staleTime: Infinity,
   })
 
@@ -76,8 +87,8 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
   // but a stats read on every sidebar render would still be a read nobody asked
   // for. Ten seconds stale is fine for something measured in ANALYZE cycles.
   const activityQuery = useQuery({
-    queryKey: ['tableActivity', schema],
-    queryFn: () => $getTableActivity({ data: { schema } }),
+    queryKey: ['tableActivity', database, schema],
+    queryFn: () => $getTableActivity({ data: { database, schema } }),
     staleTime: 10_000,
     enabled: view === 'changed',
   })
@@ -144,8 +155,8 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
       </div>
 
       <Link
-        to="/lens/$schema"
-        params={{ schema }}
+        to="/d/$database/lens/$schema"
+        params={{ database, schema }}
         className="mb-3 flex items-center gap-1.5 rounded px-1.5 py-1 text-xs font-semibold text-[var(--sea-ink)] no-underline hover:bg-[var(--surface-strong)]"
         title="How this schema is shaped: Group crossings, boundaries, and tables nothing references"
       >
@@ -170,6 +181,7 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
 
       {view === 'changed' && (
         <ChangedList
+          database={database}
           schema={schema}
           activeTable={activeTable}
           entries={changed}
@@ -216,8 +228,8 @@ function SidebarBody({ schema, activeTable }: { schema: string; activeTable?: st
                     return (
                       <li key={t.name}>
                         <Link
-                          to="/t/$schema/$table"
-                          params={{ schema, table: t.name }}
+                          to="/d/$database/t/$schema/$table"
+                          params={{ database, schema, table: t.name }}
                           className={`group flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] no-underline transition ${
                             isActive
                               ? 'bg-[rgba(79,184,178,0.18)] text-[var(--lagoon-deep)]'
@@ -278,6 +290,7 @@ function ViewChip({
  * the catalog's areas, and grouping the answer would bury it.
  */
 function ChangedList({
+  database,
   schema,
   activeTable,
   entries,
@@ -285,6 +298,7 @@ function ChangedList({
   error,
   statsReset,
 }: {
+  database: string
   schema: string
   activeTable?: string
   entries: ReturnType<typeof rankByRecentChange>
@@ -320,8 +334,8 @@ function ChangedList({
         return (
           <li key={entry.table}>
             <Link
-              to="/t/$schema/$table"
-              params={{ schema, table: entry.table }}
+              to="/d/$database/t/$schema/$table"
+              params={{ database, schema, table: entry.table }}
               title={describeChange(entry, now)}
               className={`group flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] no-underline transition ${
                 isActive

@@ -10,32 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as QueriesRouteImport } from './routes/queries'
-import { Route as ConsoleRouteImport } from './routes/console'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HelpIndexRouteImport } from './routes/help/index'
-import { Route as PressureSchemaRouteImport } from './routes/pressure/$schema'
 import { Route as HelpTopicRouteImport } from './routes/help/$topic'
-import { Route as LensSchemaIndexRouteImport } from './routes/lens/$schema/index'
-import { Route as LensSchemaOrphansRouteImport } from './routes/lens/$schema/orphans'
-import { Route as TSchemaTableIndexRouteImport } from './routes/t/$schema/$table/index'
-import { Route as LensSchemaTTableRouteImport } from './routes/lens/$schema/t/$table'
-import { Route as LensSchemaGGroupRouteImport } from './routes/lens/$schema/g/$group'
-import { Route as TSchemaTableRowIdRouteImport } from './routes/t/$schema/$table/row/$id'
+import { Route as DDatabaseIndexRouteImport } from './routes/d/$database/index'
+import { Route as DDatabaseQueriesRouteImport } from './routes/d/$database/queries'
+import { Route as DDatabaseConsoleRouteImport } from './routes/d/$database/console'
+import { Route as DDatabasePressureSchemaRouteImport } from './routes/d/$database/pressure/$schema'
+import { Route as DDatabaseLensSchemaIndexRouteImport } from './routes/d/$database/lens/$schema/index'
+import { Route as DDatabaseLensSchemaOrphansRouteImport } from './routes/d/$database/lens/$schema/orphans'
+import { Route as DDatabaseTSchemaTableIndexRouteImport } from './routes/d/$database/t/$schema/$table/index'
+import { Route as DDatabaseLensSchemaTTableRouteImport } from './routes/d/$database/lens/$schema/t/$table'
+import { Route as DDatabaseLensSchemaGGroupRouteImport } from './routes/d/$database/lens/$schema/g/$group'
+import { Route as DDatabaseTSchemaTableRowIdRouteImport } from './routes/d/$database/t/$schema/$table/row/$id'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueriesRoute = QueriesRouteImport.update({
-  id: '/queries',
-  path: '/queries',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConsoleRoute = ConsoleRouteImport.update({
-  id: '/console',
-  path: '/console',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -48,155 +39,183 @@ const HelpIndexRoute = HelpIndexRouteImport.update({
   path: '/help/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PressureSchemaRoute = PressureSchemaRouteImport.update({
-  id: '/pressure/$schema',
-  path: '/pressure/$schema',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const HelpTopicRoute = HelpTopicRouteImport.update({
   id: '/help/$topic',
   path: '/help/$topic',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LensSchemaIndexRoute = LensSchemaIndexRouteImport.update({
-  id: '/lens/$schema/',
-  path: '/lens/$schema/',
+const DDatabaseIndexRoute = DDatabaseIndexRouteImport.update({
+  id: '/d/$database/',
+  path: '/d/$database/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LensSchemaOrphansRoute = LensSchemaOrphansRouteImport.update({
-  id: '/lens/$schema/orphans',
-  path: '/lens/$schema/orphans',
+const DDatabaseQueriesRoute = DDatabaseQueriesRouteImport.update({
+  id: '/d/$database/queries',
+  path: '/d/$database/queries',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TSchemaTableIndexRoute = TSchemaTableIndexRouteImport.update({
-  id: '/t/$schema/$table/',
-  path: '/t/$schema/$table/',
+const DDatabaseConsoleRoute = DDatabaseConsoleRouteImport.update({
+  id: '/d/$database/console',
+  path: '/d/$database/console',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LensSchemaTTableRoute = LensSchemaTTableRouteImport.update({
-  id: '/lens/$schema/t/$table',
-  path: '/lens/$schema/t/$table',
+const DDatabasePressureSchemaRoute = DDatabasePressureSchemaRouteImport.update({
+  id: '/d/$database/pressure/$schema',
+  path: '/d/$database/pressure/$schema',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LensSchemaGGroupRoute = LensSchemaGGroupRouteImport.update({
-  id: '/lens/$schema/g/$group',
-  path: '/lens/$schema/g/$group',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TSchemaTableRowIdRoute = TSchemaTableRowIdRouteImport.update({
-  id: '/t/$schema/$table/row/$id',
-  path: '/t/$schema/$table/row/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const DDatabaseLensSchemaIndexRoute =
+  DDatabaseLensSchemaIndexRouteImport.update({
+    id: '/d/$database/lens/$schema/',
+    path: '/d/$database/lens/$schema/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DDatabaseLensSchemaOrphansRoute =
+  DDatabaseLensSchemaOrphansRouteImport.update({
+    id: '/d/$database/lens/$schema/orphans',
+    path: '/d/$database/lens/$schema/orphans',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DDatabaseTSchemaTableIndexRoute =
+  DDatabaseTSchemaTableIndexRouteImport.update({
+    id: '/d/$database/t/$schema/$table/',
+    path: '/d/$database/t/$schema/$table/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DDatabaseLensSchemaTTableRoute =
+  DDatabaseLensSchemaTTableRouteImport.update({
+    id: '/d/$database/lens/$schema/t/$table',
+    path: '/d/$database/lens/$schema/t/$table',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DDatabaseLensSchemaGGroupRoute =
+  DDatabaseLensSchemaGGroupRouteImport.update({
+    id: '/d/$database/lens/$schema/g/$group',
+    path: '/d/$database/lens/$schema/g/$group',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DDatabaseTSchemaTableRowIdRoute =
+  DDatabaseTSchemaTableRowIdRouteImport.update({
+    id: '/d/$database/t/$schema/$table/row/$id',
+    path: '/d/$database/t/$schema/$table/row/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/console': typeof ConsoleRoute
-  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/help/$topic': typeof HelpTopicRoute
-  '/pressure/$schema': typeof PressureSchemaRoute
   '/help/': typeof HelpIndexRoute
-  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
-  '/lens/$schema/': typeof LensSchemaIndexRoute
-  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
-  '/lens/$schema/t/$table': typeof LensSchemaTTableRoute
-  '/t/$schema/$table/': typeof TSchemaTableIndexRoute
-  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
+  '/d/$database/console': typeof DDatabaseConsoleRoute
+  '/d/$database/queries': typeof DDatabaseQueriesRoute
+  '/d/$database/': typeof DDatabaseIndexRoute
+  '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
+  '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
+  '/d/$database/lens/$schema/': typeof DDatabaseLensSchemaIndexRoute
+  '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
+  '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
+  '/d/$database/t/$schema/$table/': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/console': typeof ConsoleRoute
-  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/help/$topic': typeof HelpTopicRoute
-  '/pressure/$schema': typeof PressureSchemaRoute
   '/help': typeof HelpIndexRoute
-  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
-  '/lens/$schema': typeof LensSchemaIndexRoute
-  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
-  '/lens/$schema/t/$table': typeof LensSchemaTTableRoute
-  '/t/$schema/$table': typeof TSchemaTableIndexRoute
-  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
+  '/d/$database/console': typeof DDatabaseConsoleRoute
+  '/d/$database/queries': typeof DDatabaseQueriesRoute
+  '/d/$database': typeof DDatabaseIndexRoute
+  '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
+  '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
+  '/d/$database/lens/$schema': typeof DDatabaseLensSchemaIndexRoute
+  '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
+  '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
+  '/d/$database/t/$schema/$table': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/console': typeof ConsoleRoute
-  '/queries': typeof QueriesRoute
   '/settings': typeof SettingsRoute
   '/help/$topic': typeof HelpTopicRoute
-  '/pressure/$schema': typeof PressureSchemaRoute
   '/help/': typeof HelpIndexRoute
-  '/lens/$schema/orphans': typeof LensSchemaOrphansRoute
-  '/lens/$schema/': typeof LensSchemaIndexRoute
-  '/lens/$schema/g/$group': typeof LensSchemaGGroupRoute
-  '/lens/$schema/t/$table': typeof LensSchemaTTableRoute
-  '/t/$schema/$table/': typeof TSchemaTableIndexRoute
-  '/t/$schema/$table/row/$id': typeof TSchemaTableRowIdRoute
+  '/d/$database/console': typeof DDatabaseConsoleRoute
+  '/d/$database/queries': typeof DDatabaseQueriesRoute
+  '/d/$database/': typeof DDatabaseIndexRoute
+  '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
+  '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
+  '/d/$database/lens/$schema/': typeof DDatabaseLensSchemaIndexRoute
+  '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
+  '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
+  '/d/$database/t/$schema/$table/': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/console'
-    | '/queries'
     | '/settings'
     | '/help/$topic'
-    | '/pressure/$schema'
     | '/help/'
-    | '/lens/$schema/orphans'
-    | '/lens/$schema/'
-    | '/lens/$schema/g/$group'
-    | '/lens/$schema/t/$table'
-    | '/t/$schema/$table/'
-    | '/t/$schema/$table/row/$id'
+    | '/d/$database/console'
+    | '/d/$database/queries'
+    | '/d/$database/'
+    | '/d/$database/pressure/$schema'
+    | '/d/$database/lens/$schema/orphans'
+    | '/d/$database/lens/$schema/'
+    | '/d/$database/lens/$schema/g/$group'
+    | '/d/$database/lens/$schema/t/$table'
+    | '/d/$database/t/$schema/$table/'
+    | '/d/$database/t/$schema/$table/row/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/console'
-    | '/queries'
     | '/settings'
     | '/help/$topic'
-    | '/pressure/$schema'
     | '/help'
-    | '/lens/$schema/orphans'
-    | '/lens/$schema'
-    | '/lens/$schema/g/$group'
-    | '/lens/$schema/t/$table'
-    | '/t/$schema/$table'
-    | '/t/$schema/$table/row/$id'
+    | '/d/$database/console'
+    | '/d/$database/queries'
+    | '/d/$database'
+    | '/d/$database/pressure/$schema'
+    | '/d/$database/lens/$schema/orphans'
+    | '/d/$database/lens/$schema'
+    | '/d/$database/lens/$schema/g/$group'
+    | '/d/$database/lens/$schema/t/$table'
+    | '/d/$database/t/$schema/$table'
+    | '/d/$database/t/$schema/$table/row/$id'
   id:
     | '__root__'
     | '/'
-    | '/console'
-    | '/queries'
     | '/settings'
     | '/help/$topic'
-    | '/pressure/$schema'
     | '/help/'
-    | '/lens/$schema/orphans'
-    | '/lens/$schema/'
-    | '/lens/$schema/g/$group'
-    | '/lens/$schema/t/$table'
-    | '/t/$schema/$table/'
-    | '/t/$schema/$table/row/$id'
+    | '/d/$database/console'
+    | '/d/$database/queries'
+    | '/d/$database/'
+    | '/d/$database/pressure/$schema'
+    | '/d/$database/lens/$schema/orphans'
+    | '/d/$database/lens/$schema/'
+    | '/d/$database/lens/$schema/g/$group'
+    | '/d/$database/lens/$schema/t/$table'
+    | '/d/$database/t/$schema/$table/'
+    | '/d/$database/t/$schema/$table/row/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ConsoleRoute: typeof ConsoleRoute
-  QueriesRoute: typeof QueriesRoute
   SettingsRoute: typeof SettingsRoute
   HelpTopicRoute: typeof HelpTopicRoute
-  PressureSchemaRoute: typeof PressureSchemaRoute
   HelpIndexRoute: typeof HelpIndexRoute
-  LensSchemaOrphansRoute: typeof LensSchemaOrphansRoute
-  LensSchemaIndexRoute: typeof LensSchemaIndexRoute
-  LensSchemaGGroupRoute: typeof LensSchemaGGroupRoute
-  LensSchemaTTableRoute: typeof LensSchemaTTableRoute
-  TSchemaTableIndexRoute: typeof TSchemaTableIndexRoute
-  TSchemaTableRowIdRoute: typeof TSchemaTableRowIdRoute
+  DDatabaseConsoleRoute: typeof DDatabaseConsoleRoute
+  DDatabaseQueriesRoute: typeof DDatabaseQueriesRoute
+  DDatabaseIndexRoute: typeof DDatabaseIndexRoute
+  DDatabasePressureSchemaRoute: typeof DDatabasePressureSchemaRoute
+  DDatabaseLensSchemaOrphansRoute: typeof DDatabaseLensSchemaOrphansRoute
+  DDatabaseLensSchemaIndexRoute: typeof DDatabaseLensSchemaIndexRoute
+  DDatabaseLensSchemaGGroupRoute: typeof DDatabaseLensSchemaGGroupRoute
+  DDatabaseLensSchemaTTableRoute: typeof DDatabaseLensSchemaTTableRoute
+  DDatabaseTSchemaTableIndexRoute: typeof DDatabaseTSchemaTableIndexRoute
+  DDatabaseTSchemaTableRowIdRoute: typeof DDatabaseTSchemaTableRowIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -206,20 +225,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/queries': {
-      id: '/queries'
-      path: '/queries'
-      fullPath: '/queries'
-      preLoaderRoute: typeof QueriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/console': {
-      id: '/console'
-      path: '/console'
-      fullPath: '/console'
-      preLoaderRoute: typeof ConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -236,13 +241,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelpIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pressure/$schema': {
-      id: '/pressure/$schema'
-      path: '/pressure/$schema'
-      fullPath: '/pressure/$schema'
-      preLoaderRoute: typeof PressureSchemaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/help/$topic': {
       id: '/help/$topic'
       path: '/help/$topic'
@@ -250,46 +248,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelpTopicRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lens/$schema/': {
-      id: '/lens/$schema/'
-      path: '/lens/$schema'
-      fullPath: '/lens/$schema/'
-      preLoaderRoute: typeof LensSchemaIndexRouteImport
+    '/d/$database/': {
+      id: '/d/$database/'
+      path: '/d/$database'
+      fullPath: '/d/$database/'
+      preLoaderRoute: typeof DDatabaseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lens/$schema/orphans': {
-      id: '/lens/$schema/orphans'
-      path: '/lens/$schema/orphans'
-      fullPath: '/lens/$schema/orphans'
-      preLoaderRoute: typeof LensSchemaOrphansRouteImport
+    '/d/$database/queries': {
+      id: '/d/$database/queries'
+      path: '/d/$database/queries'
+      fullPath: '/d/$database/queries'
+      preLoaderRoute: typeof DDatabaseQueriesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/t/$schema/$table/': {
-      id: '/t/$schema/$table/'
-      path: '/t/$schema/$table'
-      fullPath: '/t/$schema/$table/'
-      preLoaderRoute: typeof TSchemaTableIndexRouteImport
+    '/d/$database/console': {
+      id: '/d/$database/console'
+      path: '/d/$database/console'
+      fullPath: '/d/$database/console'
+      preLoaderRoute: typeof DDatabaseConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lens/$schema/t/$table': {
-      id: '/lens/$schema/t/$table'
-      path: '/lens/$schema/t/$table'
-      fullPath: '/lens/$schema/t/$table'
-      preLoaderRoute: typeof LensSchemaTTableRouteImport
+    '/d/$database/pressure/$schema': {
+      id: '/d/$database/pressure/$schema'
+      path: '/d/$database/pressure/$schema'
+      fullPath: '/d/$database/pressure/$schema'
+      preLoaderRoute: typeof DDatabasePressureSchemaRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/lens/$schema/g/$group': {
-      id: '/lens/$schema/g/$group'
-      path: '/lens/$schema/g/$group'
-      fullPath: '/lens/$schema/g/$group'
-      preLoaderRoute: typeof LensSchemaGGroupRouteImport
+    '/d/$database/lens/$schema/': {
+      id: '/d/$database/lens/$schema/'
+      path: '/d/$database/lens/$schema'
+      fullPath: '/d/$database/lens/$schema/'
+      preLoaderRoute: typeof DDatabaseLensSchemaIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/t/$schema/$table/row/$id': {
-      id: '/t/$schema/$table/row/$id'
-      path: '/t/$schema/$table/row/$id'
-      fullPath: '/t/$schema/$table/row/$id'
-      preLoaderRoute: typeof TSchemaTableRowIdRouteImport
+    '/d/$database/lens/$schema/orphans': {
+      id: '/d/$database/lens/$schema/orphans'
+      path: '/d/$database/lens/$schema/orphans'
+      fullPath: '/d/$database/lens/$schema/orphans'
+      preLoaderRoute: typeof DDatabaseLensSchemaOrphansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$database/t/$schema/$table/': {
+      id: '/d/$database/t/$schema/$table/'
+      path: '/d/$database/t/$schema/$table'
+      fullPath: '/d/$database/t/$schema/$table/'
+      preLoaderRoute: typeof DDatabaseTSchemaTableIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$database/lens/$schema/t/$table': {
+      id: '/d/$database/lens/$schema/t/$table'
+      path: '/d/$database/lens/$schema/t/$table'
+      fullPath: '/d/$database/lens/$schema/t/$table'
+      preLoaderRoute: typeof DDatabaseLensSchemaTTableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$database/lens/$schema/g/$group': {
+      id: '/d/$database/lens/$schema/g/$group'
+      path: '/d/$database/lens/$schema/g/$group'
+      fullPath: '/d/$database/lens/$schema/g/$group'
+      preLoaderRoute: typeof DDatabaseLensSchemaGGroupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$database/t/$schema/$table/row/$id': {
+      id: '/d/$database/t/$schema/$table/row/$id'
+      path: '/d/$database/t/$schema/$table/row/$id'
+      fullPath: '/d/$database/t/$schema/$table/row/$id'
+      preLoaderRoute: typeof DDatabaseTSchemaTableRowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -297,18 +323,19 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ConsoleRoute: ConsoleRoute,
-  QueriesRoute: QueriesRoute,
   SettingsRoute: SettingsRoute,
   HelpTopicRoute: HelpTopicRoute,
-  PressureSchemaRoute: PressureSchemaRoute,
   HelpIndexRoute: HelpIndexRoute,
-  LensSchemaOrphansRoute: LensSchemaOrphansRoute,
-  LensSchemaIndexRoute: LensSchemaIndexRoute,
-  LensSchemaGGroupRoute: LensSchemaGGroupRoute,
-  LensSchemaTTableRoute: LensSchemaTTableRoute,
-  TSchemaTableIndexRoute: TSchemaTableIndexRoute,
-  TSchemaTableRowIdRoute: TSchemaTableRowIdRoute,
+  DDatabaseConsoleRoute: DDatabaseConsoleRoute,
+  DDatabaseQueriesRoute: DDatabaseQueriesRoute,
+  DDatabaseIndexRoute: DDatabaseIndexRoute,
+  DDatabasePressureSchemaRoute: DDatabasePressureSchemaRoute,
+  DDatabaseLensSchemaOrphansRoute: DDatabaseLensSchemaOrphansRoute,
+  DDatabaseLensSchemaIndexRoute: DDatabaseLensSchemaIndexRoute,
+  DDatabaseLensSchemaGGroupRoute: DDatabaseLensSchemaGGroupRoute,
+  DDatabaseLensSchemaTTableRoute: DDatabaseLensSchemaTTableRoute,
+  DDatabaseTSchemaTableIndexRoute: DDatabaseTSchemaTableIndexRoute,
+  DDatabaseTSchemaTableRowIdRoute: DDatabaseTSchemaTableRowIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

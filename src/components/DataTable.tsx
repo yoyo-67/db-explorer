@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { Link } from '@tanstack/react-router'
 import LinkableValue from '#/components/LinkableValue'
 import FilterDropdown from '#/components/table/FilterDropdown'
@@ -381,6 +382,7 @@ function HoverExpandCell({
   crossTarget?: ColumnInfo['crossRef']
   isPk?: boolean
 }) {
+  const database = useDatabaseParam()
   const [hovered, setHovered] = useState(false)
   const cellRef = useRef<HTMLTableCellElement>(null)
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
@@ -418,8 +420,8 @@ function HoverExpandCell({
           </CrossDbLink>
         ) : isFkLinkable && fkTarget ? (
           <Link
-            to="/t/$schema/$table/row/$id"
-            params={{
+            to="/d/$database/t/$schema/$table/row/$id"
+            params={{database, 
               schema: fkTarget.schema,
               table: fkTarget.table,
               id: String(value),

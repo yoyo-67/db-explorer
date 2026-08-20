@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo } from 'react'
 import LensNav from '#/components/lens/LensNav'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
@@ -7,7 +8,7 @@ import { validateLensSearch } from '#/lib/lens-search'
 import { findOrphans } from '#/lib/schema-graph-metrics'
 import type { SchemaGraphNode, SchemaGraphStaleness } from '#/lib/types'
 
-export const Route = createFileRoute('/lens/$schema/orphans')({
+export const Route = createFileRoute('/d/$database/lens/$schema/orphans')({
   component: OrphansPage,
   validateSearch: validateLensSearch,
 })
@@ -22,6 +23,7 @@ export const Route = createFileRoute('/lens/$schema/orphans')({
  * stale map would be most likely to be mistaken for a finding.
  */
 function OrphansPage() {
+  const database = useDatabaseParam()
   const { schema } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
@@ -60,8 +62,8 @@ function OrphansPage() {
           totalEdges={lens.totalEdges}
           onChange={(next) =>
             navigate({
-              to: '/lens/$schema/orphans',
-              params: { schema },
+              to: '/d/$database/lens/$schema/orphans',
+              params: { database, schema },
               search: (prev) => ({ ...prev, ...next }),
             })
           }
@@ -139,6 +141,7 @@ function NodeList({
   empty: string | null
   note: string
 }) {
+  const database = useDatabaseParam()
   if (nodes.length === 0) {
     if (!empty) return null
     return <p className="text-xs text-[var(--sea-ink-soft)]">{empty}</p>
@@ -162,8 +165,8 @@ function NodeList({
             className="flex items-baseline gap-2 py-0.5 font-mono text-[11px]"
           >
             <Link
-              to="/lens/$schema/t/$table"
-              params={{ schema, table: n.name }}
+              to="/d/$database/lens/$schema/t/$table"
+              params={{ database, schema, table: n.name }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
               {n.name}
@@ -252,6 +255,7 @@ function Delta({
   hint: string
   linkable?: boolean
 }) {
+  const database = useDatabaseParam()
   const shown = tables.slice(0, MAX_LISTED)
   return (
     <div className="space-y-1">
@@ -267,8 +271,8 @@ function Delta({
           <li key={t} className="truncate">
             {linkable ? (
               <Link
-                to="/t/$schema/$table"
-                params={{ schema, table: t }}
+                to="/d/$database/t/$schema/$table"
+                params={{ database, schema, table: t }}
                 className="hover:text-[var(--lagoon-deep)]"
               >
                 {t}

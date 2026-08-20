@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { $getTableProfile } from '#/server/api'
 import { formatCompactCount, formatRelativeTime, isStaleAnalyze, truncateValue } from '#/lib/inspect/format'
 import {
@@ -32,9 +33,10 @@ export default function ProfileTab({
   filter: Record<string, string>
   onFilterValue: (column: string, input: string | null) => void
 }) {
+  const database = useDatabaseParam()
   const profileQuery = useQuery({
-    queryKey: ['tableProfile', schema, table],
-    queryFn: () => $getTableProfile({ data: { schema, table } }),
+    queryKey: ['tableProfile', database, schema, table],
+    queryFn: () => $getTableProfile({ data: { database, schema, table } }),
     staleTime: 5 * 60_000,
   })
 

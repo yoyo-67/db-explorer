@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { $getTableTypes } from '#/server/api'
 import { groupDigits, sequenceHealth } from '#/lib/inspect/sequence'
 import { formatPercent } from '#/lib/inspect/stats'
@@ -24,9 +25,10 @@ export default function TypesTab({
   filter: Record<string, string>
   onFilterValue: (column: string, input: string | null) => void
 }) {
+  const database = useDatabaseParam()
   const typesQuery = useQuery({
-    queryKey: ['tableTypes', schema, table],
-    queryFn: () => $getTableTypes({ data: { schema, table } }),
+    queryKey: ['tableTypes', database, schema, table],
+    queryFn: () => $getTableTypes({ data: { database, schema, table } }),
     staleTime: 5 * 60_000,
   })
 

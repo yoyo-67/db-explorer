@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  databaseFromPathname,
   lensTargetForTable,
   parseLensPath,
   schemaFromPathname,
@@ -20,65 +21,65 @@ const catalog: TableCatalog = {
 
 describe('schemaFromPathname', () => {
   it('reads the schema off a table route', () => {
-    expect(schemaFromPathname('/t/public/data_video')).toBe('public')
-    expect(schemaFromPathname('/t/public/data_video/row/abc')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/t/public/data_video')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/t/public/data_video/row/abc')).toBe('public')
   })
 
   it('reads the schema off every lens route', () => {
-    expect(schemaFromPathname('/lens/public')).toBe('public')
-    expect(schemaFromPathname('/lens/aggs_staged/orphans')).toBe('aggs_staged')
+    expect(schemaFromPathname('/d/app_db/lens/public')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/lens/aggs_staged/orphans')).toBe('aggs_staged')
   })
 
   it('reads the schema off the pressure route, so the nav keeps working there', () => {
-    expect(schemaFromPathname('/pressure/public')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/pressure/public')).toBe('public')
   })
 
   it('decodes an encoded schema name', () => {
-    expect(schemaFromPathname('/lens/my%20schema')).toBe('my schema')
+    expect(schemaFromPathname('/d/app_db/lens/my%20schema')).toBe('my schema')
   })
 
   it('is undefined elsewhere', () => {
-    expect(schemaFromPathname('/console')).toBeUndefined()
+    expect(schemaFromPathname('/d/app_db/console')).toBeUndefined()
     expect(schemaFromPathname('/')).toBeUndefined()
   })
 })
 
 describe('parseLensPath', () => {
   it('recognises the matrix, with or without a trailing slash', () => {
-    expect(parseLensPath('/lens/public')).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public')).toEqual({
       schema: 'public',
       view: { kind: 'matrix' },
     })
-    expect(parseLensPath('/lens/public/')).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/')).toEqual({
       schema: 'public',
       view: { kind: 'matrix' },
     })
   })
 
   it('recognises the orphan list', () => {
-    expect(parseLensPath('/lens/public/orphans')?.view).toEqual({ kind: 'orphans' })
+    expect(parseLensPath('/d/app_db/lens/public/orphans')?.view).toEqual({ kind: 'orphans' })
   })
 
   it('recognises a group, decoding the name', () => {
-    expect(parseLensPath('/lens/public/g/Video%20%26%20Capture')?.view).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/g/Video%20%26%20Capture')?.view).toEqual({
       kind: 'group',
       group: 'Video & Capture',
     })
   })
 
   it('recognises a table relations view, decoding the name', () => {
-    expect(parseLensPath('/lens/public/t/data_video')?.view).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/t/data_video')?.view).toEqual({
       kind: 'table',
       table: 'data_video',
     })
-    expect(parseLensPath('/lens/public/t/data%20video/')?.view).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/t/data%20video/')?.view).toEqual({
       kind: 'table',
       table: 'data video',
     })
   })
 
   it('is null off the lens', () => {
-    expect(parseLensPath('/t/public/data_video')).toBeNull()
+    expect(parseLensPath('/d/app_db/t/public/data_video')).toBeNull()
   })
 })
 
@@ -115,5 +116,30 @@ describe('lensTargetForTable', () => {
     expect(lensTargetForTable('data_mystery', catalog)).toEqual({ kind: 'matrix' })
     expect(lensTargetForTable('data_mystery', catalog, {})).toEqual({ kind: 'matrix' })
     expect(lensTargetForTable('data_video', undefined)).toEqual({ kind: 'matrix' })
+  })
+})
+
+describe('databaseFromPathname', () => {
+  it('reads the database off any database-scoped route', () => {
+    expect(databaseFromPathname('/d/app_db/t/public/users')).toBe('app_db')
+    expect(databaseFromPathname('/d/app_db/lens/public')).toBe('app_db')
+    expect(databaseFromPathname('/d/app_db')).toBe('app_db')
+  })
+
+  it('decodes a database name that needed encoding', () => {
+    expect(databaseFromPathname('/d/my%20db/console')).toBe('my db')
+  })
+
+  it('finds none on the routes that are about no database', () => {
+    expect(databaseFromPathname('/')).toBeUndefined()
+    expect(databaseFromPathname('/help/filters')).toBeUndefined()
+    expect(databaseFromPathname('/settings')).toBeUndefined()
+  })
+})
+
+describe('the parsers refuse a path with no database', () => {
+  it('reads no schema and no lens view from the old unprefixed routes', () => {
+    expect(schemaFromPathname('/t/public/users')).toBeUndefined()
+    expect(parseLensPath('/lens/public')).toBeNull()
   })
 })

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import LinkableValue from '#/components/LinkableValue'
@@ -21,7 +22,7 @@ interface RowDetailSearch {
   col?: string
 }
 
-export const Route = createFileRoute('/t/$schema/$table/row/$id')({
+export const Route = createFileRoute('/d/$database/t/$schema/$table/row/$id')({
   component: RowDetailPage,
   validateSearch: (search: Record<string, unknown>): RowDetailSearch => ({
     col: typeof search.col === 'string' && search.col.length > 0 ? search.col : undefined,
@@ -29,6 +30,7 @@ export const Route = createFileRoute('/t/$schema/$table/row/$id')({
 })
 
 function RowDetailPage() {
+  const database = useDatabaseParam()
   const { schema, table, id } = Route.useParams()
   const { col } = Route.useSearch()
   const { isChecking, isConnected } = useConnectionGuard()
@@ -36,16 +38,16 @@ function RowDetailPage() {
   const [showEmpty, setShowEmpty] = useState(false)
 
   const detailQuery = useQuery({
-    queryKey: ['rowDetail', schema, table, id, col ?? ''],
+    queryKey: ['rowDetail', database, schema, table, id, col ?? ''],
     queryFn: () =>
-      $getRowDetail({ data: { schema, table, rowId: id, column: col } }),
+      $getRowDetail({ data: { database, schema, table, rowId: id, column: col } }),
     enabled: isConnected,
     staleTime: 30_000,
   })
 
   const introspectQuery = useQuery({
-    queryKey: ['introspect', schema],
-    queryFn: () => $introspect({ data: { schema } }),
+    queryKey: ['introspect', database, schema],
+    queryFn: () => $introspect({ data: { database, schema } }),
     enabled: isConnected,
     staleTime: Infinity,
   })
@@ -78,8 +80,8 @@ function RowDetailPage() {
       <div className="space-y-5">
         <nav className="text-xs text-[var(--sea-ink-soft)]">
           <Link
-            to="/t/$schema/$table"
-            params={{ schema, table }}
+            to="/d/$database/t/$schema/$table"
+            params={{ database, schema, table }}
             className="hover:text-[var(--lagoon-deep)]"
           >
             {schema}.{table}
@@ -271,7 +273,10 @@ function fmtValue(value: JsonValue | undefined): string {
 }
 
 function fmtRow(columns: ColumnInfo[], row: Record<string, JsonValue>, indent = ''): string[] {
-  const cols = columns.length > 0 ? columns : Object.keys(row).map((name) => ({ name, dataType: '' }) as ColumnInfo)
+  const cols = columns.length > 0 ? columns : Object.keys(row).map((name) => (({
+    name,
+    dataType: ''
+  }) as ColumnInfo))
   return cols.map((c) => `${indent}${c.name} (${c.dataType}): ${fmtValue(row[c.name])}`)
 }
 
@@ -287,6 +292,7 @@ async function buildRowText(
   id: string,
   label: string | null,
 ): Promise<string> {
+  const database = useDatabaseParam()
   const lines: string[] = []
   lines.push(`# ${schema}.${table} — row ${id}`)
   if (label) lines.push(`label: ${label}`)
@@ -338,6 +344,7 @@ async function buildRowText(
       try {
         res = await $getRowChildren({
           data: {
+            database,
             schema,
             childTable: c.table,
             fkColumn: c.fkColumn,
@@ -415,6 +422,7 @@ function ChildGroup({
   childTableInfo?: TableInfo
   fks: ForeignKey[]
 }) {
+  const database = useDatabaseParam()
   const [expanded, setExpanded] = useState(false)
   const [page, setPage] = useState(1)
   const [countRequested, setCountRequested] = useState(false)
@@ -433,6 +441,7 @@ function ChildGroup({
     queryFn: () =>
       $getChildCount({
         data: {
+          database,
           schema,
           childTable: child.table,
           fkColumn: child.fkColumn,
@@ -462,6 +471,7 @@ function ChildGroup({
     queryFn: () =>
       $getRowChildren({
         data: {
+          database,
           schema,
           childTable: child.table,
           fkColumn: child.fkColumn,
@@ -497,8 +507,8 @@ function ChildGroup({
           &#9654;
         </span>
         <Link
-          to="/t/$schema/$table"
-          params={{ schema, table: child.table }}
+          to="/d/$database/t/$schema/$table"
+          params={{ database, schema, table: child.table }}
           onClick={(e) => e.stopPropagation()}
           className="text-sm font-semibold text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
         >
@@ -675,6 +685,7 @@ function OutgoingRefs({
   schema: string
   outgoing: RowOutgoingRef[]
 }) {
+  const database = useDatabaseParam()
   const set = outgoing.filter((o) => o.value !== null)
   const dangling = set.filter((o) => o.resolves === false)
   return (
@@ -699,8 +710,8 @@ function OutgoingRefs({
               <span className="text-[var(--sea-ink-soft)]">→</span>
               {o.value !== null && o.resolves !== false ? (
                 <Link
-                  to="/t/$schema/$table/row/$id"
-                  params={{ schema, table: o.targetTable, id: String(o.value) }}
+                  to="/d/$database/t/$schema/$table/row/$id"
+                  params={{ database, schema, table: o.targetTable, id: String(o.value) }}
                   search={o.targetColumn !== 'id' ? { col: o.targetColumn } : {}}
                   className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
                 >
@@ -758,6 +769,7 @@ function ChildRow({
   columns: ColumnInfo[]
   pkColumn: string | null
 }) {
+  const database = useDatabaseParam()
   const renderableColumns =
     columns.length > 0
       ? columns
@@ -770,8 +782,8 @@ function ChildRow({
       {pkColumn && pkValue !== undefined && pkValue !== null && (
         <div className="mb-1 text-[11px] text-[var(--sea-ink-soft)]">
           <Link
-            to="/t/$schema/$table/row/$id"
-            params={{ schema, table, id: String(pkValue) }}
+            to="/d/$database/t/$schema/$table/row/$id"
+            params={{ database, schema, table, id: String(pkValue) }}
             search={pkColumn !== 'id' ? { col: pkColumn } : {}}
             className="font-mono text-[var(--lagoon-deep)] hover:underline"
           >

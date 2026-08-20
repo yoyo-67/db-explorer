@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useEffect, useMemo, useState } from 'react'
 import LensNav from '#/components/lens/LensNav'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
@@ -17,7 +18,7 @@ import { tableLabel } from '#/lib/table-label'
 import type { BoundaryStub, LabelSlot, RadialNode } from '#/lib/lens-layout'
 import type { EdgeBasis, SchemaGraphEdge } from '#/lib/types'
 
-export const Route = createFileRoute('/lens/$schema/g/$group')({
+export const Route = createFileRoute('/d/$database/lens/$schema/g/$group')({
   component: GroupPage,
   validateSearch: validateLensSearch,
 })
@@ -52,6 +53,7 @@ const HOVER_BONUS = 7
 const MIN_HIT_RADIUS = 15
 
 function GroupPage() {
+  const database = useDatabaseParam()
   const { schema, group } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
@@ -73,8 +75,8 @@ function GroupPage() {
   useEffect(() => {
     if (!absent) return
     navigate({
-      to: '/lens/$schema',
-      params: { schema },
+      to: '/d/$database/lens/$schema',
+      params: { database, schema },
       search: (prev) => ({ ...prev, absentGroup: group }),
       replace: true,
     })
@@ -198,8 +200,8 @@ function GroupPage() {
           totalEdges={lens.totalEdges}
           onChange={(next) =>
             navigate({
-              to: '/lens/$schema/g/$group',
-              params: { schema, group },
+              to: '/d/$database/lens/$schema/g/$group',
+              params: { database, schema, group },
               search: (prev) => ({ ...prev, ...next }),
             })
           }
@@ -230,8 +232,8 @@ function GroupPage() {
           <div className="island-shell rounded-xl px-6 py-8 text-center text-sm text-[var(--sea-ink-soft)]">
             No tables in group <strong>{group}</strong> for schema {schema}.{' '}
             <Link
-              to="/lens/$schema"
-              params={{ schema }}
+              to="/d/$database/lens/$schema"
+              params={{ database, schema }}
               search={search}
               className="text-[var(--lagoon-deep)]"
             >
@@ -318,14 +320,14 @@ function GroupPage() {
                       onOpen={() => {
                         if (stub.targetGroup && stub.targetGroup !== group) {
                           navigate({
-                            to: '/lens/$schema/g/$group',
-                            params: { schema, group: stub.targetGroup },
+                            to: '/d/$database/lens/$schema/g/$group',
+                            params: { database, schema, group: stub.targetGroup },
                             search: { ...search, focus: stub.targetTable },
                           })
                         } else {
                           navigate({
-                            to: '/lens/$schema/t/$table',
-                            params: { schema, table: stub.targetTable },
+                            to: '/d/$database/lens/$schema/t/$table',
+                            params: { database, schema, table: stub.targetTable },
                             search: { damp: search.damp, basis: search.basis },
                           })
                         }
@@ -357,8 +359,8 @@ function GroupPage() {
                     onHover={setHovered}
                     onOpen={() =>
                       navigate({
-                        to: '/lens/$schema/t/$table',
-                        params: { schema, table: n.table },
+                        to: '/d/$database/lens/$schema/t/$table',
+                        params: { database, schema, table: n.table },
                         search: { damp: search.damp, basis: search.basis },
                       })
                     }
@@ -612,6 +614,7 @@ function StubTable({
   stubs: BoundaryStub[]
   group: string
 }) {
+  const database = useDatabaseParam()
   if (stubs.length === 0) {
     return (
       <p className="text-xs text-[var(--sea-ink-soft)]">
@@ -639,8 +642,8 @@ function StubTable({
               {stub.count}
             </span>
             <Link
-              to="/lens/$schema/t/$table"
-              params={{ schema, table: stub.targetTable }}
+              to="/d/$database/lens/$schema/t/$table"
+              params={{ database, schema, table: stub.targetTable }}
               search={{ damp: search.damp, basis: search.basis }}
               className="font-mono text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
@@ -648,8 +651,8 @@ function StubTable({
             </Link>
             {stub.targetGroup ? (
               <Link
-                to="/lens/$schema/g/$group"
-                params={{ schema, group: stub.targetGroup }}
+                to="/d/$database/lens/$schema/g/$group"
+                params={{ database, schema, group: stub.targetGroup }}
                 search={{ ...search, focus: stub.targetTable }}
                 className="rounded-full border border-[var(--chip-line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)] no-underline hover:text-[var(--lagoon-deep)]"
               >

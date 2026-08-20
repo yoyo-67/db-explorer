@@ -869,7 +869,7 @@ export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
     return { ok: false, error: 'Empty query' }
   }
   const { getConnection } = await import('#/server/db')
-  const pool = getConnection()
+  const pool = await getConnection()
   if (!pool) return { ok: false, error: 'Not connected to database' }
 
   const client = await pool.connect()

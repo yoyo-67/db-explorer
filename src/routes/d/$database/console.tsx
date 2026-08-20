@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
@@ -13,11 +14,12 @@ import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { $runReadOnlyQuery } from '#/server/api'
 import type { ConsoleResult } from '#/lib/types'
 
-export const Route = createFileRoute('/console')({
+export const Route = createFileRoute('/d/$database/console')({
   component: ConsolePage,
 })
 
 function ConsolePage() {
+  const database = useDatabaseParam()
   const { isChecking, isConnected } = useConnectionGuard()
   // A statement staged by the query board, taken once (see `console-handoff`).
   // Prefilled, never auto-run: it still carries the normalizer's `$1`
@@ -32,7 +34,7 @@ function ConsolePage() {
   }, [])
 
   const runMutation = useMutation({
-    mutationFn: (input: string) => $runReadOnlyQuery({ data: { sql: input } }),
+    mutationFn: (input: string) => $runReadOnlyQuery({ data: { database, sql: input } }),
     onSuccess: (data, input) => {
       setResult(data)
       if (data.ok) setHistory(pushHistory(input))

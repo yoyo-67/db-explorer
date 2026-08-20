@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import CopyButton from '#/components/CopyButton'
 import { $getTableDdl } from '#/server/api'
 import type { DdlIndex, TableDdl } from '#/lib/types'
@@ -14,9 +15,10 @@ import type { DdlIndex, TableDdl } from '#/lib/types'
  * deliberately omits is still visible.
  */
 export default function DdlTab({ schema, table }: { schema: string; table: string }) {
+  const database = useDatabaseParam()
   const ddlQuery = useQuery({
-    queryKey: ['tableDdl', schema, table],
-    queryFn: () => $getTableDdl({ data: { schema, table } }),
+    queryKey: ['tableDdl', database, schema, table],
+    queryFn: () => $getTableDdl({ data: { database, schema, table } }),
     staleTime: 5 * 60_000,
   })
 

@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
@@ -29,7 +30,7 @@ interface TableSearch {
   insp?: InspectorTab
 }
 
-export const Route = createFileRoute('/t/$schema/$table/')({
+export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
   component: TablePage,
   validateSearch: (search: Record<string, unknown>): TableSearch => {
     const rawP = Number(search.p)
@@ -68,14 +69,15 @@ function formatSort(sort: TableSort | null): string | undefined {
  * caches, so the table page never pays for the whole-schema graph fetch.
  */
 function ShowInLens({ schema, table }: { schema: string; table: string }) {
+  const database = useDatabaseParam()
   const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', schema],
-    queryFn: () => $getTableCatalog({ data: { schema } }),
+    queryKey: ['tableCatalog', database, schema],
+    queryFn: () => $getTableCatalog({ data: { database, schema } }),
     staleTime: Infinity,
   })
   const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups', schema],
-    queryFn: () => $getMapGroups({ data: { schema } }),
+    queryKey: ['mapGroups', database, schema],
+    queryFn: () => $getMapGroups({ data: { database, schema } }),
     staleTime: Infinity,
   })
   const target = lensTargetForTable(table, catalogQuery.data, mapGroupsQuery.data)
@@ -85,8 +87,8 @@ function ShowInLens({ schema, table }: { schema: string; table: string }) {
   if (target.kind === 'matrix') {
     return (
       <Link
-        to="/lens/$schema"
-        params={{ schema }}
+        to="/d/$database/lens/$schema"
+        params={{ database, schema }}
         className={className}
         title="No group claims this table — opening the Group × Group matrix instead"
       >
@@ -96,8 +98,8 @@ function ShowInLens({ schema, table }: { schema: string; table: string }) {
   }
   return (
     <Link
-      to="/lens/$schema/g/$group"
-      params={{ schema, group: target.group }}
+      to="/d/$database/lens/$schema/g/$group"
+      params={{ database, schema, group: target.group }}
       search={{ focus: table }}
       className={className}
       title={`Show ${table} inside ${target.group}`}
@@ -108,7 +110,7 @@ function ShowInLens({ schema, table }: { schema: string; table: string }) {
 }
 
 function TablePage() {
-  const { schema, table } = Route.useParams()
+  const { database, schema, table } = Route.useParams()
   const search = Route.useSearch()
   const page = search.p ?? 1
   const exact = search.exact
@@ -125,8 +127,8 @@ function TablePage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const introspectQuery = useQuery({
-    queryKey: ['introspect', schema],
-    queryFn: () => $introspect({ data: { schema } }),
+    queryKey: ['introspect', database, schema],
+    queryFn: () => $introspect({ data: { database, schema } }),
     enabled: isConnected,
     staleTime: Infinity,
   })
@@ -145,6 +147,7 @@ function TablePage() {
     queryFn: () =>
       $getTablePage({
         data: {
+          database,
           schema,
           table,
           page,
@@ -171,8 +174,8 @@ function TablePage() {
   // Hand-written references out of this database. Connection-level and rarely
   // edited, so it is cached for the session rather than per table.
   const crossRefsQuery = useQuery({
-    queryKey: ['crossDbRefs'],
-    queryFn: () => $getCrossDbRefs(),
+    queryKey: ['crossDbRefs', database],
+    queryFn: () => $getCrossDbRefs({ data: { database } }),
     staleTime: Infinity,
     enabled: isConnected,
   })
@@ -198,9 +201,10 @@ function TablePage() {
   if (!isConnected) return null
 
   const updateSearch = (next: Partial<TableSearch>) => {
+    const database = useDatabaseParam()
     navigate({
-      to: '/t/$schema/$table',
-      params: { schema, table },
+      to: '/d/$database/t/$schema/$table',
+      params: { database, schema, table },
       search: (prev) => ({ ...prev, ...next }),
     })
   }
@@ -359,8 +363,8 @@ function TablePage() {
             {otherTables.slice(0, 30).map((t) => (
               <Link
                 key={t.name}
-                to="/t/$schema/$table"
-                params={{ schema, table: t.name }}
+                to="/d/$database/t/$schema/$table"
+                params={{ database, schema, table: t.name }}
                 className="mr-2 inline-block rounded-full border border-[var(--line)] px-2 py-0.5 hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
               >
                 {t.name}

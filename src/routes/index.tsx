@@ -23,10 +23,10 @@ export const Route = createFileRoute('/')({
     const status = await $isConnected()
     if (!status.connected) return
     const target = await $resolveEntryTarget()
-    if (target.ok) {
+    if (target.ok && target.database) {
       throw redirect({
-        to: '/t/$schema/$table',
-        params: { schema: target.schema, table: target.table },
+        to: '/d/$database/t/$schema/$table',
+        params: { database: target.database, schema: target.schema, table: target.table },
       })
     }
   },
@@ -62,8 +62,8 @@ function HomePage() {
       // here, through the guard. The connect we just did IS the newer answer.
       queryClient.setQueryData(connectionStatusKey, { connected: true })
       const target = await $resolveEntryTarget()
-      if (!target.ok) {
-        setError(target.error)
+      if (!target.ok || !target.database) {
+        setError('error' in target ? target.error : 'This connection has no table to open.')
         setIsLoading(false)
         return
       }
@@ -71,8 +71,8 @@ function HomePage() {
       // flipping the button back first is what made the form look idle while
       // the connection was still being set up.
       await navigate({
-        to: '/t/$schema/$table',
-        params: { schema: target.schema, table: target.table },
+        to: '/d/$database/t/$schema/$table',
+        params: { database: target.database, schema: target.schema, table: target.table },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')

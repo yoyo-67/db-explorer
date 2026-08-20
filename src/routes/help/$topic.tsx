@@ -6,6 +6,7 @@ import { HELP_PREVIEWS } from '#/components/help/previews'
 import { findHelpTopic } from '#/lib/help'
 import { topicSql } from '#/lib/help/types'
 import { stageConsoleSql } from '#/lib/console-handoff'
+import { $resolveEntryTarget } from '#/server/api'
 import type { HelpTopic } from '#/lib/help/types'
 
 /**
@@ -53,9 +54,19 @@ function HelpTopicPage() {
   const sql = topicSql(topic)
   const navigate = useNavigate()
 
-  const openInConsole = () => {
+  /**
+   * Help is about the app, not about one database — so the console it hands the
+   * SQL to is the session's own. Asked at click time rather than remembered: the
+   * answer is only needed if someone actually opens it.
+   */
+  const openInConsole = async () => {
     stageConsoleSql(sql)
-    void navigate({ to: '/console' })
+    const target = await $resolveEntryTarget()
+    if (target.ok && target.database) {
+      void navigate({ to: '/d/$database/console', params: { database: target.database } })
+      return
+    }
+    void navigate({ to: '/' })
   }
 
   return (
@@ -105,7 +116,7 @@ function HelpTopicPage() {
                 <CopyButton text={sql} label="Copy SQL" />
                 <button
                   type="button"
-                  onClick={openInConsole}
+                  onClick={() => void openInConsole()}
                   className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
                 >
                   Open in Console

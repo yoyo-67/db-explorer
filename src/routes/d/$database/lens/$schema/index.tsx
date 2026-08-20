@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo, useState } from 'react'
 import BasisTag from '#/components/lens/BasisTag'
 import LensNav from '#/components/lens/LensNav'
@@ -14,7 +15,7 @@ import {
 } from '#/lib/schema-graph-metrics'
 import type { EdgeBasis, SchemaGraphEdge } from '#/lib/types'
 
-export const Route = createFileRoute('/lens/$schema/')({
+export const Route = createFileRoute('/d/$database/lens/$schema/')({
   component: MatrixPage,
   validateSearch: validateLensSearch,
 })
@@ -26,6 +27,7 @@ export const Route = createFileRoute('/lens/$schema/')({
  * here is a violation.
  */
 function MatrixPage() {
+  const database = useDatabaseParam()
   const { schema } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
@@ -93,8 +95,8 @@ function MatrixPage() {
           totalEdges={lens.totalEdges}
           onChange={(next) =>
             navigate({
-              to: '/lens/$schema',
-              params: { schema },
+              to: '/d/$database/lens/$schema',
+              params: { database, schema },
               search: (prev) => ({ ...prev, ...next }),
             })
           }
@@ -322,11 +324,12 @@ function GroupLink({
   group: string
   search: { damp?: string; basis?: EdgeBasis }
 }) {
+  const database = useDatabaseParam()
   if (group === DERIVED_GROUP_LABEL) return <span>{group}</span>
   return (
     <Link
-      to="/lens/$schema/g/$group"
-      params={{ schema, group }}
+      to="/d/$database/lens/$schema/g/$group"
+      params={{ database, schema, group }}
       search={search}
       className="no-underline hover:text-[var(--lagoon-deep)]"
     >
@@ -352,6 +355,7 @@ function CellDetail({
   edges: SchemaGraphEdge[]
   onClose: () => void
 }) {
+  const database = useDatabaseParam()
   const shown = edges.slice(0, MAX_LISTED_EDGES)
   return (
     <section className="island-shell rounded-xl">
@@ -378,8 +382,8 @@ function CellDetail({
             className="flex flex-wrap items-baseline gap-x-2 px-4 py-1 font-mono text-[11px]"
           >
             <Link
-              to="/lens/$schema/t/$table"
-              params={{ schema, table: e.fromTable }}
+              to="/d/$database/lens/$schema/t/$table"
+              params={{ database, schema, table: e.fromTable }}
               search={{ damp: search.damp, basis: search.basis }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >
@@ -388,8 +392,8 @@ function CellDetail({
             <span className="text-[var(--sea-ink-soft)]">.{e.fromColumn}</span>
             <span className="text-[var(--sea-ink-soft)]">→</span>
             <Link
-              to="/lens/$schema/t/$table"
-              params={{ schema, table: e.toTable }}
+              to="/d/$database/lens/$schema/t/$table"
+              params={{ database, schema, table: e.toTable }}
               search={{ damp: search.damp, basis: search.basis }}
               className="text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
             >

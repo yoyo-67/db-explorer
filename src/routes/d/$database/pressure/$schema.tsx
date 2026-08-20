@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import AnalyzeSection from '#/components/pressure/AnalyzeSection'
 import IndexSection from '#/components/pressure/IndexSection'
@@ -15,7 +16,7 @@ import { vacuumLevel } from '#/lib/pressure/vacuum'
 import { analyzeState, isBlindAndLarge } from '#/lib/pressure/analyze'
 import type { SchemaPressure } from '#/lib/types'
 
-export const Route = createFileRoute('/pressure/$schema')({
+export const Route = createFileRoute('/d/$database/pressure/$schema')({
   component: PressurePage,
 })
 
@@ -26,21 +27,22 @@ export const Route = createFileRoute('/pressure/$schema')({
  * question about a single table (that is the table inspector's job).
  */
 function PressurePage() {
+  const database = useDatabaseParam()
   const { schema } = Route.useParams()
   const { isChecking, isConnected } = useConnectionGuard()
   // Whether this schema is one Postgres keeps to itself is the server's answer,
   // read from the statistics views — not a name this page recognises.
   const schemasQuery = useQuery({
-    queryKey: ['schemas'],
-    queryFn: () => $getSchemas(),
+    queryKey: ['schemas', database],
+    queryFn: () => $getSchemas({ data: { database } }),
     staleTime: Infinity,
   })
   const isSystem =
     schemasQuery.data?.find((entry) => entry.name === schema)?.isSystem ?? false
 
   const pressureQuery = useQuery({
-    queryKey: ['schemaPressure', schema],
-    queryFn: () => $getSchemaPressure({ data: { schema } }),
+    queryKey: ['schemaPressure', database, schema],
+    queryFn: () => $getSchemaPressure({ data: { database, schema } }),
     enabled: isConnected && !isSystem && schemasQuery.isSuccess,
     // Counters move; a minute is long enough to make tab-switching cheap and
     // short enough that a refresh after a vacuum shows something new.

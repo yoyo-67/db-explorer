@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo } from 'react'
 import BasisTag from '#/components/lens/BasisTag'
 import LensNav from '#/components/lens/LensNav'
@@ -12,7 +13,7 @@ import type { LensSearch } from '#/lib/lens-search'
 import type { RelatedTable, RelationEdge } from '#/lib/table-relations'
 import type { SchemaGraphNode } from '#/lib/types'
 
-export const Route = createFileRoute('/lens/$schema/t/$table')({
+export const Route = createFileRoute('/d/$database/lens/$schema/t/$table')({
   component: TableRelationsPage,
   validateSearch: validateLensSearch,
 })
@@ -28,6 +29,7 @@ export const Route = createFileRoute('/lens/$schema/t/$table')({
  * a Group ring costs no round trip.
  */
 function TableRelationsPage() {
+  const database = useDatabaseParam()
   const { schema, table } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
@@ -88,8 +90,8 @@ function TableRelationsPage() {
           totalEdges={lens.totalEdges}
           onChange={(next) =>
             navigate({
-              to: '/lens/$schema/t/$table',
-              params: { schema, table },
+              to: '/d/$database/lens/$schema/t/$table',
+              params: { database, schema, table },
               search: (prev) => ({ ...prev, ...next }),
             })
           }
@@ -104,8 +106,8 @@ function TableRelationsPage() {
           </span>
           {node && <NodeFacts schema={schema} node={node} search={search} />}
           <Link
-            to="/t/$schema/$table"
-            params={{ schema, table }}
+            to="/d/$database/t/$schema/$table"
+            params={{ database, schema, table }}
             className="ml-auto rounded-lg border border-[var(--chip-line)] bg-[var(--chip-bg)] px-3 py-1 text-sm font-medium text-[var(--lagoon-deep)] no-underline hover:bg-[rgba(79,184,178,0.16)]"
           >
             Open data →
@@ -207,11 +209,12 @@ function NodeFacts({
   node: SchemaGraphNode
   search: LensSearch
 }) {
+  const database = useDatabaseParam()
   return (
     <>
       <Link
-        to="/lens/$schema/g/$group"
-        params={{ schema, group: node.group }}
+        to="/d/$database/lens/$schema/g/$group"
+        params={{ database, schema, group: node.group }}
         search={{ ...search, focus: node.name }}
         className="rounded-full border border-[var(--chip-line)] px-2 py-0.5 text-[11px] text-[var(--sea-ink-soft)] no-underline hover:text-[var(--lagoon-deep)]"
         title={
@@ -265,6 +268,7 @@ function RelationList({
   edgeCount: number
   nodeByName: Map<string, SchemaGraphNode>
 }) {
+  const database = useDatabaseParam()
   return (
     <section className="island-shell rounded-xl">
       <header className="border-b border-[var(--line)] px-4 py-2">
@@ -285,8 +289,8 @@ function RelationList({
             <li key={r.table} className="space-y-0.5 px-4 py-2">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <Link
-                  to="/lens/$schema/t/$table"
-                  params={{ schema, table: r.table }}
+                  to="/d/$database/lens/$schema/t/$table"
+                  params={{ database, schema, table: r.table }}
                   search={search}
                   className="text-sm font-medium text-[var(--sea-ink)] no-underline hover:text-[var(--lagoon-deep)]"
                   title={`Relations of ${r.table}`}
@@ -306,8 +310,8 @@ function RelationList({
                   {nodeByName.get(r.table)?.rowCount.toLocaleString() ?? '?'} rows
                 </span>
                 <Link
-                  to="/t/$schema/$table"
-                  params={{ schema, table: r.table }}
+                  to="/d/$database/t/$schema/$table"
+                  params={{ database, schema, table: r.table }}
                   className="ml-auto rounded border border-[var(--line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)] no-underline hover:text-[var(--lagoon-deep)]"
                   title={`Rows of ${r.table}`}
                 >
@@ -386,11 +390,12 @@ function GroupChip({
   node: SchemaGraphNode | undefined
   self: string | undefined
 }) {
+  const database = useDatabaseParam()
   if (!node || node.group === self) return null
   return (
     <Link
-      to="/lens/$schema/g/$group"
-      params={{ schema, group: node.group }}
+      to="/d/$database/lens/$schema/g/$group"
+      params={{ database, schema, group: node.group }}
       search={{ ...search, focus: node.name }}
       className="rounded-full border border-[var(--chip-line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)] no-underline hover:text-[var(--lagoon-deep)]"
     >

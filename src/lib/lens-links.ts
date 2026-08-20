@@ -18,14 +18,35 @@ export interface LensLocation {
   view: LensView
 }
 
+/**
+ * Every database-scoped route is `/d/<database>/...`. The database is stripped
+ * here so the parsers below read the same shapes they always did — and so a URL
+ * that forgot the prefix parses as nothing rather than as some other database's
+ * page.
+ */
+export function databaseFromPathname(pathname: string): string | undefined {
+  const match = pathname.match(/^\/d\/([^/]+)/)
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
+function afterDatabase(pathname: string): string | null {
+  const match = pathname.match(/^\/d\/[^/]+(\/.*)?$/)
+  if (!match) return null
+  return match[1] ?? '/'
+}
+
 /** Which schema the current URL is about, on either a table or a lens route. */
 export function schemaFromPathname(pathname: string): string | undefined {
-  const match = pathname.match(/^\/(?:t|lens|pressure)\/([^/]+)/)
+  const rest = afterDatabase(pathname)
+  if (!rest) return undefined
+  const match = rest.match(/^\/(?:t|lens|pressure)\/([^/]+)/)
   return match ? decodeURIComponent(match[1]) : undefined
 }
 
 export function parseLensPath(pathname: string): LensLocation | null {
-  const match = pathname.match(/^\/lens\/([^/]+)(?:\/(.*))?$/)
+  const scoped = afterDatabase(pathname)
+  if (!scoped) return null
+  const match = scoped.match(/^\/lens\/([^/]+)(?:\/(.*))?$/)
   if (!match) return null
   const schema = decodeURIComponent(match[1])
   const rest = match[2] ?? ''

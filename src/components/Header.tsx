@@ -9,7 +9,6 @@ import {
   $getSchemas,
   $getTables,
   $resolveEntryTarget,
-  $switchDatabase,
   $testConnection,
 } from '#/server/api'
 import { connectionStatusKey, useConnectionState } from '#/hooks/useConnectionStatus'
@@ -17,6 +16,7 @@ import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath } from '#/lib/lens-links'
 import { resolveActiveSchema } from '#/lib/active-schema'
 import { menuHoldsRoute } from '#/lib/menu-routes'
+import { useDatabase } from '#/hooks/useDatabase'
 import TextScale from './TextScale'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
@@ -35,13 +35,7 @@ export default function Header() {
         <HomeLink />
 
         <div className="scrollbar-none flex min-w-0 items-center gap-x-3 overflow-x-auto whitespace-nowrap text-xs font-medium">
-          <Link
-            to="/console"
-            className="nav-link"
-            activeProps={{ className: 'nav-link is-active' }}
-          >
-            Console
-          </Link>
+          <ConsoleLink />
           <LensLink />
           <ConnectionState />
         </div>
@@ -123,10 +117,10 @@ function useOpenFirstTable() {
   const navigate = useNavigate()
   return async () => {
     const target = await $resolveEntryTarget()
-    if (!target.ok) return navigate({ to: '/' })
+    if (!target.ok || !target.database) return navigate({ to: '/' })
     return navigate({
-      to: '/t/$schema/$table',
-      params: { schema: target.schema, table: target.table },
+      to: '/d/$database/t/$schema/$table',
+      params: { database: target.database, schema: target.schema, table: target.table },
     })
   }
 }
@@ -171,22 +165,42 @@ function ConnectionState() {
  */
 function useActiveSchema(): string | undefined {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const database = useDatabase()
   const schemasQuery = useQuery({
-    queryKey: ['schemas'],
-    queryFn: () => $getSchemas(),
+    queryKey: ['schemas', database],
+    queryFn: () => $getSchemas({ data: { database: database! } }),
     staleTime: Infinity,
+    enabled: !!database,
   })
+  if (!database) return undefined
   return resolveActiveSchema(pathname, (schemasQuery.data ?? []).map((s) => s.name))
+}
+
+/** The console runs SQL against one database, so it needs one to point at. */
+function ConsoleLink() {
+  const database = useDatabase()
+  if (!database) return null
+  return (
+    <Link
+      to="/d/$database/console"
+      params={{ database }}
+      className="nav-link"
+      activeProps={{ className: 'nav-link is-active' }}
+    >
+      Console
+    </Link>
+  )
 }
 
 /** Entry point into the lens, for whichever schema the current route is about. */
 function LensLink() {
+  const database = useDatabase()
   const schema = useActiveSchema()
-  if (!schema) return null
+  if (!database || !schema) return null
   return (
     <Link
-      to="/lens/$schema"
-      params={{ schema }}
+      to="/d/$database/lens/$schema"
+      params={{ database, schema }}
       className="nav-link"
       activeProps={{ className: 'nav-link is-active' }}
       title="Schema architecture lens — how this schema is shaped"
@@ -211,6 +225,7 @@ const MENU_HINT_CLASS = 'block text-[10px] text-[var(--sea-ink-soft)]'
  */
 function Menu() {
   const [open, setOpen] = useState(false)
+  const database = useDatabase()
   const schema = useActiveSchema()
   const state = useConnectionState()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -275,22 +290,25 @@ function Menu() {
           role="menu"
           className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-1.5 shadow-lg shadow-black/10 backdrop-blur-xl"
         >
-          <Link
-            to="/queries"
-            role="menuitem"
-            className={MENU_ITEM_CLASS}
-            activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
-          >
-            Query board
-            <span className={MENU_HINT_CLASS}>
-              What this database spends its time running
-            </span>
-          </Link>
-
-          {schema && (
+          {database && (
             <Link
-              to="/pressure/$schema"
-              params={{ schema }}
+              to="/d/$database/queries"
+              params={{ database }}
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+              activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+            >
+              Query board
+              <span className={MENU_HINT_CLASS}>
+                What this database spends its time running
+              </span>
+            </Link>
+          )}
+
+          {database && schema && (
+            <Link
+              to="/d/$database/pressure/$schema"
+              params={{ database, schema }}
               role="menuitem"
               className={MENU_ITEM_CLASS}
               activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
@@ -388,19 +406,18 @@ function DisconnectItem() {
 }
 
 /**
- * Which database on this server, discovered rather than configured.
+ * Which database on this server — a navigation, not a switch.
  *
- * The host and credentials in hand already decide what is reachable, so the list
- * comes off `pg_database` — nothing to keep in sync, and a database created this
- * morning is in the list this afternoon. Hidden on a one-database server: a
- * picker with a single option only takes up room.
+ * The list is discovered from `pg_database`, so a database created this morning
+ * is in it this afternoon. Choosing one goes to `/d/<database>`, which lands on
+ * that database's first table: nothing is reconnected, no other tab moves, and
+ * the address bar is the record of where you are. Hidden on a one-database
+ * server, where a picker with a single option only takes up room.
  */
 function DatabasePicker() {
-  const queryClient = useQueryClient()
-  const openFirstTable = useOpenFirstTable()
+  const navigate = useNavigate()
+  const database = useDatabase()
   const state = useConnectionState()
-  const [switching, setSwitching] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   const databasesQuery = useQuery({
     queryKey: ['databases'],
@@ -410,73 +427,50 @@ function DatabasePicker() {
   })
 
   const databases = databasesQuery.data ?? []
-  if (databases.length < 2) return null
-
-  const current = databases.find((db) => db.isCurrent)?.name ?? ''
-
-  const handleChange = async (next: string) => {
-    if (!next || next === current) return
-    setSwitching(next)
-    setError(null)
-    try {
-      const result = await $switchDatabase({ data: { database: next } })
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      // Dropped rather than invalidated: invalidating refetches the page we are
-      // still on, against a database that may not have its table, and that
-      // rejection would leave us switched but not moved.
-      queryClient.clear()
-      queryClient.setQueryData(connectionStatusKey, { connected: true })
-      await openFirstTable()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSwitching(null)
-    }
-  }
+  if (!database || databases.length < 2) return null
 
   return (
-    <div className="flex items-center gap-1">
-      <select
-        value={current}
-        disabled={switching !== null}
-        onChange={(e) => handleChange(e.target.value)}
-        className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none disabled:opacity-50"
-        title="Database on this server"
-      >
-        {switching && <option value="">{`Switching to ${switching}...`}</option>}
-        {databases.map((db) => (
-          // A database that refuses connections is still listed, disabled — the
-          // absence of one you know exists is the more confusing answer.
-          <option key={db.name} value={db.name} disabled={!db.canConnect}>
-            {db.canConnect ? db.name : `${db.name} (no access)`}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <span title={error} className="text-xs text-red-500">
-          ⚠
-        </span>
+    <select
+      value={database}
+      onChange={(e) => {
+        const next = e.target.value
+        if (next && next !== database) navigate({ to: '/d/$database', params: { database: next } })
+      }}
+      className="max-w-[9rem] truncate rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs text-[var(--sea-ink)] outline-none"
+      title="Database on this server"
+    >
+      {/* The database in the URL is listed even if the discovery query has not
+          answered yet, or has never heard of it — the page is about it either
+          way, and a picker that silently shows a different name would lie. */}
+      {!databases.some((db) => db.name === database) && (
+        <option value={database}>{database}</option>
       )}
-    </div>
+      {databases.map((db) => (
+        // A database that refuses connections is still listed, disabled — the
+        // absence of one you know exists is the more confusing answer.
+        <option key={db.name} value={db.name} disabled={!db.canConnect}>
+          {db.canConnect ? db.name : `${db.name} (no access)`}
+        </option>
+      ))}
+    </select>
   )
 }
 
 function SchemaPicker() {
   const navigate = useNavigate()
+  const database = useDatabase()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const lensLocation = parseLensPath(pathname)
 
   const schemasQuery = useQuery({
-    queryKey: ['schemas'],
-    queryFn: () => $getSchemas(),
+    queryKey: ['schemas', database],
+    queryFn: () => $getSchemas({ data: { database: database! } }),
     staleTime: Infinity,
+    enabled: !!database,
   })
 
   const schemas = schemasQuery.data ?? []
-  if (schemas.length === 0) return null
+  if (!database || schemas.length === 0) return null
 
   const selected =
     resolveActiveSchema(
@@ -491,21 +485,21 @@ function SchemaPicker() {
     if (lensLocation) {
       if (lensLocation.view.kind === 'group') {
         navigate({
-          to: '/lens/$schema/g/$group',
-          params: { schema: nextSchema, group: lensLocation.view.group },
+          to: '/d/$database/lens/$schema/g/$group',
+          params: { database, schema: nextSchema, group: lensLocation.view.group },
         })
       } else if (lensLocation.view.kind === 'orphans') {
-        navigate({ to: '/lens/$schema/orphans', params: { schema: nextSchema } })
+        navigate({ to: '/d/$database/lens/$schema/orphans', params: { database, schema: nextSchema } })
       } else {
-        navigate({ to: '/lens/$schema', params: { schema: nextSchema } })
+        navigate({ to: '/d/$database/lens/$schema', params: { database, schema: nextSchema } })
       }
       return
     }
-    const tables = await $getTables({ data: { schema: nextSchema } })
+    const tables = await $getTables({ data: { database, schema: nextSchema } })
     if (tables.length === 0) return
     navigate({
-      to: '/t/$schema/$table',
-      params: { schema: nextSchema, table: tables[0].name },
+      to: '/d/$database/t/$schema/$table',
+      params: { database, schema: nextSchema, table: tables[0].name },
     })
   }
 

@@ -117,53 +117,58 @@ describe('db module', () => {
     it('connects when there is no pool yet', async () => {
       await ensureConnection(validConfig)
 
-      expect(getConnection()).not.toBeNull()
+      expect(await getConnection()).not.toBeNull()
     })
 
     it('reuses the live pool when the config is unchanged', async () => {
       await createConnection(validConfig)
-      const pool = getConnection()
+      const pool = await getConnection()
       mockEnd.mockClear()
 
       await ensureConnection({ ...validConfig })
 
-      expect(getConnection()).toBe(pool)
+      expect(await getConnection()).toBe(pool)
       expect(mockEnd).not.toHaveBeenCalled()
     })
 
-    it('rebuilds the pool when the config differs', async () => {
+    // Another database on the same login is a second pool, not a replacement:
+    // the URL names a database per page, so two of them are read at once.
+    it('opens a second pool for another database, leaving the first alone', async () => {
       await createConnection(validConfig)
-      const pool = getConnection()
+      const first = await getConnection()
+      mockEnd.mockClear()
 
       await ensureConnection({ ...validConfig, database: 'otherdb' })
 
-      expect(getConnection()).not.toBe(pool)
-      expect(mockEnd).toHaveBeenCalled()
+      expect(await getConnection()).not.toBe(first)
+      expect(mockEnd).not.toHaveBeenCalled()
     })
 
-    it('rebuilds the pool when the config differs only by ssl', async () => {
+    it('drops every pool when the credentials change', async () => {
       await createConnection(validConfig)
-      const pool = getConnection()
+      const pool = await getConnection()
+      mockEnd.mockClear()
 
       await ensureConnection({ ...validConfig, ssl: true })
 
-      expect(getConnection()).not.toBe(pool)
+      expect(await getConnection()).not.toBe(pool)
+      expect(mockEnd).toHaveBeenCalled()
     })
 
     it('rebuilds the pool when the live check fails', async () => {
       await createConnection(validConfig)
-      const pool = getConnection()
+      const pool = await getConnection()
       mockQuery.mockRejectedValueOnce(new Error('connection terminated'))
 
       await ensureConnection(validConfig)
 
-      expect(getConnection()).not.toBe(pool)
+      expect(await getConnection()).not.toBe(pool)
     })
   })
 
   describe('getConnection', () => {
-    it('returns null when not connected', () => {
-      expect(getConnection()).toBeNull()
+    it('returns null when not connected', async () => {
+      expect(await getConnection()).toBeNull()
     })
 
     it('returns pool when connected', async () => {
@@ -171,7 +176,7 @@ describe('db module', () => {
       mockConnect.mockResolvedValue(client)
 
       await createConnection(validConfig)
-      const conn = getConnection()
+      const conn = await getConnection()
 
       expect(conn).not.toBeNull()
       expect(conn).toHaveProperty('query')
@@ -200,7 +205,23 @@ describe('db module', () => {
       await createConnection(validConfig)
       await disconnect()
 
-      expect(getConnection()).toBeNull()
+      expect(await getConnection()).toBeNull()
+    })
+  })
+
+  describe('two databases at once', () => {
+    it('keeps a pool per database, so one tab does not move another', async () => {
+      const { runWithDatabase } = await import('#/server/db-context')
+      await createConnection(validConfig)
+
+      const a = await runWithDatabase('testdb', () => getConnection())
+      const b = await runWithDatabase('otherdb', () => getConnection())
+
+      expect(a).not.toBe(b)
+      // Asking again returns the same pools — nothing was torn down to serve
+      // the other database.
+      expect(await runWithDatabase('testdb', () => getConnection())).toBe(a)
+      expect(await runWithDatabase('otherdb', () => getConnection())).toBe(b)
     })
   })
 

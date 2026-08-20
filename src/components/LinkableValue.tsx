@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import CrossDbLink from '#/components/CrossDbLink'
 import type { CrossDbTarget } from '#/lib/cross-db-refs'
 import type { JsonValue } from '#/lib/types'
@@ -36,6 +37,7 @@ export default function LinkableValue({
   className,
   onClick,
 }: LinkableValueProps) {
+  const database = useDatabaseParam()
   const inner = <CellValue value={value} prettyJson={prettyJson} />
 
   // A cross-database reference wins over a same-database one: a column carrying
@@ -61,8 +63,8 @@ export default function LinkableValue({
         : 'text-[var(--lagoon-deep)] underline decoration-dotted underline-offset-2 hover:decoration-solid'
     return (
       <Link
-        to="/t/$schema/$table/row/$id"
-        params={{
+        to="/d/$database/t/$schema/$table/row/$id"
+        params={{database, 
           schema: target.schema,
           table: target.table,
           id: String(value),

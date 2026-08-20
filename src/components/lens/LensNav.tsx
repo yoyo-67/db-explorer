@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { DAMP_OFF } from '#/lib/lens-search'
 import type { EdgeBasis, SchemaGraphStaleness } from '#/lib/types'
 
@@ -32,6 +33,7 @@ export default function LensNav({
   totalEdges: number
   onChange: (next: { damp?: string | undefined; basis?: EdgeBasis | undefined }) => void
 }) {
+  const database = useDatabaseParam()
   const damping = dampKeys.length > 0
   return (
     <div className="space-y-2">
@@ -40,8 +42,8 @@ export default function LensNav({
           Lens
         </span>
         <Link
-          to="/lens/$schema"
-          params={{ schema }}
+          to="/d/$database/lens/$schema"
+          params={{ database, schema }}
           search={{ damp, basis }}
           className="hover:text-[var(--lagoon-deep)]"
           activeOptions={{ exact: true }}
@@ -51,8 +53,8 @@ export default function LensNav({
         </Link>
         <span>/</span>
         <Link
-          to="/lens/$schema/orphans"
-          params={{ schema }}
+          to="/d/$database/lens/$schema/orphans"
+          params={{ database, schema }}
           search={{ damp, basis }}
           className="hover:text-[var(--lagoon-deep)]"
           activeProps={{ className: 'text-[var(--sea-ink)] font-medium' }}
@@ -64,8 +66,8 @@ export default function LensNav({
             <span>/</span>
             {table ? (
               <Link
-                to="/lens/$schema/g/$group"
-                params={{ schema, group }}
+                to="/d/$database/lens/$schema/g/$group"
+                params={{ database, schema, group }}
                 search={{ damp, basis, focus: table }}
                 className="hover:text-[var(--lagoon-deep)]"
               >
@@ -136,14 +138,15 @@ function StalenessBadge({
   schema: string
   staleness: SchemaGraphStaleness
 }) {
+  const database = useDatabaseParam()
   const unmapped = staleness.liveNotMapped.length
   const drift = staleness.mappedNotLive.length
   const derived = staleness.derivedGroupTables.length
   const clean = unmapped === 0 && drift === 0 && derived === 0
   return (
     <Link
-      to="/lens/$schema/orphans"
-      params={{ schema }}
+      to="/d/$database/lens/$schema/orphans"
+      params={{ database, schema }}
       className={`ml-auto rounded-full border px-2 py-0.5 tabular-nums no-underline ${
         clean
           ? 'border-[var(--line)] text-[var(--sea-ink-soft)]'

@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import QueryRow from '#/components/queries/QueryRow'
 import { $getQueryStats } from '#/server/api'
@@ -12,7 +13,7 @@ interface QueriesSearch {
   by?: QuerySortKey
 }
 
-export const Route = createFileRoute('/queries')({
+export const Route = createFileRoute('/d/$database/queries')({
   component: QueriesPage,
   validateSearch: (search: Record<string, unknown>): QueriesSearch => ({
     by: isQuerySortKey(search.by) ? search.by : undefined,
@@ -30,14 +31,15 @@ export const Route = createFileRoute('/queries')({
  * cheap may simply be younger than the reset.
  */
 function QueriesPage() {
+  const database = useDatabaseParam()
   const { isChecking, isConnected } = useConnectionGuard()
   const search = Route.useSearch()
   const navigate = useNavigate()
   const sortKey: QuerySortKey = search.by ?? 'total'
 
   const statsQuery = useQuery({
-    queryKey: ['queryStats'],
-    queryFn: () => $getQueryStats(),
+    queryKey: ['queryStats', database],
+    queryFn: () => $getQueryStats({ data: { database } }),
     enabled: isConnected,
     staleTime: 30_000,
   })
@@ -100,7 +102,8 @@ function QueriesPage() {
                     title={QUERY_SORTS[key].hint}
                     onClick={() =>
                       navigate({
-                        to: '/queries',
+                        to: '/d/$database/queries',
+                        params: { database },
                         search: { by: key === 'total' ? undefined : key },
                       })
                     }
