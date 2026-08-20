@@ -160,3 +160,47 @@ describe('groupTablesByCatalog (map module groups)', () => {
     expect(groups.map((g) => g.name)).toEqual(['Auth'])
   })
 })
+
+/**
+ * A generated catalog names its own leftover bucket `Uncategorized`, so the
+ * bucket this module appends could land beside one of the same name: two
+ * sections under one heading, and two React children under one key.
+ */
+describe('groupTablesByCatalog with colliding group names', () => {
+  it('merges leftovers into a catalog group that already has that name', () => {
+    const catalog: TableCatalog = {
+      groups: [
+        { name: 'Uncategorized', description: 'from the generator', order: 1, tables: ['a'] },
+      ],
+      tables: {},
+    }
+    const groups = groupTablesByCatalog([table('a'), table('b')], catalog)
+    const named = groups.filter((g) => g.name === UNCATEGORIZED_GROUP_NAME)
+    expect(named).toHaveLength(1)
+    expect(named[0].tables.map((t) => t.name)).toEqual(['a', 'b'])
+  })
+
+  it('merges a Django module group into the curated group of the same name', () => {
+    const catalog: TableCatalog = {
+      groups: [{ name: 'Users', description: 'curated', order: 1, tables: ['users_customuser'] }],
+      tables: {},
+    }
+    const groups = groupTablesByCatalog(
+      [table('users_customuser'), table('users_client')],
+      catalog,
+      { users_client: 'Users' },
+    )
+    expect(groups.filter((g) => g.name === 'Users')).toHaveLength(1)
+    expect(groups[0].tables.map((t) => t.name)).toEqual(['users_customuser', 'users_client'])
+  })
+
+  it('leaves distinct names as distinct groups', () => {
+    const catalog: TableCatalog = {
+      groups: [{ name: 'Auth', description: '', order: 1, tables: ['auth_group'] }],
+      tables: {},
+    }
+    const groups = groupTablesByCatalog([table('auth_group'), table('stray')], catalog)
+    expect(groups.map((g) => g.name)).toEqual(['Auth', UNCATEGORIZED_GROUP_NAME])
+  })
+})
+

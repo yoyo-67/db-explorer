@@ -109,7 +109,7 @@ export const $resolveEntryTarget = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const { getLastConfig } = await import('#/server/db')
     const database = data.database ?? getLastConfig()?.database
-    if (!database) return { ok: false as const, reason: 'no-tables' as const }
+    if (!database) return { ok: false as const, error: 'Not connected' }
     const target = await runWithDatabase(database, () => resolveEntryTarget())
     return target.ok ? { ...target, database } : target
   })

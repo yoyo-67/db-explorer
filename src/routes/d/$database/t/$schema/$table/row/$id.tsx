@@ -458,6 +458,7 @@ function ChildGroup({
   const countQuery = useQuery({
     queryKey: [
       'childCount',
+      database,
       schema,
       child.table,
       child.fkColumn,
@@ -486,6 +487,7 @@ function ChildGroup({
   const rowsQuery = useQuery({
     queryKey: [
       'rowChildren',
+      database,
       schema,
       child.table,
       child.fkColumn,

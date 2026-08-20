@@ -62,8 +62,26 @@ export function groupTablesByCatalog(
     .filter((g) => g.tables.length > 0)
     .sort((a, b) => a.order - b.order)
 
+  /**
+   * One name is one group.
+   *
+   * Two sections with the same heading are not a grouping, they are a split — the
+   * reader has to check both to know what is in "Uncategorized", and React sees
+   * two children under one key. It happens for real: a generated catalog names
+   * its leftover bucket `Uncategorized` too, and a Django module can share a name
+   * with a curated group. The tables join the group that already exists instead.
+   */
+  const append = (group: CatalogGroup) => {
+    const existing = result.find((g) => g.name === group.name)
+    if (existing) {
+      existing.tables.push(...group.tables)
+      return
+    }
+    result.push(group)
+  }
+
   for (const [name, groupTables] of [...derived].sort(([a], [b]) => a.localeCompare(b))) {
-    result.push({
+    append({
       name,
       description: 'Grouped from the Django module, not the catalog',
       order: DERIVED_ORDER,
@@ -72,7 +90,7 @@ export function groupTablesByCatalog(
   }
 
   if (uncategorized.length > 0) {
-    result.push({
+    append({
       name: UNCATEGORIZED_GROUP_NAME,
       description: 'Tables neither the catalog nor schema-map.json places',
       order: UNCATEGORIZED_ORDER,

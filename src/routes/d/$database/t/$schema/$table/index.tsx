@@ -136,6 +136,7 @@ function TablePage() {
   const pageQuery = useQuery({
     queryKey: [
       'tablePage',
+      database,
       schema,
       table,
       page,

@@ -18,14 +18,14 @@ export const Route = createFileRoute('/d/$database/')({
         params: { database: params.database, schema: target.schema, table: target.table },
       })
     }
-    return { reason: 'reason' in target ? target.reason : 'error' }
+    return { error: 'error' in target ? target.error : 'No readable table' }
   },
   component: DatabaseHome,
 })
 
 function DatabaseHome() {
   const { database } = Route.useParams()
-  const { reason } = Route.useLoaderData()
+  const { error } = Route.useLoaderData()
   return (
     <main className="page-wrap px-4 pb-8 pt-14">
       <section className="island-shell rounded-[2rem] px-6 py-10 sm:px-10">
@@ -34,9 +34,9 @@ function DatabaseHome() {
           Nothing to browse here
         </h1>
         <p className="max-w-2xl text-sm text-[var(--sea-ink-soft)]">
-          {reason === 'not-connected'
+          {error === 'Not connected'
             ? 'This connection is not open. Connect first, then come back.'
-            : 'No schema in this database has a table this role may read.'}
+            : `No schema in this database has a table this role may read (${error}).`}
         </p>
       </section>
     </main>
