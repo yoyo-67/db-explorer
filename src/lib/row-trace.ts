@@ -4,7 +4,6 @@ import {
   isReferenceColumn,
   resolveEdgesByColumn,
 } from '#/lib/schema-graph'
-import { catalogEdges } from '#/lib/catalog-edges'
 import type { CandidateEdge, DeclaredEdgeInput, LiveColumn } from '#/lib/schema-graph'
 import type { EdgeBasis, SchemaMap } from '#/lib/types'
 
@@ -94,8 +93,9 @@ export interface TraceMergeInput {
   otherLiveColumns: ReadonlyMap<string, boolean>
   /** Tables confirmed to exist, so drift cannot produce a dead link. */
   liveTables: ReadonlySet<string>
-  /** This table lives in the schema `pg_class` does — see `catalog-edges`. */
-  isCatalogSchema: boolean
+  /** The catalog's own joins, when this table lives in the schema `pg_class`
+   *  does. Empty everywhere else. */
+  catalogEdges: readonly CandidateEdge[]
 }
 
 export type TraceEdge = CandidateEdge
@@ -131,7 +131,7 @@ export function mergeTableEdges(input: TraceMergeInput): TableEdges {
   // The catalog's own joins, which no constraint declares. The lens merges these
   // too; a row page that skipped them would disagree with the diagram drawn from
   // the same schema.
-  for (const e of catalogEdges(input.isCatalogSchema)) push(e)
+  for (const e of input.catalogEdges) push({ ...e, basis: 'catalog' })
 
   for (const e of map?.edges ?? []) {
     if (e.basis !== 'model') continue

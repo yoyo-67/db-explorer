@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildFkIndex,
   enrichColumnsWithFks,
+  isLinkableFkValue,
   resolveFk,
 } from '#/lib/fk-resolver'
 import type { ColumnInfo, ForeignKey } from '#/lib/types'
@@ -63,5 +64,28 @@ describe('enrichColumnsWithFks', () => {
   it('returns the columns unchanged when FK list is empty', () => {
     const enriched = enrichColumnsWithFks(cols, [], 'orders')
     expect(enriched).toEqual(cols)
+  })
+})
+
+describe('isLinkableFkValue', () => {
+  const catalogTarget = { table: 'pg_authid', column: 'oid', basis: 'catalog' as const }
+  const declaredTarget = { table: 'data_project', column: 'id', basis: 'declared' as const }
+
+  it('refuses 0 on a catalog oid, which is InvalidOid rather than a row', () => {
+    expect(isLinkableFkValue(0, catalogTarget)).toBe(false)
+    expect(isLinkableFkValue('0', catalogTarget)).toBe(false)
+  })
+
+  it('accepts any other oid', () => {
+    expect(isLinkableFkValue(10, catalogTarget)).toBe(true)
+  })
+
+  it('leaves 0 alone on a declared key, where it is an ordinary id', () => {
+    expect(isLinkableFkValue(0, declaredTarget)).toBe(true)
+  })
+
+  it('refuses null and undefined, which point nowhere in any schema', () => {
+    expect(isLinkableFkValue(null, declaredTarget)).toBe(false)
+    expect(isLinkableFkValue(undefined, declaredTarget)).toBe(false)
   })
 })

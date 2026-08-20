@@ -23,7 +23,7 @@ const {
   testConnection,
   getTables,
   getTablePreview,
-  getForeignKeys,
+  declaredForeignKeys,
   resolveEntryTarget,
 } = await import('#/server/functions')
 
@@ -242,7 +242,7 @@ describe('getTablePreview', () => {
   })
 })
 
-describe('getForeignKeys', () => {
+describe('declaredForeignKeys', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -265,7 +265,7 @@ describe('getForeignKeys', () => {
       ],
     })
 
-    const result = await getForeignKeys()
+    const result = await declaredForeignKeys()
 
     expect(result).toHaveLength(2)
     expect(result[0]).toEqual({
@@ -279,7 +279,7 @@ describe('getForeignKeys', () => {
   it('returns empty array when no foreign keys', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] })
 
-    const result = await getForeignKeys()
+    const result = await declaredForeignKeys()
     expect(result).toEqual([])
   })
 })

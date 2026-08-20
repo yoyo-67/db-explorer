@@ -8,7 +8,6 @@ import type {
   SchemaMap,
   TableCatalog,
 } from '#/lib/types'
-import { catalogEdges } from '#/lib/catalog-edges'
 
 /**
  * Merging the schema graph. Pure: the SQL and file reads live in
@@ -50,7 +49,9 @@ export interface DeclaredEdgeInput {
 export interface MergeInput {
   schema: string
   /** This schema is the one `pg_class` lives in — see `catalog-edges`. */
-  isCatalogSchema: boolean
+  /** The catalog's own joins, read from the server by `#/server/catalog-fks`.
+   *  Empty for a user schema, where `pg_constraint` is the whole truth. */
+  catalogEdges: readonly CandidateEdge[]
   liveTables: LiveTable[]
   declaredEdges: DeclaredEdgeInput[]
   map: SchemaMap | null
@@ -161,30 +162,27 @@ export function resolveGroup(
   return { group: UNGROUPED, groupIsDerived: false }
 }
 
-export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
-  const { schema, isCatalogSchema, liveTables, declaredEdges, map, catalog, indexedColumns } =
-    input
+export interface SchemaFkInput {
+  liveTables: readonly LiveTable[]
+  declaredEdges: readonly DeclaredEdgeInput[]
+  map: SchemaMap | null
+  /** The catalog's own joins — empty outside the schema `pg_class` lives in. */
+  catalogEdges: readonly CandidateEdge[]
+}
 
-  const liveByName = new Map(liveTables.map((t) => [t.name, t]))
-  const nullableByColumn = new Map<string, boolean>()
+/**
+ * Every candidate edge of a schema, before precedence is applied. Both endpoints
+ * and the source column have to still exist, so drift cannot produce a link
+ * that opens nothing.
+ */
+export function schemaCandidateEdges(input: SchemaFkInput): CandidateEdge[] {
+  const { liveTables, declaredEdges, map, catalogEdges } = input
+
+  const liveByName = new Set(liveTables.map((t) => t.name))
+  const liveColumns = new Set<string>()
   for (const t of liveTables) {
-    for (const c of t.columns) nullableByColumn.set(edgeKey(t.name, c.name), c.isNullable)
+    for (const c of t.columns) liveColumns.add(edgeKey(t.name, c.name))
   }
-
-  const catalogGroupByTable = new Map<string, string>()
-  for (const g of catalog?.groups ?? []) {
-    for (const t of g.tables) catalogGroupByTable.set(t, g.name)
-  }
-  const mapGroupByTable = new Map<string, string>()
-  for (const [table, meta] of Object.entries(map?.tables ?? {})) {
-    if (meta.group) mapGroupByTable.set(table, meta.group)
-  }
-
-  /** Both endpoints and the source column have to still exist in the database. */
-  const isDrawable = (e: CandidateEdge): boolean =>
-    liveByName.has(e.fromTable) &&
-    liveByName.has(e.toTable) &&
-    nullableByColumn.has(edgeKey(e.fromTable, e.fromColumn))
 
   const candidates: CandidateEdge[] = []
 
@@ -192,15 +190,15 @@ export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
   for (const e of declaredEdges) candidates.push({ ...e, basis: 'declared' })
 
   // 2. catalog — Postgres's own tables, which declare no constraints at all
-  for (const e of catalogEdges(isCatalogSchema)) candidates.push(e)
+  for (const e of catalogEdges) candidates.push({ ...e, basis: 'catalog' })
 
-  // 3. model — Django knows the target the constraint was stripped from
+  // 3. model — the extractor knows the target the constraint was stripped from
   for (const e of map?.edges ?? []) {
     if (e.basis !== 'model') continue
     candidates.push({ ...e, basis: 'model' })
   }
 
-  // 4. convention — name rules; precedence drops these wherever 1 or 2 spoke
+  // 4. convention — name rules; precedence drops these wherever 1-3 spoke
   for (const t of liveTables) {
     for (const c of t.columns) {
       if (!isReferenceColumn(c.name, t.pkColumn)) continue
@@ -216,8 +214,36 @@ export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
     }
   }
 
+  return candidates.filter(
+    (e) =>
+      liveByName.has(e.fromTable) &&
+      liveByName.has(e.toTable) &&
+      liveColumns.has(edgeKey(e.fromTable, e.fromColumn)),
+  )
+}
+
+export function mergeSchemaGraph(input: MergeInput): SchemaGraph {
+  const { schema, catalogEdges, liveTables, declaredEdges, map, catalog, indexedColumns } =
+    input
+
+  const nullableByColumn = new Map<string, boolean>()
+  for (const t of liveTables) {
+    for (const c of t.columns) nullableByColumn.set(edgeKey(t.name, c.name), c.isNullable)
+  }
+
+  const catalogGroupByTable = new Map<string, string>()
+  for (const g of catalog?.groups ?? []) {
+    for (const t of g.tables) catalogGroupByTable.set(t, g.name)
+  }
+  const mapGroupByTable = new Map<string, string>()
+  for (const [table, meta] of Object.entries(map?.tables ?? {})) {
+    if (meta.group) mapGroupByTable.set(table, meta.group)
+  }
+
+  const candidates = schemaCandidateEdges({ liveTables, declaredEdges, map, catalogEdges })
+
   const edgesByColumn = new Map<string, SchemaGraphEdge>()
-  for (const [key, c] of resolveEdgesByColumn(candidates.filter(isDrawable))) {
+  for (const [key, c] of resolveEdgesByColumn(candidates)) {
     edgesByColumn.set(key, {
       ...c,
       nullable: nullableByColumn.get(key) ?? true,

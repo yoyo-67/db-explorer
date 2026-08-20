@@ -35,7 +35,7 @@ const emptyMap: SchemaMap = {
 function input(overrides: Partial<MergeInput> = {}): MergeInput {
   return {
     schema: 'public',
-    isCatalogSchema: false,
+    catalogEdges: [],
     liveTables: [],
     declaredEdges: [],
     map: null,
@@ -382,5 +382,61 @@ describe('mergeSchemaGraph — staleness', () => {
       derivedGroupTables: ['data_shortenurl'],
       ungroupedTables: ['data_mystery'],
     })
+  })
+})
+
+describe('catalog edges', () => {
+  const CATALOG_EDGE = {
+    fromTable: 'pg_extension',
+    fromColumn: 'extowner',
+    toTable: 'pg_authid',
+    toColumn: 'oid',
+    basis: 'catalog' as const,
+  }
+
+  it('draws the edges the server declares for its own catalog', () => {
+    const graph = mergeSchemaGraph(
+      input({
+        schema: 'pg_catalog',
+        catalogEdges: [CATALOG_EDGE],
+        liveTables: [
+          table('pg_extension', [['extowner', false]], { pkColumn: 'oid' }),
+          table('pg_authid', [['oid', false]], { pkColumn: 'oid' }),
+        ],
+      }),
+    )
+
+    expect(graph.edges).toEqual([
+      expect.objectContaining({
+        fromTable: 'pg_extension',
+        fromColumn: 'extowner',
+        toTable: 'pg_authid',
+        basis: 'catalog',
+      }),
+    ])
+  })
+
+  it('still loses to a declared constraint on the same column', () => {
+    const graph = mergeSchemaGraph(
+      input({
+        schema: 'pg_catalog',
+        catalogEdges: [CATALOG_EDGE],
+        declaredEdges: [
+          {
+            fromTable: 'pg_extension',
+            fromColumn: 'extowner',
+            toTable: 'pg_namespace',
+            toColumn: 'oid',
+          },
+        ],
+        liveTables: [
+          table('pg_extension', [['extowner', false]], { pkColumn: 'oid' }),
+          table('pg_authid', [['oid', false]], { pkColumn: 'oid' }),
+          table('pg_namespace', [['oid', false]], { pkColumn: 'oid' }),
+        ],
+      }),
+    )
+
+    expect(graph.edges[0]).toMatchObject({ toTable: 'pg_namespace', basis: 'declared' })
   })
 })

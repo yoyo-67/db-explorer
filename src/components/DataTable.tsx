@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import LinkableValue from '#/components/LinkableValue'
 import FilterDropdown from '#/components/table/FilterDropdown'
 import { formatJsonText } from '#/lib/json-text'
+import { isLinkableFkValue } from '#/lib/fk-resolver'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
@@ -172,7 +173,11 @@ function ColumnHeader({
 
         {col.references && (
           <span
-            title={`References ${col.references.table}.${col.references.column}`}
+            title={`References ${col.references.table}.${col.references.column}${
+              col.references.basis && col.references.basis !== 'declared'
+                ? ` (${col.references.basis}, not a declared constraint)`
+                : ''
+            }`}
             className="rounded border border-[var(--lagoon)]/40 px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]"
           >
             → {col.references.table}
@@ -354,7 +359,7 @@ function HoverExpandCell({
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({})
   const str = formatRaw(value)
   const isLong = str.length > 50
-  const isFkLinkable = !!fkTarget && value !== null && value !== undefined
+  const isFkLinkable = !!fkTarget && isLinkableFkValue(value, fkTarget)
 
   const showPopup = () => {
     if (!isLong || !cellRef.current) return

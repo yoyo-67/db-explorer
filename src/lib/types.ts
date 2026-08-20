@@ -31,7 +31,7 @@ export interface ColumnInfo {
   name: string
   dataType: string
   isNullable: boolean
-  references?: { table: string; column: string }
+  references?: { table: string; column: string; basis?: EdgeBasis }
 }
 
 /**
@@ -73,6 +73,10 @@ export interface ForeignKey {
   fromColumn: string
   toTable: string
   toColumn: string
+  /** Where the link comes from — a declared constraint, Postgres's own catalog
+   *  map, the extractor's model, or a name convention. Absent on the raw
+   *  `pg_constraint` read, which is declared by definition. */
+  basis?: EdgeBasis
 }
 
 export interface IntrospectResult {

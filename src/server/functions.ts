@@ -9,12 +9,15 @@ import {
 import { compileFilters } from '#/server/filter-sql'
 import { appendPerfEntry } from '#/server/perf-log'
 import { mergeSchemaGraph } from '#/lib/schema-graph'
+import type { CandidateEdge } from '#/lib/schema-graph'
+import { resolveSchemaFks } from '#/lib/schema-fks'
 import {
   countSkipReason,
   mergeTableEdges,
   traceCandidateNames,
 } from '#/lib/row-trace'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
+import { readCatalogEdges } from '#/server/catalog-fks'
 import { samplePlan } from '#/lib/sample-plan'
 import type { SampleAttempt, SampleStrategy } from '#/lib/sample-plan'
 import type { LiveTable } from '#/lib/schema-graph'
@@ -366,7 +369,9 @@ export async function getTablePreview(
  * confkey) WITH ORDINALITY` also pairs composite keys column-by-column, which
  * the old query only got right by accident of there being none.
  */
-export async function getForeignKeys(schema: string = DEFAULT_SCHEMA): Promise<ForeignKey[]> {
+export async function declaredForeignKeys(
+  schema: string = DEFAULT_SCHEMA,
+): Promise<ForeignKey[]> {
   const result = await query(
     `
     SELECT
@@ -397,10 +402,41 @@ export async function getForeignKeys(schema: string = DEFAULT_SCHEMA): Promise<F
   }))
 }
 
+/** The catalog's own joins, and only inside the schema `pg_class` lives in. */
+async function catalogEdgesFor(schema: string): Promise<CandidateEdge[]> {
+  if (!(await isCatalogSchema(schema))) return []
+  return readCatalogEdges()
+}
+
+/**
+ * Where every column of a schema points, from all four sources at once
+ * (`lib/schema-fks.ts`): the declared constraints, the catalog's own map, the
+ * extractor's model edges and the name conventions.
+ *
+ * The table browser used to see only the declared ones, so a column linked in
+ * the lens and sat dead in the grid — and `pg_catalog`, which declares nothing,
+ * looked like 64 unrelated tables of loose integers.
+ */
+export async function getForeignKeys(schema: string = DEFAULT_SCHEMA): Promise<ForeignKey[]> {
+  const [tables, declaredEdges, map, catalogEdges] = await Promise.all([
+    getTables(schema),
+    declaredForeignKeys(schema),
+    readSchemaMap(schema),
+    catalogEdgesFor(schema),
+  ])
+  return resolveSchemaFks({ liveTables: tables, declaredEdges, map, catalogEdges })
+}
+
 export async function introspect(
   schema: string = DEFAULT_SCHEMA,
 ): Promise<IntrospectResult> {
-  const [tables, fks] = await Promise.all([getTables(schema), getForeignKeys(schema)])
+  const [tables, declaredEdges, map, catalogEdges] = await Promise.all([
+    getTables(schema),
+    declaredForeignKeys(schema),
+    readSchemaMap(schema),
+    catalogEdgesFor(schema),
+  ])
+  const fks = resolveSchemaFks({ liveTables: tables, declaredEdges, map, catalogEdges })
   return { schema, tables, fks }
 }
 
@@ -454,7 +490,7 @@ export async function getSchemaGraph(
     await Promise.all([
       fetchSchemaColumns(schema),
       fetchSchemaPrimaryKeys(schema),
-      getForeignKeys(schema),
+      declaredForeignKeys(schema),
       fetchIndexedColumns(schema),
       readSchemaMap(schema),
       readTableCatalog(schema),
@@ -475,7 +511,7 @@ export async function getSchemaGraph(
 
   return mergeSchemaGraph({
     schema,
-    isCatalogSchema: await isCatalogSchema(schema),
+    catalogEdges: await catalogEdgesFor(schema),
     liveTables,
     declaredEdges,
     map,
@@ -986,10 +1022,10 @@ async function fetchTraceEdges(
   indexedColumns: Set<string>
 }> {
   const tableColumns = columns.map((c) => ({ name: c.name, isNullable: c.isNullable }))
-  const [declaredEdges, map, catalogSchema] = await Promise.all([
-    getForeignKeys(schema),
+  const [declaredEdges, map, catalogEdges] = await Promise.all([
+    declaredForeignKeys(schema),
     readSchemaMap(schema),
-    isCatalogSchema(schema),
+    catalogEdgesFor(schema),
   ])
 
   const names = traceCandidateNames(table, tableColumns, pkColumn, declaredEdges, map)
@@ -1001,7 +1037,7 @@ async function fetchTraceEdges(
 
   const edges = mergeTableEdges({
     table,
-    isCatalogSchema: catalogSchema,
+    catalogEdges,
     tableColumns,
     tablePkColumn: pkColumn,
     declaredEdges,
