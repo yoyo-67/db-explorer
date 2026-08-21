@@ -40,6 +40,27 @@ function SettingsPage() {
           />
         </div>
       </section>
+
+      <section className="island-shell rise-in mt-4 rounded-[2rem] px-6 py-10 sm:px-10 sm:py-12">
+        <p className="island-kicker mb-3">Writing</p>
+        <h1 className="display-title mb-5 max-w-3xl text-3xl leading-[1.08] font-bold tracking-tight text-[var(--sea-ink)] sm:text-4xl">
+          Edit mode
+        </h1>
+        <p className="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)]">
+          Everything else here reads. This is the one switch that lets the app
+          write, so it lives on its own and starts off. It changes what you can
+          reach, not what the server will accept: an update is still one row,
+          still keyed on the primary key, still shown to you as SQL before it
+          runs, and still refused if the row moved since the page read it.
+        </p>
+
+        <Toggle
+          label="Edit mode"
+          hint="An expanded row grows an Edit button. Tables only — a view has no rows of its own — and only where a primary key identifies the row."
+          checked={settings.editMode}
+          onChange={(next) => setSetting('editMode', next)}
+        />
+      </section>
     </main>
   )
 }

@@ -8,6 +8,7 @@ import { indexAuditTopic } from '#/lib/help/topics/index-audit'
 import { queryBoardTopic } from '#/lib/help/topics/query-board'
 import { randomRowTopic } from '#/lib/help/topics/random-row'
 import { rowPageTopic } from '#/lib/help/topics/row-page'
+import { rowUpdateTopic } from '#/lib/help/topics/row-update'
 import { schemaGraphTopic } from '#/lib/help/topics/schema-graph'
 import { sequenceHeadroomTopic } from '#/lib/help/topics/sequence-headroom'
 import { tableListTopic } from '#/lib/help/topics/table-list'
@@ -27,6 +28,8 @@ export const HELP_TOPICS: HelpTopic[] = [
   tablePageTopic,
   rowPageTopic,
   randomRowTopic,
+  // Changing data — one topic, and the only one that writes.
+  rowUpdateTopic,
   // Schema shape.
   foreignKeysTopic,
   schemaGraphTopic,

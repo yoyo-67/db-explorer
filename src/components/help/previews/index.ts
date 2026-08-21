@@ -8,6 +8,7 @@ import IndexAuditPreview from '#/components/help/previews/IndexAuditPreview'
 import QueryBoardPreview from '#/components/help/previews/QueryBoardPreview'
 import RandomRowPreview from '#/components/help/previews/RandomRowPreview'
 import RowPagePreview from '#/components/help/previews/RowPagePreview'
+import RowUpdatePreview from '#/components/help/previews/RowUpdatePreview'
 import SchemaGraphPreview from '#/components/help/previews/SchemaGraphPreview'
 import SequenceHeadroomPreview from '#/components/help/previews/SequenceHeadroomPreview'
 import TableListPreview from '#/components/help/previews/TableListPreview'
@@ -28,6 +29,7 @@ export const HELP_PREVIEWS: Record<string, ComponentType> = {
   'table-list': TableListPreview,
   'table-page': TablePagePreview,
   'row-page': RowPagePreview,
+  'row-update': RowUpdatePreview,
   'random-row': RandomRowPreview,
   'column-profile': ColumnProfilePreview,
   'ddl-rebuild': DdlRebuildPreview,

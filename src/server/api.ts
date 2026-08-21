@@ -5,6 +5,7 @@ import {
   getTables,
   getColumnValues,
   getTablePage,
+  planTableQuery,
   getTablePreview,
   getForeignKeys,
   getRandomRow,
@@ -25,10 +26,12 @@ import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { readPresets } from '#/server/presets'
 import { runWithDatabase } from '#/server/db-context'
+import type { RowEdit } from '#/lib/row-edit'
 import type {
   ConnectionConfig,
   TableCatalog,
   ColumnValuesRequest,
+  PlanRequest,
   TablePageRequest,
 } from '#/lib/types'
 
@@ -176,6 +179,15 @@ export const $getTablePage = createServerFn({ method: 'GET' })
   .handler(scoped((data) => getTablePage(data)))
 
 /**
+ * What the planner makes of the panel's filter, plus the statement it would
+ * run. `EXPLAIN` only — nothing is executed, so this is cheap enough to ask on
+ * every edit.
+ */
+export const $planTableQuery = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & PlanRequest) => data)
+  .handler(scoped((data) => planTableQuery(data)))
+
+/**
  * The distinct values of one column, for its set filter. Fetched only when the
  * filter panel opens — the scan is not worth paying for on a page load.
  */
@@ -195,6 +207,39 @@ export const $getRandomRow = createServerFn({ method: 'GET' })
 export const $getForeignKeys = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)
   .handler(scoped((data) => getForeignKeys(data.schema)))
+
+/**
+ * The statement one row edit would run, checked against the catalog but not
+ * executed — the review step's whole content.
+ *
+ * A separate call from `$updateRow` so the two can never disagree about what is
+ * about to happen: the preview is the same builder the write uses, asked one
+ * click earlier. Cheap enough to ask on opening the review (one catalog read),
+ * and it is the last place a refusal costs nothing.
+ */
+export const $previewRowUpdate = createServerFn({ method: 'POST' })
+  .inputValidator((data: Scoped & { edit: RowEdit }) => data)
+  .handler(
+    scoped(async (data) => {
+      const { previewRowUpdate } = await import('#/server/row-update')
+      return previewRowUpdate(data.edit)
+    }),
+  )
+
+/**
+ * Write one row. The only server function in this app that changes anything —
+ * see `#/server/row-update` for the three promises it keeps, and
+ * `withWriteTransaction` in `#/server/db` for the read-only default it has to
+ * lift to do it.
+ */
+export const $updateRow = createServerFn({ method: 'POST' })
+  .inputValidator((data: Scoped & { edit: RowEdit }) => data)
+  .handler(
+    scoped(async (data) => {
+      const { updateRow } = await import('#/server/row-update')
+      return updateRow(data.edit)
+    }),
+  )
 
 export const $runReadOnlyQuery = createServerFn({ method: 'POST' })
   .inputValidator((data: Scoped & { sql: string }) => data)

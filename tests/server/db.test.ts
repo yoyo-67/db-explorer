@@ -38,6 +38,7 @@ const {
   setStatementTimeout,
   getStatementTimeout,
   StatementTimeoutError,
+  withWriteTransaction,
 } = await import('#/server/db')
 const { MAX_STATEMENT_TIMEOUT_MS, MIN_STATEMENT_TIMEOUT_MS, DEFAULT_STATEMENT_TIMEOUT_MS } =
   await import('#/lib/app-settings')
@@ -330,6 +331,109 @@ describe('db module', () => {
 
     it('throws when not connected', async () => {
       await expect(query('SELECT 1')).rejects.toThrow('Not connected')
+    })
+  })
+
+  // The session default is READ ONLY (set on every physical connection), so a
+  // write has to say so out loud. These tests are about that seam and nothing
+  // else: what the app writes is `row-update`'s business.
+  describe('withWriteTransaction', () => {
+    function liveClient() {
+      const client = {
+        query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+        release: vi.fn(),
+      }
+      mockConnect.mockResolvedValue(client)
+      return client
+    }
+
+    /** The transaction, without the pool's own session setup around it. */
+    function statements(client: { query: ReturnType<typeof vi.fn> }): string[] {
+      const setup = ['SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY', 'SELECT 1']
+      return client.query.mock.calls
+        .map(([sql]) => sql)
+        .filter((sql): sql is string => typeof sql === 'string')
+        .filter((sql) => !sql.startsWith('SET statement_timeout') && !setup.includes(sql))
+    }
+
+    it('opens READ WRITE, runs the body, and commits', async () => {
+      const client = liveClient()
+      await createConnection(validConfig)
+
+      const result = await withWriteTransaction(async (run) => {
+        await run('UPDATE t SET a = 1')
+        return 'done'
+      })
+
+      expect(result).toBe('done')
+      expect(statements(client)).toEqual([
+        'BEGIN READ WRITE',
+        'UPDATE t SET a = 1',
+        'COMMIT',
+      ])
+      expect(client.release).toHaveBeenCalled()
+    })
+
+    it('rolls back and rethrows when the body objects', async () => {
+      const client = liveClient()
+      await createConnection(validConfig)
+
+      await expect(
+        withWriteTransaction(async (run) => {
+          await run('UPDATE t SET a = 1')
+          throw new Error('the row moved under me')
+        }),
+      ).rejects.toThrow('the row moved under me')
+
+      expect(statements(client)).toEqual([
+        'BEGIN READ WRITE',
+        'UPDATE t SET a = 1',
+        'ROLLBACK',
+      ])
+      expect(client.release).toHaveBeenCalled()
+    })
+
+    it('rolls back when a statement inside it fails', async () => {
+      const client = liveClient()
+      client.query.mockImplementation(async (sql: string) => {
+        if (sql.startsWith('UPDATE')) throw new Error('violates not-null constraint')
+        return { rows: [], rowCount: 0 }
+      })
+      await createConnection(validConfig)
+
+      await expect(
+        withWriteTransaction((run) => run('UPDATE t SET a = NULL')),
+      ).rejects.toThrow('violates not-null constraint')
+
+      expect(statements(client)).toContain('ROLLBACK')
+      expect(statements(client)).not.toContain('COMMIT')
+    })
+
+    it('bounds the write by the same statement_timeout as a read', async () => {
+      const client = liveClient()
+      await createConnection(validConfig)
+      setStatementTimeout(15_000)
+
+      await withWriteTransaction((run) => run('UPDATE t SET a = 1'))
+
+      expect(client.query.mock.calls.map(([sql]) => sql)).toContain(
+        'SET statement_timeout = 15000',
+      )
+    })
+
+    it('raises a cancelled write as StatementTimeoutError', async () => {
+      const client = liveClient()
+      client.query.mockImplementation(async (sql: string) => {
+        if (!sql.startsWith('UPDATE')) return { rows: [], rowCount: 0 }
+        throw Object.assign(new Error('canceling statement due to statement timeout'), {
+          code: '57014',
+        })
+      })
+      await createConnection(validConfig)
+
+      await expect(
+        withWriteTransaction((run) => run('UPDATE t SET a = 1')),
+      ).rejects.toBeInstanceOf(StatementTimeoutError)
     })
   })
 })

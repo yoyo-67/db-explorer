@@ -9,7 +9,9 @@ import {
   formatPercent,
   topValues,
 } from '#/lib/inspect/stats'
-import { filterInputForValue, isFilterableValue } from '#/lib/inspect/value-filter'
+import { conditionForValue, isFilterableValue } from '#/lib/inspect/value-filter'
+import { hasCondition } from '#/lib/filter-model'
+import type { Condition } from '#/lib/filter-model'
 import type { ColumnProfile, TableProfile } from '#/lib/types'
 
 const TOP_VALUE_LIMIT = 6
@@ -25,13 +27,13 @@ const TOP_VALUE_LIMIT = 6
 export default function ProfileTab({
   schema,
   table,
-  filter,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   schema: string
   table: string
-  filter: Record<string, string>
-  onFilterValue: (column: string, input: string | null) => void
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   const database = useDatabaseParam()
   const profileQuery = useQuery({
@@ -76,8 +78,8 @@ export default function ProfileTab({
                 key={column.name}
                 column={column}
                 estimatedRows={profile.estimatedRows}
-                filterInput={filter[column.name]}
-                onFilterValue={onFilterValue}
+                conditions={conditions}
+                onToggleCondition={onToggleCondition}
               />
             ))}
           </tbody>
@@ -122,13 +124,13 @@ function StatsFreshness({ profile }: { profile: TableProfile }) {
 function ColumnRow({
   column,
   estimatedRows,
-  filterInput,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   column: ColumnProfile
   estimatedRows: number
-  filterInput: string | undefined
-  onFilterValue: (column: string, input: string | null) => void
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   const stats = column.stats
   const distinct = stats ? estimateDistinct(stats.nDistinctRaw, estimatedRows) : null
@@ -182,8 +184,8 @@ function ColumnRow({
             <CommonValues
               column={column.name}
               stats={stats}
-              filterInput={filterInput}
-              onFilterValue={onFilterValue}
+              conditions={conditions}
+              onToggleCondition={onToggleCondition}
             />
           </td>
           <td className="whitespace-nowrap py-2 font-mono text-[11px] text-[var(--sea-ink-soft)]">
@@ -204,13 +206,13 @@ function ColumnRow({
 function CommonValues({
   column,
   stats,
-  filterInput,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   column: string
   stats: NonNullable<ColumnProfile['stats']>
-  filterInput: string | undefined
-  onFilterValue: (column: string, input: string | null) => void
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   const values = topValues(stats.commonValues, TOP_VALUE_LIMIT)
   if (values.length === 0) {
@@ -224,8 +226,8 @@ function CommonValues({
     <div className="w-[22rem] max-w-[22rem] space-y-1">
       <div className="flex flex-wrap gap-1">
         {values.map((value) => {
-          const input = filterInputForValue(value.value)
-          const active = filterInput === input
+          const candidate = conditionForValue(column, value.value)
+          const active = hasCondition(conditions, candidate)
           const disabled = !isFilterableValue(value.value)
           const shown = value.value === null ? 'NULL' : truncateValue(value.value)
           return (
@@ -233,7 +235,7 @@ function CommonValues({
               key={`${value.value}`}
               type="button"
               disabled={disabled}
-              onClick={() => onFilterValue(column, active ? null : input)}
+              onClick={() => onToggleCondition(candidate)}
               aria-pressed={active}
               title={
                 disabled

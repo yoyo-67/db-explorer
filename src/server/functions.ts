@@ -6,8 +6,14 @@ import {
   queryWithTimeout,
   StatementTimeoutError,
 } from '#/server/db'
-import { compileFilters } from '#/server/filter-sql'
+import {
+  buildCountQuery,
+  buildMatchQuery,
+  buildTableQuery,
+  compileConditions,
+} from '#/server/filter-sql'
 import { appendPerfEntry } from '#/server/perf-log'
+import { sanitizeRow, sanitizeRows } from '#/server/json-row'
 import { mergeSchemaGraph } from '#/lib/schema-graph'
 import type { CandidateEdge } from '#/lib/schema-graph'
 import { resolveSchemaFks } from '#/lib/schema-fks'
@@ -26,6 +32,8 @@ import type { TraceEdge } from '#/lib/row-trace'
 import type {
   ColumnInfo,
   ColumnValues,
+  PlanRequest,
+  QueryPlan,
   ColumnValuesRequest,
   ConnectionConfig,
   ConsoleResult,
@@ -50,36 +58,14 @@ type Row = Record<string, JsonValue>
 
 const DEFAULT_SCHEMA = 'public'
 
-/** Convert pg row values to plain JSON-safe types (Date, Buffer, etc. → string) */
-function sanitizeRow(row: Record<string, unknown>): Row {
-  const result: Row = {}
-  for (const [key, value] of Object.entries(row)) {
-    result[key] = toJsonValue(value)
-  }
-  return result
-}
-
-function toJsonValue(value: unknown): JsonValue {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  if (typeof value === 'number') return value
-  if (typeof value === 'boolean') return value
-  if (value instanceof Date) return value.toISOString()
-  if (Buffer.isBuffer(value)) return value.toString('hex')
-  if (Array.isArray(value)) return value.map(toJsonValue)
-  if (typeof value === 'bigint') return value.toString()
-  if (typeof value === 'object') {
-    const obj: Record<string, JsonValue> = {}
-    for (const [k, v] of Object.entries(value)) {
-      obj[k] = toJsonValue(v)
-    }
-    return obj
-  }
-  return String(value)
-}
-
-function sanitizeRows(rows: Record<string, unknown>[]): Row[] {
-  return rows.map(sanitizeRow)
+/**
+ * A column no client may write to. Both spellings count: a `GENERATED ALWAYS AS
+ * (...) STORED` expression, and an identity column — `OVERRIDING SYSTEM VALUE`
+ * exists for the second, but an explorer that quietly overrode a sequence would
+ * be lying about what it did.
+ */
+function isGeneratedColumn(row: { is_generated?: string; identity_generation?: string | null }): boolean {
+  return row.is_generated === 'ALWAYS' || row.identity_generation != null
 }
 
 export async function testConnection(
@@ -233,7 +219,9 @@ async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInf
       table_name,
       column_name,
       data_type,
-      is_nullable
+      is_nullable,
+      is_generated,
+      identity_generation
     FROM information_schema.columns
     WHERE table_schema = $1
     ORDER BY table_name, ordinal_position
@@ -248,6 +236,7 @@ async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInf
       name: row.column_name,
       dataType: row.data_type,
       isNullable: row.is_nullable === 'YES',
+      isGenerated: isGeneratedColumn(row),
     })
     columnsByTable.set(row.table_name, cols)
   }
@@ -599,7 +588,7 @@ export const EXACT_COUNT_THRESHOLD = 100_000
 async function fetchColumns(schema: string, table: string): Promise<ColumnInfo[]> {
   const result = await query(
     `
-    SELECT column_name, data_type, is_nullable
+    SELECT column_name, data_type, is_nullable, is_generated, identity_generation
     FROM information_schema.columns
     WHERE table_schema = $1 AND table_name = $2
     ORDER BY ordinal_position
@@ -610,6 +599,7 @@ async function fetchColumns(schema: string, table: string): Promise<ColumnInfo[]
     name: row.column_name,
     dataType: row.data_type,
     isNullable: row.is_nullable === 'YES',
+    isGenerated: isGeneratedColumn(row),
   }))
 }
 
@@ -640,31 +630,24 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
   const columns = await fetchColumns(schema, table)
   const validColumnNames = new Set(columns.map((c) => c.name))
 
-  const safeFilter: Record<string, string> = {}
-  for (const [col, input] of Object.entries(req.filter ?? {})) {
-    if (validColumnNames.has(col)) safeFilter[col] = input
-  }
+  const conditions = (req.conditions ?? []).filter((c) => validColumnNames.has(c.column))
   const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
-  const whereBody = compileFilters(safeFilter, columnTypes)
-  const whereClause = whereBody ? `WHERE ${whereBody}` : ''
+  const whereBody = compileConditions(conditions, columnTypes)
 
   const sort =
     req.sort && validColumnNames.has(req.sort.column)
       ? req.sort
       : null
-  const orderClause = sort
-    ? format('ORDER BY %I %s', sort.column, sort.direction === 'desc' ? 'DESC' : 'ASC')
-    : ''
 
-  const dataQuery = format(
-    'SELECT * FROM %I.%I %s %s LIMIT %s OFFSET %s',
+  const dataQuery = buildTableQuery({
     schema,
     table,
-    whereClause,
-    orderClause,
-    pageSize,
+    conditions,
+    columnTypes,
+    sort,
+    limit: pageSize,
     offset,
-  )
+  })
   const dataResult = await query(dataQuery)
 
   const approx = await fetchApproxRowCount(schema, table)
@@ -673,12 +656,7 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
   let count = approx
   let isCountApproximate = true
   if (wantExact) {
-    const countQuery = format(
-      'SELECT COUNT(*)::bigint AS c FROM %I.%I %s',
-      schema,
-      table,
-      whereClause,
-    )
+    const countQuery = buildCountQuery({ schema, table, conditions, columnTypes })
     const countResult = await query(countQuery)
     count = Number(countResult.rows[0]?.c ?? 0)
     isCountApproximate = false
@@ -726,12 +704,11 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
     throw new Error(`Column ${column} does not exist on ${schema}.${table}`)
   }
 
-  const otherFilters: Record<string, string> = {}
-  for (const [col, input] of Object.entries(req.filter ?? {})) {
-    if (col !== column && validColumnNames.has(col)) otherFilters[col] = input
-  }
+  const otherConditions = (req.conditions ?? []).filter(
+    (c) => c.column !== column && validColumnNames.has(c.column),
+  )
   const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
-  const whereBody = compileFilters(otherFilters, columnTypes)
+  const whereBody = compileConditions(otherConditions, columnTypes)
   const whereClause = whereBody ? `WHERE ${whereBody}` : ''
 
   // `::text` so every type comes back as a string the filter DSL can round-trip
@@ -759,6 +736,82 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
       return { values: [], truncated: false, timedOut: true }
     }
     throw err
+  }
+}
+
+/** A plan nobody waited for is worth nothing: the panel asks for it on every
+ *  edit, so it may not outlive the typing that triggered it. */
+export const PLAN_TIMEOUT_MS = 3_000
+
+/** Walk a plan tree, collecting the relations it reads end to end. */
+function collectSeqScans(node: Record<string, unknown>, into: string[]): void {
+  if (node['Node Type'] === 'Seq Scan' && typeof node['Relation Name'] === 'string') {
+    into.push(node['Relation Name'] as string)
+  }
+  const children = node.Plans
+  if (Array.isArray(children)) {
+    for (const child of children) collectSeqScans(child as Record<string, unknown>, into)
+  }
+}
+
+/**
+ * What the planner thinks of a filter, before the page pays for it: the exact
+ * statement the page would run, the estimated matching rows, and the relations
+ * read end to end.
+ *
+ * `EXPLAIN` without `ANALYZE`, so nothing is executed. The estimate is taken
+ * from the unpaged query ({@link buildMatchQuery}) — planning the `LIMIT`ed one
+ * would answer "how many rows on this page", which is always the page size.
+ */
+export async function planTableQuery(req: PlanRequest): Promise<QueryPlan> {
+  const schema = req.schema || DEFAULT_SCHEMA
+  const { table } = req
+  const page = Math.max(1, req.page ?? 1)
+  const pageSize = Math.max(1, Math.min(500, req.pageSize ?? DEFAULT_PAGE_SIZE))
+
+  const columns = await fetchColumns(schema, table)
+  const validColumnNames = new Set(columns.map((c) => c.name))
+  const conditions = (req.conditions ?? []).filter((c) => validColumnNames.has(c.column))
+  const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
+  const sort = req.sort && validColumnNames.has(req.sort.column) ? req.sort : null
+
+  const sql = buildTableQuery({
+    schema,
+    table,
+    conditions,
+    columnTypes,
+    sort,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  })
+  const matchQuery = buildMatchQuery({ schema, table, conditions, columnTypes })
+
+  try {
+    const result = await queryWithTimeout(
+      `EXPLAIN (FORMAT JSON) ${matchQuery}`,
+      PLAN_TIMEOUT_MS,
+    )
+    const explained = (result.rows[0] as { 'QUERY PLAN'?: unknown })?.['QUERY PLAN']
+    const root = Array.isArray(explained)
+      ? ((explained[0] as { Plan?: Record<string, unknown> })?.Plan ?? null)
+      : null
+    if (!root) return { sql, estRows: null, seqScans: [], totalCost: null }
+    const seqScans: string[] = []
+    collectSeqScans(root, seqScans)
+    return {
+      sql,
+      estRows: typeof root['Plan Rows'] === 'number' ? (root['Plan Rows'] as number) : null,
+      seqScans,
+      totalCost: typeof root['Total Cost'] === 'number' ? (root['Total Cost'] as number) : null,
+    }
+  } catch (err) {
+    const error =
+      err instanceof StatementTimeoutError
+        ? `Too slow to plan (over ${PLAN_TIMEOUT_MS}ms)`
+        : err instanceof Error
+          ? err.message
+          : String(err)
+    return { sql, estRows: null, seqScans: [], totalCost: null, error }
   }
 }
 

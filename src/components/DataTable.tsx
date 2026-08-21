@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { Link } from '@tanstack/react-router'
 import LinkableValue from '#/components/LinkableValue'
-import FilterDropdown from '#/components/table/FilterDropdown'
+import RowEditor from '#/components/edit/RowEditor'
 import { formatJsonText } from '#/lib/json-text'
 import { isLinkableFkValue } from '#/lib/fk-resolver'
 import { describeCrossDbTarget } from '#/lib/cross-db-refs'
 import CrossDbLink from '#/components/CrossDbLink'
+import { useAppSettings } from '#/hooks/useAppSettings'
+import { describeRowBlock, fieldText, rowBlock } from '#/lib/row-edit'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 
 interface DataTableProps {
@@ -19,8 +21,20 @@ interface DataTableProps {
   pkColumn?: string | null
   sort?: TableSort | null
   onSortChange?: (sort: TableSort | null) => void
-  filter?: Record<string, string>
-  onFilterChange?: (column: string, value: string) => void
+  /** Columns the filter panel currently has a condition on, for the header mark. */
+  filteredColumns?: Set<string>
+  /** Open the filter panel with a fresh condition on this column. Absent where
+   *  the rows are not a queryable page, which has nothing to filter. */
+  onFilterColumn?: (column: string) => void
+  /**
+   * Whether these rows are a straight page of `schema.table` — the one case
+   * where a row on screen maps to a row in the database well enough to edit.
+   * Off for a hand-written statement or a preview, whose columns may be
+   * computed, joined, or from somewhere else entirely.
+   */
+  editable?: boolean
+  /** What `schema.table` is. A view has no rows of its own to update. */
+  tableKind?: 'table' | 'view'
 }
 
 export default function DataTable({
@@ -33,23 +47,11 @@ export default function DataTable({
   pkColumn,
   sort = null,
   onSortChange,
-  filter = {},
-  onFilterChange,
+  filteredColumns,
+  onFilterColumn,
+  editable = false,
+  tableKind = 'table',
 }: DataTableProps) {
-  const [openFilter, setOpenFilter] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!openFilter) return
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('[data-filter-dropdown]') && !target.closest('[data-filter-trigger]')) {
-        setOpenFilter(null)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [openFilter])
-
   const handleSort = (colName: string) => {
     if (!onSortChange) return
     if (sort && sort.column === colName) {
@@ -60,7 +62,7 @@ export default function DataTable({
     }
   }
 
-  const activeFilterCount = Object.values(filter).filter((v) => v && v.trim()).length
+  const activeFilterCount = filteredColumns?.size ?? 0
 
   if (columns.length === 0) {
     return <p className="py-4 text-center text-sm text-[var(--sea-ink-soft)]">No columns found</p>
@@ -85,7 +87,6 @@ export default function DataTable({
             <tr className="border-b-2 border-[var(--line)] bg-[var(--bg-base)]">
               {columns.map((col) => {
                 const sortDir = sort?.column === col.name ? sort.direction : null
-                const filterValue = filter[col.name] ?? ''
                 return (
                   <ColumnHeader
                     key={col.name}
@@ -93,14 +94,8 @@ export default function DataTable({
                     sortDir={sortDir}
                     sortable={!!onSortChange}
                     onSort={() => handleSort(col.name)}
-                    filterable={!!onFilterChange}
-                    filters={filter}
-                    schema={schema}
-                    table={table}
-                    filterValue={filterValue}
-                    onFilter={(v) => onFilterChange?.(col.name, v)}
-                    isFilterOpen={openFilter === col.name}
-                    onToggleFilter={() => setOpenFilter(openFilter === col.name ? null : col.name)}
+                    hasFilter={filteredColumns?.has(col.name) ?? false}
+                    onFilter={onFilterColumn ? () => onFilterColumn(col.name) : undefined}
                   />
                 )
               })}
@@ -116,7 +111,11 @@ export default function DataTable({
             ) : (
               rows.map((row, i) => (
                 <ExpandableRow
-                  key={i}
+                  // Keyed on the row's own identity where it has one, not on its
+                  // position. A page with no ORDER BY comes back in a different
+                  // order after a write, and an index key would hand this row's
+                  // open editor to whichever row landed in the slot.
+                  key={rowKey(row, pkColumn ?? null, i)}
                   row={row}
                   columns={columns}
                   index={i}
@@ -124,6 +123,8 @@ export default function DataTable({
                   schema={schema}
                   table={table}
                   pkColumn={pkColumn ?? null}
+                  columnsEditable={editable}
+                  tableKind={tableKind}
                 />
               ))
             )}
@@ -134,11 +135,18 @@ export default function DataTable({
   )
 }
 
+/** The row's primary key, or its position where the key cannot identify it. */
+function rowKey(row: Record<string, JsonValue>, pkColumn: string | null, index: number): string {
+  const value = pkColumn ? row[pkColumn] : null
+  return value === null || value === undefined || typeof value === 'object'
+    ? `row-${index}`
+    : `pk-${String(value)}`
+}
+
 type SortDir = 'asc' | 'desc' | null
 
 function ColumnHeader({
-  col, sortDir, sortable, onSort, filterable, filters, schema, table,
-  filterValue, onFilter, isFilterOpen, onToggleFilter,
+  col, sortDir, sortable, onSort, hasFilter, onFilter,
 }: {
   col: ColumnInfo
   sortDir: SortDir
@@ -146,18 +154,11 @@ function ColumnHeader({
    *  to sort or filter, and a control that does nothing reads as broken. */
   sortable: boolean
   onSort: () => void
-  filterable: boolean
-  filters: Record<string, string>
-  schema?: string
-  table?: string
-  filterValue: string
-  onFilter: (v: string) => void
-  isFilterOpen: boolean
-  onToggleFilter: () => void
+  /** The panel already has a condition on this column. */
+  hasFilter: boolean
+  /** Hands the column to the filter panel; absent means no panel to hand it to. */
+  onFilter?: () => void
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const hasFilter = filterValue.length > 0
-
   return (
     <th className="whitespace-nowrap px-3 py-2 text-xs font-bold tracking-wide text-[var(--sea-ink)]">
       <div className="flex items-center gap-1">
@@ -200,35 +201,26 @@ function ColumnHeader({
           </span>
         )}
 
-        {filterable && (
-        <button
-          type="button"
-          ref={triggerRef}
-          data-filter-trigger
-          onClick={(e) => { e.stopPropagation(); onToggleFilter() }}
-          className={`ml-auto rounded p-0.5 transition ${
-            hasFilter ? 'text-[var(--lagoon-deep)]' : 'text-[var(--sea-ink-soft)]/40 hover:text-[var(--sea-ink-soft)]'
-          }`}
-          title="Filter column (>N, <N, null, ~regex, or substring)"
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M1.5 1.5h13L9.5 7.5v5l-3 2v-7L1.5 1.5z" />
-          </svg>
-        </button>
+        {onFilter && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onFilter()
+            }}
+            className={`ml-auto rounded p-0.5 transition ${
+              hasFilter
+                ? 'text-[var(--lagoon-deep)]'
+                : 'text-[var(--sea-ink-soft)]/40 hover:text-[var(--sea-ink-soft)]'
+            }`}
+            title={hasFilter ? 'Filtered — open the filter panel' : 'Filter this column'}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1.5 1.5h13L9.5 7.5v5l-3 2v-7L1.5 1.5z" />
+            </svg>
+          </button>
         )}
       </div>
-
-      {isFilterOpen && (
-        <FilterDropdown
-          col={col}
-          filterValue={filterValue}
-          onFilter={onFilter}
-          filters={filters}
-          schema={schema}
-          table={table}
-          anchorRef={triggerRef}
-        />
-      )}
     </th>
   )
 }
@@ -253,7 +245,7 @@ function SortIcon({ dir }: { dir: SortDir }) {
 }
 
 function ExpandableRow({
-  row, columns, index, prettyJson, schema, table, pkColumn,
+  row, columns, index, prettyJson, schema, table, pkColumn, columnsEditable, tableKind,
 }: {
   row: Record<string, JsonValue>
   columns: ColumnInfo[]
@@ -262,13 +254,31 @@ function ExpandableRow({
   schema?: string
   table?: string
   pkColumn: string | null
+  /** These rows are a page of `schema.table`; see `DataTableProps.editable`. */
+  columnsEditable: boolean
+  tableKind: 'table' | 'view'
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const settings = useAppSettings()
+
+  // Armed by the setting, allowed by the data. Both have to hold: the setting is
+  // the user's stance, and the rest is whether this row can be addressed at all.
+  const armed = settings.editMode && columnsEditable && !!schema && !!table
+  const block = armed
+    ? rowBlock({
+        tableKind,
+        pkColumn,
+        pkValue: pkColumn ? fieldText(row[pkColumn] ?? null) : null,
+      })
+    : null
 
   return (
     <>
       <tr
-        onClick={() => setExpanded(!expanded)}
+        // Collapsing mid-edit would throw away typed changes on a stray click,
+        // so while the editor is open the row keeps itself open; Done closes it.
+        onClick={() => !editing && setExpanded(!expanded)}
         className={`cursor-pointer border-b border-[var(--line)]/40 transition hover:bg-[rgba(79,184,178,0.05)] ${
           index % 2 === 0 ? '' : 'bg-[rgba(0,0,0,0.02)] dark:bg-[rgba(255,255,255,0.02)]'
         }`}
@@ -297,6 +307,38 @@ function ExpandableRow({
       {expanded && (
         <tr>
           <td colSpan={columns.length} className="bg-[rgba(79,184,178,0.03)] px-6 py-3">
+            {armed && !editing && (
+              <div className="mb-2 flex items-center gap-2">
+                {block ? (
+                  <span
+                    title={describeRowBlock(block)}
+                    className="rounded border border-dashed border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--sea-ink-soft)]"
+                  >
+                    {block === 'view' ? 'View — not editable' : 'No row identity — not editable'}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="rounded border border-[var(--lagoon)] px-2 py-0.5 text-[11px] font-medium text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.12)]"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            )}
+
+            {editing && schema && table ? (
+              <RowEditor
+                schema={schema}
+                table={table}
+                tableKind={tableKind}
+                columns={columns}
+                row={row}
+                pkColumn={pkColumn}
+                onClose={() => setEditing(false)}
+              />
+            ) : (
             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[12px]">
               {columns.map((col) => {
                 const isPkCell =
@@ -319,6 +361,7 @@ function ExpandableRow({
                 )
               })}
             </div>
+            )}
           </td>
         </tr>
       )}

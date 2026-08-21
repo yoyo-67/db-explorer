@@ -29,6 +29,19 @@ describe('readSettings', () => {
     expect(DEFAULT_SETTINGS.queryHud).toBe(false)
   })
 
+  it('defaults edit mode to off — writing is opted into, never inherited', () => {
+    expect(DEFAULT_SETTINGS.editMode).toBe(false)
+    expect(readSettings(fakeStorage('{"queryHud":true}')).editMode).toBe(false)
+  })
+
+  it('returns a stored edit mode', () => {
+    expect(readSettings(fakeStorage('{"editMode":true}')).editMode).toBe(true)
+  })
+
+  it('ignores an edit mode that is not a boolean', () => {
+    expect(readSettings(fakeStorage('{"editMode":"yes"}')).editMode).toBe(false)
+  })
+
   it('returns the stored value', () => {
     const storage = fakeStorage('{"queryHud":true}')
     expect(readSettings(storage).queryHud).toBe(true)

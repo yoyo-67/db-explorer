@@ -9,6 +9,7 @@ import {
   nextInspectorTab,
 } from '#/lib/inspect/tabs'
 import type { InspectorTab } from '#/lib/inspect/tabs'
+import type { Condition } from '#/lib/filter-model'
 
 /**
  * Three views of the table's own definition, above its rows: what the planner
@@ -24,16 +25,17 @@ export default function TableInspector({
   table,
   tab,
   onTabChange,
-  filter,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   schema: string
   table: string
   /** `undefined` means the panel is collapsed. */
   tab: InspectorTab | undefined
   onTabChange: (tab: InspectorTab | undefined) => void
-  filter: Record<string, string>
-  onFilterValue: (column: string, input: string | null) => void
+  /** The filter the rows below are under, so a chip can show as pressed. */
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   const tabRefs = useRef<Partial<Record<InspectorTab, HTMLButtonElement | null>>>({})
 
@@ -127,8 +129,8 @@ export default function TableInspector({
             <ProfileTab
               schema={schema}
               table={table}
-              filter={filter}
-              onFilterValue={onFilterValue}
+              conditions={conditions}
+              onToggleCondition={onToggleCondition}
             />
           )}
           {tab === 'ddl' && <DdlTab schema={schema} table={table} />}
@@ -136,8 +138,8 @@ export default function TableInspector({
             <TypesTab
               schema={schema}
               table={table}
-              filter={filter}
-              onFilterValue={onFilterValue}
+              conditions={conditions}
+              onToggleCondition={onToggleCondition}
             />
           )}
         </div>

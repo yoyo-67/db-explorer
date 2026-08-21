@@ -1,4 +1,5 @@
 import type { SampleStrategy } from '#/lib/sample-plan'
+import type { Condition } from '#/lib/filter-model'
 
 export type JsonValue =
   | string
@@ -31,6 +32,13 @@ export interface ColumnInfo {
   name: string
   dataType: string
   isNullable: boolean
+  /**
+   * The database computes this column — a `GENERATED ... STORED` expression or
+   * an identity. Carried because an editor has to know which fields it must not
+   * offer: a client value for one of these is rejected by Postgres, and finding
+   * that out at COMMIT is worse than never showing the box.
+   */
+  isGenerated?: boolean
   references?: { table: string; column: string; basis?: EdgeBasis }
   /**
    * A reference that leaves the database — never a Postgres constraint, always
@@ -163,16 +171,42 @@ export interface TablePageRequest {
   page?: number
   pageSize?: number
   exactCount?: boolean
-  filter?: Record<string, string>
+  /** The filter panel's conditions, all AND-ed. See `#/lib/filter-model`. */
+  conditions?: Condition[]
   sort?: TableSort | null
+}
+
+export interface PlanRequest {
+  schema: string
+  table: string
+  conditions?: Condition[]
+  sort?: TableSort | null
+  page?: number
+  pageSize?: number
+}
+
+/**
+ * What the planner says about a filter before it runs, for the panel's cost
+ * line. Never throws its way out: a filter that cannot be planned is a normal
+ * thing to be told about, not a page failure.
+ */
+export interface QueryPlan {
+  /** The paged statement the table would run — what the panel shows. */
+  sql: string
+  /** Estimated matching rows, ignoring the page window. `null` when unknown. */
+  estRows: number | null
+  /** Relations the plan reads end to end. */
+  seqScans: string[]
+  totalCost: number | null
+  error?: string
 }
 
 export interface ColumnValuesRequest {
   schema: string
   table: string
   column: string
-  /** The grid's other column filters; the named column's own entry is ignored. */
-  filter?: Record<string, string>
+  /** The panel's other conditions; ones on the named column are ignored. */
+  conditions?: Condition[]
 }
 
 /** The distinct values of one column, as far as the cap and the time budget got. */

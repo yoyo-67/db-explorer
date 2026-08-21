@@ -353,6 +353,75 @@ export async function queryWithTimeout(
 }
 
 /**
+ * The one place this app writes, and the only thing that can lift its
+ * read-only default.
+ *
+ * Every physical connection is put into `SET SESSION CHARACTERISTICS AS
+ * TRANSACTION READ ONLY`, which makes read-only the default a new transaction
+ * inherits — not a lock. `BEGIN READ WRITE` is the deliberate exception, and
+ * keeping it in one exported function is what makes the write path auditable:
+ * grep for this name and you have found every statement in the app that can
+ * change a row.
+ *
+ * The body gets a `run` bound to this transaction rather than the module's
+ * `query`, which takes its own client from the pool — a write issued through
+ * that would land outside the transaction guarding it. Anything the body throws
+ * rolls the transaction back, which is how the row-level guard in
+ * `#/server/row-update` refuses an update without having to undo one.
+ */
+export async function withWriteTransaction<T>(
+  body: (run: (sql: string) => Promise<pg.QueryResult>) => Promise<T>,
+): Promise<T> {
+  const client = await acquire()
+  const run = async (sql: string): Promise<pg.QueryResult> => {
+    const started = Date.now()
+    try {
+      const result = await client.query(sql)
+      void appendPerfEntry({
+        ts: started,
+        preset: presetLabel(),
+        sql,
+        ms: Date.now() - started,
+        ok: true,
+        rowCount: result.rowCount ?? undefined,
+      })
+      return result
+    } catch (err) {
+      const timedOut = isQueryCanceled(err)
+      void appendPerfEntry({
+        ts: started,
+        preset: presetLabel(),
+        sql,
+        ms: Date.now() - started,
+        ok: false,
+        error: timedOut
+          ? `statement_timeout ${sessionTimeoutMs}ms`
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      })
+      throw timedOut ? new StatementTimeoutError(sessionTimeoutMs) : err
+    }
+  }
+
+  try {
+    await client.query('BEGIN READ WRITE')
+    const result = await body(run)
+    await client.query('COMMIT')
+    return result
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      /* ignore — the transaction is already gone */
+    }
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+/**
  * Run one query, bounded by the configured `statement_timeout`.
  *
  * Taken from the pool by hand rather than through `pool.query`, which is the

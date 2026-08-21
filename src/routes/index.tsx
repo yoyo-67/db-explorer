@@ -91,7 +91,8 @@ function HomePage() {
         </h1>
         <p className="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)]">
           Enter your PostgreSQL credentials to explore tables, preview data, and
-          visualize relationships. All queries are read-only.
+          visualize relationships. Every query is read-only until you turn on
+          edit mode in Settings, which is the one thing here that writes.
         </p>
 
         {presetsQuery.data?.error && (

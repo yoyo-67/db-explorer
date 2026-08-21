@@ -84,11 +84,11 @@ describe('getColumnValues', () => {
       schema: 'public',
       table: 'tasks',
       column: 'status',
-      filter: { owner: 'alice' },
+      conditions: [{ id: '1', column: 'owner', op: 'contains', values: ['alice'] }],
     })
 
     const sql = mockQueryWithTimeout.mock.calls[0][0] as string
-    expect(sql).toContain(`WHERE owner::text ILIKE '%alice%'`)
+    expect(sql).toContain(`WHERE owner ILIKE '%alice%'`)
   })
 
   it('ignores the column own filter, which would collapse its own list', async () => {
@@ -99,7 +99,7 @@ describe('getColumnValues', () => {
       schema: 'public',
       table: 'tasks',
       column: 'status',
-      filter: { status: 'in:open' },
+      conditions: [{ id: '1', column: 'status', op: 'in', values: ['open'] }],
     })
 
     const sql = mockQueryWithTimeout.mock.calls[0][0] as string
@@ -114,7 +114,7 @@ describe('getColumnValues', () => {
       schema: 'public',
       table: 'tasks',
       column: 'status',
-      filter: { injected: 'x' },
+      conditions: [{ id: '1', column: 'injected', op: 'eq', values: ['x'] }],
     })
 
     const sql = mockQueryWithTimeout.mock.calls[0][0] as string

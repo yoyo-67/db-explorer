@@ -73,7 +73,7 @@ describe('getTablePage SQL builder', () => {
     await getTablePage({ schema: 'public', table: 'users', page: 3, pageSize: 25 })
 
     const dataSql = mockQuery.mock.calls[1][0] as string
-    expect(dataSql).toBe('SELECT * FROM public.users   LIMIT 25 OFFSET 50')
+    expect(dataSql).toBe(['SELECT *', 'FROM public.users', 'LIMIT 25 OFFSET 50'].join('\n'))
   })
 
   it('returns approximate count when n_live_tup is at/above the threshold and no filter', async () => {
@@ -116,11 +116,11 @@ describe('getTablePage SQL builder', () => {
     const page = await getTablePage({
       schema: 'public',
       table: 'users',
-      filter: { email: 'alice' },
+      conditions: [{ id: '1', column: 'email', op: 'contains', values: ['alice'] }],
     })
 
     const dataSql = mockQuery.mock.calls[1][0] as string
-    expect(dataSql).toContain(`WHERE email::text ILIKE '%alice%'`)
+    expect(dataSql).toContain(`WHERE email ILIKE '%alice%'`)
     expect(page.isCountApproximate).toBe(false)
     expect(page.count).toBe(7)
   })
@@ -134,7 +134,7 @@ describe('getTablePage SQL builder', () => {
     await getTablePage({
       schema: 'public',
       table: 'users',
-      filter: { evil: 'x' },
+      conditions: [{ id: '1', column: 'evil', op: 'eq', values: ['x'] }],
     })
 
     const dataSql = mockQuery.mock.calls[1][0] as string

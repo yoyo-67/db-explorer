@@ -3,7 +3,9 @@ import { useDatabaseParam } from '#/hooks/useDatabase'
 import { $getTableTypes } from '#/server/api'
 import { groupDigits, sequenceHealth } from '#/lib/inspect/sequence'
 import { formatPercent } from '#/lib/inspect/stats'
-import { filterInputForValue } from '#/lib/inspect/value-filter'
+import { conditionForValue } from '#/lib/inspect/value-filter'
+import { hasCondition } from '#/lib/filter-model'
+import type { Condition } from '#/lib/filter-model'
 import type { EnumType, SequenceInfo } from '#/lib/types'
 
 /**
@@ -17,13 +19,13 @@ import type { EnumType, SequenceInfo } from '#/lib/types'
 export default function TypesTab({
   schema,
   table,
-  filter,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   schema: string
   table: string
-  filter: Record<string, string>
-  onFilterValue: (column: string, input: string | null) => void
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   const database = useDatabaseParam()
   const typesQuery = useQuery({
@@ -60,8 +62,8 @@ export default function TypesTab({
             <EnumCard
               key={enumType.name}
               enumType={enumType}
-              filter={filter}
-              onFilterValue={onFilterValue}
+              conditions={conditions}
+              onToggleCondition={onToggleCondition}
             />
           ))
         )}
@@ -85,12 +87,12 @@ export default function TypesTab({
 
 function EnumCard({
   enumType,
-  filter,
-  onFilterValue,
+  conditions,
+  onToggleCondition,
 }: {
   enumType: EnumType
-  filter: Record<string, string>
-  onFilterValue: (column: string, input: string | null) => void
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
 }) {
   // One column means a clicked label can only mean one thing. Two or more and a
   // filter would have to guess which column you meant, so the labels stay text.
@@ -106,8 +108,8 @@ function EnumCard({
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
         {enumType.labels.map((label) => {
-          const input = filterInputForValue(label)
-          const active = soleColumn !== null && filter[soleColumn] === input
+          const candidate = soleColumn === null ? null : conditionForValue(soleColumn, label)
+          const active = candidate !== null && hasCondition(conditions, candidate)
           if (!soleColumn) {
             return (
               <span
@@ -124,7 +126,7 @@ function EnumCard({
               key={label}
               type="button"
               aria-pressed={active}
-              onClick={() => onFilterValue(soleColumn, active ? null : input)}
+              onClick={() => candidate && onToggleCondition(candidate)}
               title={
                 active
                   ? `Clear the filter on ${soleColumn}`

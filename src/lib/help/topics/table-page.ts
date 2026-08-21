@@ -16,9 +16,9 @@ export const tablePageTopic: HelpTopic = {
   previewCaption:
     'A page of rows with one filter and one sort applied. Hover a clause below to see the part of the screen it comes from.',
   source: {
-    file: 'src/server/functions.ts',
-    line: 426,
-    anchor: "'SELECT * FROM %I.%I %s %s LIMIT %s OFFSET %s'",
+    file: 'src/server/filter-sql.ts',
+    line: 156,
+    anchor: "format('FROM %I.%I', args.schema, args.table)",
   },
   prerequisite: null,
   steps: [
@@ -41,7 +41,7 @@ export const tablePageTopic: HelpTopic = {
       clause: "WHERE \"status\" = 'approved'",
       title: 'Your filters',
       detail:
-        'Built from the filter boxes above the grid. Only columns that actually exist on the table survive the build — anything else is dropped rather than passed through — and the comparison is chosen from the column\'s type, so a text column gets `ILIKE`, a number gets `=`, a date gets a range. With no filters typed, this whole line is absent from the statement.',
+        'Built from the conditions in the filter panel, AND-ed together. Only columns that actually exist on the table survive the build — anything else is dropped rather than passed through — and the operators you can pick come from the column\'s type, so a text column offers substring and prefix matching where a number offers ranges. The compiler leans on the index: a prefix match is written `LIKE \'x%\'` rather than `ILIKE \'%x%\'`, and a comparison is made against the column itself rather than a `::text` cast. With nothing in the panel, this whole line is absent from the statement.',
     },
     {
       id: 'order',

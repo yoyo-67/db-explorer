@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
+import FilterPanel from '#/components/filters/FilterPanel'
 import Pager from '#/components/Pager'
 import TableInspector from '#/components/inspect/TableInspector'
 import { parseInspectorTab } from '#/lib/inspect/tabs'
@@ -15,10 +16,19 @@ import {
   $getTableCatalog,
   $getTablePage,
   $introspect,
+  $runReadOnlyQuery,
 } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
+import {
+  decodeConditions,
+  encodeConditions,
+  isConditionComplete,
+  newCondition,
+  toggleCondition,
+} from '#/lib/filter-model'
+import type { Condition } from '#/lib/filter-model'
 import { lensTargetForTable } from '#/lib/lens-links'
 import { tableLabel } from '#/lib/table-label'
 import type { TableSort } from '#/lib/types'
@@ -26,10 +36,16 @@ import type { TableSort } from '#/lib/types'
 interface TableSearch {
   p?: number
   exact?: boolean
-  f?: Record<string, string>
+  /** The filter, one encoded condition per entry. See `#/lib/filter-model`. */
+  q?: string[]
   sort?: string
   /** Open inspector tab; absent means the panel is collapsed. */
   insp?: InspectorTab
+  /** The filter panel is open. */
+  fp?: boolean
+  /** A hand-edited statement. Present means the builder no longer owns the
+   *  query — the page runs this and nothing else. */
+  sql?: string
 }
 
 export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
@@ -38,17 +54,17 @@ export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
     const rawP = Number(search.p)
     const p = Number.isFinite(rawP) && rawP >= 1 ? Math.floor(rawP) : undefined
     const exact = search.exact === true || search.exact === 'true' ? true : undefined
-    const f =
-      search.f && typeof search.f === 'object' && !Array.isArray(search.f)
-        ? Object.fromEntries(
-            Object.entries(search.f as Record<string, unknown>)
-              .filter(([, v]) => typeof v === 'string' && (v as string).length > 0)
-              .map(([k, v]) => [k, v as string]),
-          )
+    const rawQ = search.q
+    const q = Array.isArray(rawQ)
+      ? rawQ.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+      : typeof rawQ === 'string' && rawQ.length > 0
+        ? [rawQ]
         : undefined
     const sort = typeof search.sort === 'string' && search.sort.length > 0 ? search.sort : undefined
     const insp = parseInspectorTab(search.insp)
-    return { p, exact, f, sort, insp }
+    const fp = search.fp === true || search.fp === 'true' ? true : undefined
+    const sql = typeof search.sql === 'string' && search.sql.trim().length > 0 ? search.sql : undefined
+    return { p, exact, q: q?.length ? q : undefined, sort, insp, fp, sql }
   },
 })
 
@@ -116,17 +132,27 @@ function TablePage() {
   const search = Route.useSearch()
   const page = search.p ?? 1
   const exact = search.exact
-  const filter = search.f ?? {}
   const sort = parseSort(search.sort)
+  const rawSql = search.sql ?? null
   const navigate = useNavigate()
   const { isChecking, isConnected } = useConnectionGuard()
   const [prettyJson, setPrettyJson] = useState(true)
 
-  const [filterDraft, setFilterDraft] = useState<Record<string, string>>(filter)
+  // What the page is filtered by. The panel edits a draft of this; Apply is
+  // what writes it back to the URL and refetches.
+  const applied = useMemo(() => decodeConditions(search.q), [JSON.stringify(search.q)])
+  const [draft, setDraft] = useState<Condition[]>(applied)
   useEffect(() => {
-    setFilterDraft(filter)
-  }, [JSON.stringify(filter)])
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    setDraft(applied)
+  }, [JSON.stringify(search.q)])
+
+  const [rawDraft, setRawDraft] = useState<string | null>(rawSql)
+  useEffect(() => {
+    setRawDraft(rawSql)
+  }, [rawSql])
+
+  const addSeed = useRef(0)
+  const panelOpen = search.fp === true
 
   const introspectQuery = useQuery({
     queryKey: ['introspect', database, schema],
@@ -153,7 +179,7 @@ function TablePage() {
       page,
       PAGE_SIZE,
       exact ?? false,
-      JSON.stringify(filter),
+      JSON.stringify(applied),
       search.sort ?? '',
     ],
     queryFn: () =>
@@ -165,24 +191,34 @@ function TablePage() {
           page,
           pageSize: PAGE_SIZE,
           exactCount: exact === true ? true : undefined,
-          filter: Object.keys(filter).length ? filter : undefined,
+          conditions: applied.length ? applied : undefined,
           sort,
         },
       }),
-    enabled: isConnected,
+    enabled: isConnected && rawSql === null,
     staleTime: 30_000,
-    // Keep the previous page on screen while the next one loads. Not only to
-    // avoid the flash: unmounting the grid would close the filter panel that is
-    // still open, so ticking a second value would be impossible.
+    // Keep the previous page on screen while the next one loads, so paging does
+    // not flash the grid away under the panel.
     placeholderData: keepPreviousData,
+  })
+
+  // Raw mode: the statement in the URL is run as written. Read-only session, so
+  // the worst it can be is slow.
+  const rawQuery = useQuery({
+    queryKey: ['rawTableQuery', database, rawSql],
+    queryFn: () => $runReadOnlyQuery({ data: { database, sql: rawSql! } }),
+    enabled: isConnected && rawSql !== null,
+    staleTime: 30_000,
   })
 
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
   const otherTables = (introspectQuery.data?.tables ?? []).filter((t) => t.name !== table)
   const fks = introspectQuery.data?.fks ?? []
   const pageData = pageQuery.data
-  const displayColumns = pageData?.columns ?? []
-  const displayRows = pageData?.rows ?? []
+  const rawResult = rawQuery.data
+  const rawRows = rawResult?.ok ? rawResult.rows : []
+  const displayColumns = rawSql !== null ? (rawResult?.ok ? rawResult.columns : []) : (pageData?.columns ?? [])
+  const displayRows = rawSql !== null ? rawRows : (pageData?.rows ?? [])
   // Hand-written references out of this database. Connection-level and rarely
   // edited, so it is cached for the session rather than per table.
   const crossRefsQuery = useQuery({
@@ -224,28 +260,13 @@ function TablePage() {
 
   const requestExactCount = () => updateSearch({ exact: true })
 
-  const handleFilterChange = (column: string, value: string) => {
-    setFilterDraft((prev) => {
-      const next = { ...prev }
-      if (!value || !value.trim()) delete next[column]
-      else next[column] = value
-      return next
+  const applyDraft = (conditions: Condition[]) => {
+    const complete = conditions.filter(isConditionComplete)
+    updateSearch({
+      q: complete.length ? encodeConditions(complete) : undefined,
+      p: undefined,
+      sql: undefined,
     })
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      const cleaned: Record<string, string> = {}
-      const sourceFilters: Record<string, string> = {
-        ...filterDraft,
-        [column]: value,
-      }
-      for (const [k, v] of Object.entries(sourceFilters)) {
-        if (v && v.trim()) cleaned[k] = v
-      }
-      updateSearch({
-        f: Object.keys(cleaned).length ? cleaned : undefined,
-        p: undefined,
-      })
-    }, 350)
   }
 
   const handleSortChange = (next: TableSort | null) => {
@@ -253,25 +274,50 @@ function TablePage() {
   }
 
   const clearFiltersAndSort = () => {
-    updateSearch({ f: undefined, sort: undefined, p: undefined })
+    setDraft([])
+    updateSearch({ q: undefined, sort: undefined, p: undefined, sql: undefined })
   }
 
   /**
-   * A value clicked in the inspector lands in the URL immediately — a click is
-   * already the deliberate act the typing debounce waits for. Any pending
-   * debounce is cancelled first, so a half-typed draft can't overwrite it.
-   * `null` clears the column, which is what makes the same chip a toggle.
+   * The header's filter button and the inspector's value chips both write into
+   * the draft rather than the URL: they open the panel with the condition ready,
+   * where Apply is still one deliberate click away.
    */
-  const applyFilterValue = (column: string, input: string | null) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    const next = { ...filter }
-    if (input === null) delete next[column]
-    else next[column] = input
-    updateSearch({ f: Object.keys(next).length ? next : undefined, p: undefined })
+  const startConditionFor = (column: string) => {
+    const dataType = tableInfo?.columns.find((c) => c.name === column)?.dataType
+    addSeed.current += 1
+    setDraft((prev) =>
+      prev.some((c) => c.column === column)
+        ? prev
+        : [...prev, newCondition(column, dataType, `h${addSeed.current}`)],
+    )
+    updateSearch({ fp: true })
+  }
+
+  /**
+   * A value clicked in the inspector is already the deliberate act Apply waits
+   * for, so it lands in the URL immediately. Clicking the same value again
+   * clears it, which is what makes the chip a toggle.
+   */
+  const toggleInspectorCondition = (condition: Condition) => {
+    const next = toggleCondition(applied, condition)
+    setDraft(next)
+    applyDraft(next)
   }
 
   const totalRows = pageData?.count ?? tableInfo?.rowCount ?? 0
-  const hasFilterOrSort = Object.keys(filter).length > 0 || sort !== null
+  const hasFilterOrSort = applied.length > 0 || sort !== null || rawSql !== null
+  const filteredColumns = new Set(applied.map((c) => c.column))
+  const pageError = rawSql !== null
+    ? rawQuery.error
+      ? String(rawQuery.error)
+      : rawResult && !rawResult.ok
+        ? rawResult.error
+        : null
+    : pageQuery.error
+      ? String(pageQuery.error)
+      : null
+  const hasRows = rawSql !== null ? rawResult?.ok === true : pageData !== undefined
 
   return (
     <main className="px-4 pb-8 pt-6">
@@ -288,6 +334,11 @@ function TablePage() {
               {tableInfo.columns.length} cols
             </span>
           )}
+          {rawSql !== null && (
+            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+              raw SQL
+            </span>
+          )}
           {hasFilterOrSort && (
             <button
               type="button"
@@ -299,13 +350,13 @@ function TablePage() {
           )}
           <ShowInLens schema={schema} table={table} />
           <div className="ml-auto flex items-center gap-3">
-            {pageData && (
+            {hasRows && (
               <ExportButtons
                 schema={schema}
                 table={table}
-                page={pageData.page}
-                columns={pageData.columns}
-                rows={pageData.rows}
+                page={pageData?.page ?? 1}
+                columns={enrichedColumns}
+                rows={displayRows}
               />
             )}
             <label className="flex items-center gap-1.5 whitespace-nowrap text-sm text-[var(--sea-ink-soft)]">
@@ -325,17 +376,19 @@ function TablePage() {
           table={table}
           tab={search.insp}
           onTabChange={(next: InspectorTab | undefined) => updateSearch({ insp: next })}
-          filter={filter}
-          onFilterValue={applyFilterValue}
+          conditions={applied}
+          onToggleCondition={toggleInspectorCondition}
         />
 
-        {pageQuery.error && (
+        {pageError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-            Failed to load table: {String(pageQuery.error)}
+            {rawSql !== null ? 'Query failed: ' : 'Failed to load table: '}
+            {pageError}
           </div>
         )}
 
-        {pageData && (
+        {/* Raw SQL owns its own window, so the pager has nothing to move. */}
+        {pageData && rawSql === null && (
           <Pager
             page={pageData.page}
             pageSize={pageData.pageSize}
@@ -348,27 +401,63 @@ function TablePage() {
           />
         )}
 
-        {pageQuery.isLoading && !pageData && (
+        {(pageQuery.isLoading || rawQuery.isLoading) && !hasRows && (
           <div className="island-shell h-32 animate-pulse rounded-xl" />
         )}
 
-        {pageData && (
-          <div className="island-shell overflow-visible rounded-xl">
-            <DataTable
-              columns={enrichedColumns}
-              rows={displayRows}
-              totalRows={totalRows}
-              prettyJson={prettyJson}
-              schema={schema}
-              table={table}
-              pkColumn={tableInfo?.pkColumn ?? null}
-              sort={sort}
-              onSortChange={handleSortChange}
-              filter={filterDraft}
-              onFilterChange={handleFilterChange}
-            />
+        {/* The grid and the panel share one row: the panel is a sibling that
+            shrinks to a rail, not an overlay, so the rows keep their width. */}
+        <div className="flex items-start gap-0">
+          <div className="island-shell min-w-0 flex-1 overflow-visible rounded-xl">
+            {hasRows ? (
+              <DataTable
+                columns={enrichedColumns}
+                rows={displayRows}
+                totalRows={rawSql !== null ? displayRows.length : totalRows}
+                prettyJson={prettyJson}
+                schema={schema}
+                table={table}
+                pkColumn={tableInfo?.pkColumn ?? null}
+                sort={rawSql === null ? sort : null}
+                onSortChange={rawSql === null ? handleSortChange : undefined}
+                filteredColumns={filteredColumns}
+                onFilterColumn={rawSql === null ? startConditionFor : undefined}
+                // A hand-written statement's columns are not this table's rows,
+                // whatever they are named — editing is offered only on the page
+                // the builder produced.
+                editable={rawSql === null}
+                tableKind={tableInfo?.kind ?? 'table'}
+              />
+            ) : (
+              <p className="py-6 text-center text-sm text-[var(--sea-ink-soft)]">
+                Nothing to show yet.
+              </p>
+            )}
           </div>
-        )}
+
+          <FilterPanel
+            open={panelOpen}
+            onOpenChange={(open) => updateSearch({ fp: open ? true : undefined })}
+            columns={tableInfo?.columns ?? []}
+            schema={schema}
+            table={table}
+            draft={draft}
+            onDraftChange={setDraft}
+            applied={applied}
+            onApply={() => applyDraft(draft)}
+            sort={sort}
+            page={page}
+            pageSize={PAGE_SIZE}
+            raw={rawDraft}
+            onEnterRaw={(sql) => setRawDraft(sql)}
+            onChangeRaw={setRawDraft}
+            onRunRaw={() => updateSearch({ sql: rawDraft ?? undefined, p: undefined })}
+            onExitRaw={() => {
+              setRawDraft(null)
+              updateSearch({ sql: undefined })
+            }}
+          />
+        </div>
 
         {otherTables.length > 0 && (
           <div className="pt-2 text-xs text-[var(--sea-ink-soft)]">

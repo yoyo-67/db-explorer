@@ -90,6 +90,7 @@ describe('getTables', () => {
           column_name: 'id',
           data_type: 'integer',
           is_nullable: 'NO',
+          identity_generation: 'BY DEFAULT',
         },
         {
           table_name: 'users',
@@ -131,8 +132,10 @@ describe('getTables', () => {
       rowCount: 100,
       lastModified: null,
       columns: [
-        { name: 'id', dataType: 'integer', isNullable: false },
-        { name: 'email', dataType: 'character varying', isNullable: false },
+        // `id` is an identity column here, which is what makes it not editable:
+        // its value is the sequence's to give, not a client's.
+        { name: 'id', dataType: 'integer', isNullable: false, isGenerated: true },
+        { name: 'email', dataType: 'character varying', isNullable: false, isGenerated: false },
       ],
       pkColumn: 'id',
     })

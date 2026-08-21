@@ -15,6 +15,10 @@ import {
 import { describeChange, formatMods, rankByRecentChange } from '#/lib/table-activity'
 
 const EXPANDED_KEY = 'sidebar:expandedGroups'
+const COLLAPSED_KEY = 'sidebar:collapsed'
+
+/** Matches the filter panel's rail on the other side of the rows. */
+const RAIL_WIDTH = 14
 
 /**
  * How the sidebar orders tables. Grouped is the catalog's own structure;
@@ -46,6 +50,24 @@ function SidebarBody({
 }) {
   const [filter, setFilter] = useState('')
   const [view, setView] = useState<View>('grouped')
+  // Remembered per browser, like the expanded groups: which panes are open is
+  // how someone has arranged their workspace, not what they are looking at.
+  const [collapsed, setCollapsed] = useState(false)
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(COLLAPSED_KEY) === 'true')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+  const setCollapsedPersistent = (next: boolean) => {
+    setCollapsed(next)
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, String(next))
+    } catch {
+      /* ignore quota */
+    }
+  }
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
     try {
@@ -131,14 +153,48 @@ function SidebarBody({
     })
   }
 
+  if (collapsed) {
+    return (
+      <aside
+        style={{ width: RAIL_WIDTH }}
+        className="sticky top-[44px] h-[calc(100vh-44px)] shrink-0 border-r border-[var(--line)]/60 bg-[var(--surface)]/50 transition-[width] duration-200 ease-out"
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsedPersistent(false)}
+          title="Show the table list"
+          aria-label="Show the table list"
+          aria-expanded={false}
+          className="absolute -right-3 top-3 z-10 rounded-full border border-[var(--line)] bg-[var(--bg-base)] px-1.5 py-1 text-[10px] text-[var(--sea-ink-soft)] shadow hover:text-[var(--lagoon-deep)]"
+        >
+          &rsaquo;
+        </button>
+        <span className="absolute left-1/2 top-14 -translate-x-1/2 rotate-90 whitespace-nowrap text-[10px] text-[var(--sea-ink-soft)]">
+          {tables.length} tables
+        </span>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="sticky top-[44px] h-[calc(100vh-44px)] w-64 shrink-0 overflow-y-auto border-r border-[var(--line)]/60 bg-[var(--surface)]/50 px-2 py-3">
+    <aside className="sticky top-[44px] h-[calc(100vh-44px)] w-64 shrink-0 overflow-y-auto border-r border-[var(--line)]/60 bg-[var(--surface)]/50 px-2 py-3 transition-[width] duration-200 ease-out">
+      <button
+        type="button"
+        onClick={() => setCollapsedPersistent(true)}
+        title="Hide the table list"
+        aria-label="Hide the table list"
+        aria-expanded
+        className="absolute right-2 top-3 z-10 rounded-full border border-[var(--line)] bg-[var(--bg-base)] px-1.5 py-1 text-[10px] text-[var(--sea-ink-soft)] shadow hover:text-[var(--lagoon-deep)]"
+      >
+        &lsaquo;
+      </button>
+
       <input
         type="text"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder="Search tables..."
-        className="mb-2 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-2.5 py-1.5 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
+        className="mb-2 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] py-1.5 pl-2.5 pr-8 text-xs text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)]"
       />
 
       <div className="mb-2 flex items-center gap-1">
