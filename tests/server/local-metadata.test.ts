@@ -74,10 +74,11 @@ describe('local metadata lookup', () => {
     expect(await readTableCatalog('public')).toBeNull()
   })
 
-  it('names the connection from presets.json when the session forgot it', async () => {
+  it('names the connection from local/presets.json when the session forgot it', async () => {
     scope.presetName = null
+    mkdirSync(join(root, 'local'), { recursive: true })
     writeFileSync(
-      join(root, 'presets.json'),
+      join(root, 'local', 'presets.json'),
       JSON.stringify([
         {
           name: 'Reporting (prod)',

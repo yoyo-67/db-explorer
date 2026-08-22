@@ -5,12 +5,14 @@ import ConnectionForm from '#/components/ConnectionForm'
 import { connectionStatusKey } from '#/hooks/useConnectionStatus'
 import {
   $connect,
+  $deletePreset,
   $getPresets,
   $isConnected,
   $resolveEntryTarget,
+  $savePreset,
   $testConnection,
 } from '#/server/api'
-import type { ConnectionConfig } from '#/lib/types'
+import type { ConnectionConfig, ConnectionPreset } from '#/lib/types'
 
 /**
  * The pool lives on the server, so a second tab is already connected the moment
@@ -43,6 +45,17 @@ function HomePage() {
     queryKey: ['presets'],
     queryFn: () => $getPresets(),
   })
+
+  // The server hands back the list the file now gives, so the cache is set
+  // rather than invalidated: a refetch would show the old chips for a beat, and
+  // the answer is already in hand.
+  const handleSavePreset = async (preset: ConnectionPreset) => {
+    queryClient.setQueryData(['presets'], await $savePreset({ data: preset }))
+  }
+
+  const handleDeletePreset = async (name: string) => {
+    queryClient.setQueryData(['presets'], await $deletePreset({ data: { name } }))
+  }
 
   const handleConnect = async (config: ConnectionConfig, presetName?: string) => {
     setIsLoading(true)
@@ -106,6 +119,8 @@ function HomePage() {
           isLoading={isLoading}
           error={error}
           presets={presetsQuery.data?.presets ?? []}
+          onSavePreset={handleSavePreset}
+          onDeletePreset={handleDeletePreset}
         />
       </section>
     </main>

@@ -53,11 +53,15 @@ functions), TypeScript, and Tailwind.
 npm install
 
 # create your local presets from the example
-cp presets.example.json presets.json
+mkdir -p local && cp presets.example.json local/presets.json
 ```
 
-Edit `presets.json` with your connection(s). Keep secrets out of the file by
-referencing environment variables:
+Connections live in `local/presets.json`, next to the private schema metadata
+they name folders for. Add and remove them from the connect screen — "Save
+current" files whatever is in the form under a name, and a chip's `×` forgets
+it. Editing the file by hand works just as well.
+
+Keep secrets out of the file by referencing environment variables:
 
 ```json
 [
@@ -73,11 +77,14 @@ referencing environment variables:
 ```
 
 `${VAR}` references are resolved from the process environment at runtime; a
-missing variable is reported rather than silently blanked.
+missing variable is reported rather than silently blanked. Saving from the
+connect screen rewrites only the preset you saved, so a `${VAR}` in any other
+entry survives untouched.
 
-`presets.json`, `perf-log.jsonl`, and the whole `local/` directory are
-gitignored — they hold credentials and descriptions of your own schema, and are
-never committed.
+`perf-log.jsonl` and the whole `local/` directory are gitignored by this repo —
+they hold credentials and descriptions of your own schema, and are never
+committed here. `local/` is expected to be its own private repo; a preset saved
+from the UI is a plaintext credential in it.
 
 ## Run
 

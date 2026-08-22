@@ -185,7 +185,7 @@ export async function getSchemas(): Promise<SchemaInfo[]> {
  *
  * Read off `pg_database` rather than configured anywhere: the host and the
  * credentials in hand already decide what is reachable, so a list typed into
- * `presets.json` could only be a stale copy of this one. Templates are dropped
+ * `local/presets.json` could only be a stale copy of this one. Templates are dropped
  * (nothing to browse), and a database that refuses connections is still listed
  * so that switching to it fails with a reason rather than by omission.
  */

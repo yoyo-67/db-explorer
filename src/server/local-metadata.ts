@@ -46,7 +46,7 @@ export async function currentScope(): Promise<{
   const config = getLastConfig()
   if (!config) return { connection: null, database: null }
 
-  // The session's own preset name first, then the one `presets.json` gives this
+  // The session's own preset name first, then the one `local/presets.json` gives this
   // server. Without that second look the folder would move the moment a
   // reconnect forgot the name — and a host that rotates (a managed endpoint
   // reassigned nightly, say) would take the fallback somewhere new every day.

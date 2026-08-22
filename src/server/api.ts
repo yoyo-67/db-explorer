@@ -24,11 +24,12 @@ import { getSchemaPressure } from '#/server/schema-pressure'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
-import { readPresets } from '#/server/presets'
+import { readPresets, removePreset, upsertPreset } from '#/server/presets'
 import { runWithDatabase } from '#/server/db-context'
 import type { RowEdit } from '#/lib/row-edit'
 import type {
   ConnectionConfig,
+  ConnectionPreset,
   TableCatalog,
   ColumnValuesRequest,
   PlanRequest,
@@ -295,6 +296,28 @@ export const $getRowDetail = createServerFn({ method: 'GET' })
 export const $getPresets = createServerFn({ method: 'GET' }).handler(async () => {
   return readPresets()
 })
+
+/**
+ * Save or forget a connection in `local/presets.json`.
+ *
+ * Both hand back the whole list the read would now give, so the caller replaces
+ * its copy instead of guessing what the file became — a save under an existing
+ * name replaces rather than appends, and a `${VAR}` in the file resolves to
+ * something the client never sent.
+ */
+export const $savePreset = createServerFn({ method: 'POST' })
+  .inputValidator((data: ConnectionPreset) => data)
+  .handler(async ({ data }) => {
+    await upsertPreset(data)
+    return readPresets()
+  })
+
+export const $deletePreset = createServerFn({ method: 'POST' })
+  .inputValidator((data: { name: string }) => data)
+  .handler(async ({ data }) => {
+    await removePreset(data.name)
+    return readPresets()
+  })
 
 export const $getPerfLog = createServerFn({ method: 'GET' })
   .inputValidator((data: { sinceTs?: number; limit?: number } | undefined) => data ?? {})
