@@ -14,6 +14,14 @@ import {
 } from '#/lib/catalog-grouping'
 import { describeChange, formatMods, rankByRecentChange } from '#/lib/table-activity'
 import TableName, { useTableNameText } from '#/components/TableName'
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  MAX_SIDEBAR_WIDTH,
+  MIN_SIDEBAR_WIDTH,
+  readSidebarWidth,
+  writeSidebarWidth,
+} from '#/lib/sidebar-width'
 
 const EXPANDED_KEY = 'sidebar:expandedGroups'
 const COLLAPSED_KEY = 'sidebar:collapsed'
@@ -63,6 +71,20 @@ function SidebarBody({
       /* ignore */
     }
   }, [])
+  // Read after mount, not during render: the server has no localStorage, and a
+  // width guessed there would be hydrated over anyway.
+  const [width, setWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [dragging, setDragging] = useState(false)
+  useEffect(() => {
+    setWidth(readSidebarWidth(window.localStorage))
+  }, [])
+
+  const resizeTo = (next: number) => {
+    const clamped = clampSidebarWidth(next)
+    setWidth(clamped)
+    writeSidebarWidth(window.localStorage, clamped)
+  }
+
   const setCollapsedPersistent = (next: boolean) => {
     setCollapsed(next)
     try {
@@ -180,18 +202,26 @@ function SidebarBody({
   }
 
   return (
-    <aside className="sticky top-[44px] h-[calc(100vh-44px)] w-64 shrink-0 overflow-y-auto border-r border-[var(--line)]/60 bg-[var(--surface)]/50 px-2 py-3 transition-[width] duration-200 ease-out">
+    <aside
+      style={{ width }}
+      className={`sticky top-[44px] flex h-[calc(100vh-44px)] shrink-0 border-r border-[var(--line)]/60 bg-[var(--surface)]/50 ${
+        // The transition is what makes collapsing glide; during a drag it is
+        // what makes the edge lag behind the cursor.
+        dragging ? 'select-none' : 'transition-[width] duration-200 ease-out'
+      }`}
+    >
       <button
         type="button"
         onClick={() => setCollapsedPersistent(true)}
         title="Hide the table list"
         aria-label="Hide the table list"
         aria-expanded
-        className="absolute right-2 top-3 z-10 rounded-full border border-[var(--line)] bg-[var(--bg-base)] px-1.5 py-1 text-[10px] text-[var(--sea-ink-soft)] shadow hover:text-[var(--lagoon-deep)]"
+        className="absolute right-3 top-3 z-10 rounded-full border border-[var(--line)] bg-[var(--bg-base)] px-1.5 py-1 text-[10px] text-[var(--sea-ink-soft)] shadow hover:text-[var(--lagoon-deep)]"
       >
         &lsaquo;
       </button>
 
+      <div className="min-w-0 flex-1 overflow-y-auto px-2 py-3">
       <input
         type="text"
         value={filter}
@@ -314,7 +344,75 @@ function SidebarBody({
         })}
       </ul>
       )}
+      </div>
+
+      <ResizeHandle width={width} dragging={dragging} setDragging={setDragging} resizeTo={resizeTo} />
     </aside>
+  )
+}
+
+/**
+ * The sidebar's right edge, dragged.
+ *
+ * A `separator` rather than a decoration: it carries the width it is reporting,
+ * and the arrow keys move it, because a control that only answers to a drag is
+ * one nobody without a mouse can reach. Double-click puts it back where it
+ * started — the cheapest undo for a drag that went too far.
+ */
+function ResizeHandle({
+  width,
+  dragging,
+  setDragging,
+  resizeTo,
+}: {
+  width: number
+  dragging: boolean
+  setDragging: (next: boolean) => void
+  resizeTo: (next: number) => void
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the table list"
+      aria-valuenow={width}
+      aria-valuemin={MIN_SIDEBAR_WIDTH}
+      aria-valuemax={MAX_SIDEBAR_WIDTH}
+      tabIndex={0}
+      title="Drag to resize — double-click to reset"
+      onPointerDown={(e) => {
+        e.preventDefault()
+        // Capture, so a pointer that outruns the 4px strip keeps reporting here
+        // instead of being swallowed by whatever it slid over.
+        e.currentTarget.setPointerCapture(e.pointerId)
+        setDragging(true)
+      }}
+      onPointerMove={(e) => {
+        if (!dragging) return
+        const left = e.currentTarget.parentElement?.getBoundingClientRect().left ?? 0
+        resizeTo(e.clientX - left)
+      }}
+      onPointerUp={(e) => {
+        if (!dragging) return
+        e.currentTarget.releasePointerCapture(e.pointerId)
+        setDragging(false)
+      }}
+      onPointerCancel={() => setDragging(false)}
+      onDoubleClick={() => resizeTo(DEFAULT_SIDEBAR_WIDTH)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') resizeTo(width - 16)
+        else if (e.key === 'ArrowRight') resizeTo(width + 16)
+        else if (e.key === 'Home') resizeTo(MIN_SIDEBAR_WIDTH)
+        else if (e.key === 'End') resizeTo(MAX_SIDEBAR_WIDTH)
+        else return
+        e.preventDefault()
+      }}
+      className={`w-1 shrink-0 cursor-col-resize outline-none transition-colors ${
+        dragging
+          ? 'bg-[var(--lagoon)]'
+          : 'bg-transparent hover:bg-[var(--lagoon)]/50 focus-visible:bg-[var(--lagoon)]'
+      }`}
+    />
   )
 }
 
