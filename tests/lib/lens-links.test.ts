@@ -143,3 +143,9 @@ describe('the parsers refuse a path with no database', () => {
     expect(parseLensPath('/lens/public')).toBeNull()
   })
 })
+
+describe('schemaFromPathname on the index inspector', () => {
+  it('reads the schema out of an index inspector URL', () => {
+    expect(schemaFromPathname('/d/reporting/indexes/aggs_staged')).toBe('aggs_staged')
+  })
+})

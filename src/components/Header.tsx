@@ -320,6 +320,24 @@ function Menu() {
             </Link>
           )}
 
+          {database && schema && (
+            <Link
+              to="/d/$database/indexes/$schema"
+              params={{ database, schema }}
+              // The route validates a search schema, so the link has to say it
+              // starts with none: no selection, no filter, default sort.
+              search={{}}
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+              activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+            >
+              Indexes
+              <span className={MENU_HINT_CLASS}>
+                What each index costs, and what the counters say it serves
+              </span>
+            </Link>
+          )}
+
           <Link
             to="/help"
             role="menuitem"

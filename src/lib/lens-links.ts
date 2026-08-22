@@ -39,7 +39,7 @@ function afterDatabase(pathname: string): string | null {
 export function schemaFromPathname(pathname: string): string | undefined {
   const rest = afterDatabase(pathname)
   if (!rest) return undefined
-  const match = rest.match(/^\/(?:t|lens|pressure)\/([^/]+)/)
+  const match = rest.match(/^\/(?:t|lens|pressure|indexes)\/([^/]+)/)
   return match ? decodeURIComponent(match[1]) : undefined
 }
 

@@ -8,7 +8,7 @@
  * are about one database and live under `/d/<database>/`, while `/help` and
  * `/settings` are about neither and sit at the root.
  */
-const DATABASE_ROUTES = ['/queries', '/pressure'] as const
+const DATABASE_ROUTES = ['/queries', '/pressure', '/indexes'] as const
 const ROOT_ROUTES = ['/help', '/settings'] as const
 
 /** Prefix match on a segment boundary: `/pressured` is not `/pressure`. */

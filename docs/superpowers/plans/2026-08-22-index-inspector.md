@@ -2913,6 +2913,18 @@ import { formatBytes } from '#/lib/pressure/bytes'
 import { formatRelativeTime } from '#/lib/inspect/format'
 
 /**
+ * The page's search state. Every key optional, so a link into the page — the
+ * header menu's, say — does not have to spell out four absent values.
+ */
+interface IndexSearch {
+  /** `table.index` of the selected row. */
+  sel?: string
+  find?: string
+  order?: IndexSort
+  only?: string
+}
+
+/**
  * What every index in this schema costs, what the counters say it serves, and
  * what its shape unlocks. Catalog and statistics reads only — the page costs the
  * same on a 1.8 TB schema as on an empty one, and it never plans a statement.
@@ -2925,7 +2937,7 @@ export const Route = createFileRoute('/d/$database/indexes/$schema')({
   // `flags`: search keys are global to the router's types, and `q` is already a
   // string[] on the table route. Reusing a name with a different type breaks
   // every `navigate({ search })` on the route that had it first.
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): IndexSearch => ({
     sel: typeof search.sel === 'string' ? search.sel : undefined,
     find: typeof search.find === 'string' ? search.find : undefined,
     order: typeof search.order === 'string' ? (search.order as IndexSort) : undefined,

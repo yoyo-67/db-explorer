@@ -29,4 +29,12 @@ describe('menuHoldsRoute', () => {
     expect(menuHoldsRoute('/queries')).toBe(false)
     expect(menuHoldsRoute('/pressure/public')).toBe(false)
   })
+
+  it('marks the menu when the index inspector is the selected route', () => {
+    expect(menuHoldsRoute('/d/reporting/indexes/public')).toBe(true)
+  })
+
+  it('does not mistake a route that merely starts with the same letters', () => {
+    expect(menuHoldsRoute('/d/reporting/indexescape/public')).toBe(false)
+  })
 })
