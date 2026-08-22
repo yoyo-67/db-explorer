@@ -21,6 +21,7 @@ import {
 } from '#/server/functions'
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { getSchemaPressure } from '#/server/schema-pressure'
+import { getIndexUsage } from '#/server/index-usage'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
@@ -424,6 +425,16 @@ export const $getTableTypes = createServerFn({ method: 'GET' })
 export const $getSchemaPressure = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)
   .handler(scoped((data) => getSchemaPressure(data.schema)))
+
+/**
+ * Everything behind `/d/$database/indexes/$schema`: index shape, usage counters,
+ * the tables' write volume and the column statistics, plus the stored history of
+ * the counters so a rate can be shown rather than a total. Five catalog and
+ * statistics reads, no table data.
+ */
+export const $getIndexUsage = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string }) => data)
+  .handler(scoped((data) => getIndexUsage(data.schema)))
 
 /**
  * The `pg_stat_statements` board — database-scoped, not schema-scoped: the view

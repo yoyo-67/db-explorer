@@ -1475,7 +1475,7 @@ export type IndexSort = 'scans-per-day' | 'size' | 'tuples-per-scan' | 'write-ta
 
 export interface IndexListRow {
   kind: 'index' | 'missing-fk'
-  /** Stable, unique, and what the page puts in `?index=`. */
+  /** Stable, unique, and what the page puts in `?sel=`. */
   key: string
   table: string
   /** The index name, or the constraint name for a gap. */
@@ -2548,7 +2548,7 @@ git commit -m "feat(indexes): read index shape, usage and column stats for a sch
 
 **Interfaces:**
 - Consumes: `getIndexUsage` (Task 7); `buildIndexRows`, `filterRows`, `sortRows`, `IndexListRow`, `IndexFlag`, `IndexSort` (Task 5); `formatBytes` from `#/lib/pressure/bytes`; `useDatabaseParam` from `#/hooks/useDatabase`; `useConnectionGuard` from `#/hooks/useConnectionGuard`; `Chip`, `TableLink` from `#/components/pressure/PressureSection`.
-- Produces: `$getIndexUsage` server function; the route at `/d/$database/indexes/$schema` with a `?index=` search param; `IndexList` component.
+- Produces: `$getIndexUsage` server function; the route at `/d/$database/indexes/$schema` with a `?sel=` search param; `IndexList` component.
 
 The route's structure copies `src/routes/d/$database/pressure/$schema.tsx`: connection guard, a `$getSchemas` lookup to find out whether the schema is a system one, the same "not measured" panel for system schemas, `staleTime: 60_000`, and a re-read button.
 
@@ -2921,11 +2921,15 @@ import { formatRelativeTime } from '#/lib/inspect/format'
  * sending to someone.
  */
 export const Route = createFileRoute('/d/$database/indexes/$schema')({
+  // `sel`, `find`, `order`, `only` rather than the obvious `index`, `q`, `sort`,
+  // `flags`: search keys are global to the router's types, and `q` is already a
+  // string[] on the table route. Reusing a name with a different type breaks
+  // every `navigate({ search })` on the route that had it first.
   validateSearch: (search: Record<string, unknown>) => ({
-    index: typeof search.index === 'string' ? search.index : undefined,
-    q: typeof search.q === 'string' ? search.q : undefined,
-    sort: typeof search.sort === 'string' ? (search.sort as IndexSort) : undefined,
-    flags: typeof search.flags === 'string' ? search.flags : undefined,
+    sel: typeof search.sel === 'string' ? search.sel : undefined,
+    find: typeof search.find === 'string' ? search.find : undefined,
+    order: typeof search.order === 'string' ? (search.order as IndexSort) : undefined,
+    only: typeof search.only === 'string' ? search.only : undefined,
   }),
   component: IndexesPage,
 })
@@ -2957,10 +2961,10 @@ function IndexesPage() {
   })
 
   const criteria = {
-    text: search.q ?? '',
-    flags: (search.flags ? search.flags.split(',') : []) as IndexFlag[],
+    text: search.find ?? '',
+    flags: (search.only ? search.only.split(',') : []) as IndexFlag[],
   }
-  const sort: IndexSort = search.sort ?? 'scans-per-day'
+  const sort: IndexSort = search.order ?? 'scans-per-day'
 
   const rows = useMemo(
     () => (usageQuery.data ? buildIndexRows(usageQuery.data) : []),
@@ -3044,23 +3048,23 @@ function IndexesPage() {
       )}
 
       {usage && (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <IndexList
             rows={visible}
-            selectedKey={search.index ?? null}
-            onSelect={(key) => navigate({ search: (old) => ({ ...old, index: key }) })}
+            selectedKey={search.sel ?? null}
+            onSelect={(key) => navigate({ search: (old) => ({ ...old, sel: key }) })}
             criteria={criteria}
             onCriteriaChange={(next) =>
               navigate({
                 search: (old) => ({
                   ...old,
-                  q: next.text === '' ? undefined : next.text,
-                  flags: next.flags.length === 0 ? undefined : next.flags.join(','),
+                  find: next.text === '' ? undefined : next.text,
+                  only: next.flags.length === 0 ? undefined : next.flags.join(','),
                 }),
               })
             }
             sort={sort}
-            onSortChange={(next) => navigate({ search: (old) => ({ ...old, sort: next }) })}
+            onSortChange={(next) => navigate({ search: (old) => ({ ...old, order: next }) })}
           />
           <div className="island-shell flex items-center justify-center rounded-xl p-6 text-sm text-[var(--sea-ink-soft)]">
             Pick an index to see what it costs and what it serves.
@@ -3599,8 +3603,8 @@ function Figure({
 In `src/routes/d/$database/indexes/$schema.tsx`, import `IndexDetail` and replace the placeholder panel:
 
 ```tsx
-          {search.index ? (
-            <IndexDetail usage={usage} selectedKey={search.index} />
+          {search.sel ? (
+            <IndexDetail usage={usage} selectedKey={search.sel} />
           ) : (
             <div className="island-shell flex items-center justify-center rounded-xl p-6 text-sm text-[var(--sea-ink-soft)]">
               Pick an index to see what it costs and what it serves.
