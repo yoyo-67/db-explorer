@@ -524,9 +524,22 @@ describe('describeCapability — btree', () => {
   })
 
   it('names the sort orders it satisfies, forward and exactly reversed', () => {
+    // Postgres prints NULLS only when it differs from the direction's default:
+    // DESC implies NULLS FIRST, ASC implies NULLS LAST.
     expect(describeCapability(index(), orders).sortOrders).toEqual([
-      'customer_id, created_at DESC NULLS FIRST',
-      'customer_id DESC NULLS LAST, created_at',
+      'customer_id, created_at DESC',
+      'customer_id DESC, created_at',
+    ])
+  })
+
+  it('spells out a NULLS order that is not the default for its direction', () => {
+    const capability = describeCapability(
+      index({ keyColumns: [{ name: 'shipped_at', descending: false, nullsFirst: true }] }),
+      orders,
+    )
+    expect(capability.sortOrders).toEqual([
+      'shipped_at NULLS FIRST',
+      'shipped_at DESC NULLS LAST',
     ])
   })
 
