@@ -15,6 +15,7 @@ import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import { formatJsonText } from '#/lib/json-text'
 import { getRowLabel } from '#/lib/row-label'
+import TableName from '#/components/TableName'
 import type {
   ColumnInfo,
   ForeignKey,
@@ -112,7 +113,7 @@ function RowDetailPage() {
             {label ?? `Row #${id}`}
           </h1>
           <span className="text-xs text-[var(--sea-ink-soft)]">
-            {schema}.{table}
+            {schema}.<TableName table={table} />
           </span>
           <div className="ml-auto flex items-center gap-3">
             {detail && (
@@ -551,7 +552,7 @@ function ChildGroup({
           onClick={(e) => e.stopPropagation()}
           className="text-sm font-semibold text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
         >
-          {child.table}
+          <TableName table={child.table} />
         </Link>
         {total !== null ? (
           <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-xs tabular-nums text-[var(--lagoon-deep)]">

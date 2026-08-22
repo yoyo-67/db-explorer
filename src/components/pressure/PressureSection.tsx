@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { Link } from '@tanstack/react-router'
+import TableName from '#/components/TableName'
 
 /**
  * Shared shell for the pressure sections. Each one is a card that says what rule
@@ -85,7 +86,7 @@ export function TableLink({ schema, table }: { schema: string; table: string }) 
       params={{ database, schema, table }}
       className="font-mono text-[var(--sea-ink)] no-underline hover:text-[var(--lagoon-deep)] hover:underline"
     >
-      {table}
+      <TableName table={table} />
     </Link>
   )
 }

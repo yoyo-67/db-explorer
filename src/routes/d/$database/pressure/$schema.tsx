@@ -15,6 +15,7 @@ import { indexAuditTotals } from '#/lib/pressure/index-audit'
 import { vacuumLevel } from '#/lib/pressure/vacuum'
 import { analyzeState, isBlindAndLarge } from '#/lib/pressure/analyze'
 import type { SchemaPressure } from '#/lib/types'
+import { useTableNameText } from '#/components/TableName'
 
 export const Route = createFileRoute('/d/$database/pressure/$schema')({
   component: PressurePage,
@@ -134,6 +135,7 @@ function PressurePage() {
 /** Four numbers, each a link into the section that explains it. */
 function Summary({ pressure }: { pressure: SchemaPressure }) {
   const totals = indexAuditTotals(pressure.indexes, pressure.foreignKeys)
+  const nameText = useTableNameText()
   const largest = [...pressure.sizes].sort((a, b) => b.totalBytes - a.totalBytes)[0]
   const overdue = pressure.vacuum.filter((entry) => vacuumLevel(entry) === 'overdue').length
   const blind = pressure.vacuum.filter(
@@ -156,7 +158,7 @@ function Summary({ pressure }: { pressure: SchemaPressure }) {
         href="#sizes"
         label="Largest table"
         value={largest ? formatBytes(largest.totalBytes) : '—'}
-        note={largest?.table ?? 'no tables'}
+        note={largest ? nameText(largest.table) : 'no tables'}
       />
       <Tile
         href="#vacuum"

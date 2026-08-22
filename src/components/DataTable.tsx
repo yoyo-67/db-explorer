@@ -10,6 +10,7 @@ import CrossDbLink from '#/components/CrossDbLink'
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { describeRowBlock, fieldText, rowBlock } from '#/lib/row-edit'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
+import TableName from '#/components/TableName'
 
 interface DataTableProps {
   columns: ColumnInfo[]
@@ -184,7 +185,7 @@ function ColumnHeader({
             }`}
             className="rounded border border-[var(--lagoon)]/40 px-1 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]"
           >
-            → {col.references.table}
+            → <TableName table={col.references.table} />
           </span>
         )}
 

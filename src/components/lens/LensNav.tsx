@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { DAMP_OFF } from '#/lib/lens-search'
 import type { EdgeBasis, SchemaGraphStaleness } from '#/lib/types'
+import TableName from '#/components/TableName'
 
 /**
  * Shared chrome for the three structural views: where you are, how to get to the
@@ -81,7 +82,9 @@ export default function LensNav({
         {table && (
           <>
             <span>/</span>
-            <span className="font-mono text-[var(--sea-ink)]">{table}</span>
+            <span className="font-mono text-[var(--sea-ink)]">
+              <TableName table={table} />
+            </span>
           </>
         )}
       </nav>

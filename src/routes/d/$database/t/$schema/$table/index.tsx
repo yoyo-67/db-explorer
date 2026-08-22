@@ -32,6 +32,7 @@ import type { Condition } from '#/lib/filter-model'
 import { lensTargetForTable } from '#/lib/lens-links'
 import { tableLabel } from '#/lib/table-label'
 import type { TableSort } from '#/lib/types'
+import TableName from '#/components/TableName'
 
 interface TableSearch {
   p?: number
@@ -469,7 +470,7 @@ function TablePage() {
                 params={{ database, schema, table: t.name }}
                 className="mr-2 inline-block rounded-full border border-[var(--line)] px-2 py-0.5 hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
               >
-                {t.name}
+                <TableName table={t.name} />
               </Link>
             ))}
             {otherTables.length > 30 && (

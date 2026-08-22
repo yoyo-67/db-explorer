@@ -13,6 +13,7 @@ import {
   UNCATEGORIZED_GROUP_NAME,
 } from '#/lib/catalog-grouping'
 import { describeChange, formatMods, rankByRecentChange } from '#/lib/table-activity'
+import TableName, { useTableNameText } from '#/components/TableName'
 
 const EXPANDED_KEY = 'sidebar:expandedGroups'
 const COLLAPSED_KEY = 'sidebar:collapsed'
@@ -49,6 +50,8 @@ function SidebarBody({
   activeTable?: string
 }) {
   const [filter, setFilter] = useState('')
+  // The rows truncate, so the untruncated name — model and all — lives in the title.
+  const nameText = useTableNameText()
   const [view, setView] = useState<View>('grouped')
   // Remembered per browser, like the expanded groups: which panes are open is
   // how someone has arranged their workspace, not what they are looking at.
@@ -292,7 +295,9 @@ function SidebarBody({
                               : 'text-[var(--sea-ink)] hover:bg-[var(--surface-strong)]'
                           }`}
                         >
-                          <span className="truncate">{t.name}</span>
+                          <span className="truncate" title={nameText(t.name)}>
+                            <TableName table={t.name} />
+                          </span>
                           {/* A view has no rows of its own, so its row slot says
                               what it is instead of claiming a count of zero. */}
                           <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)] opacity-70 group-hover:opacity-100">
@@ -399,7 +404,9 @@ function ChangedList({
                   : 'text-[var(--sea-ink)] hover:bg-[var(--surface-strong)]'
               }`}
             >
-              <span className="truncate">{entry.table}</span>
+              <span className="truncate">
+                <TableName table={entry.table} />
+              </span>
               {/* The count, not a time: the timestamp belongs to the ANALYZE it
                   is counted from, and lives in the row's title. */}
               <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)] opacity-70 group-hover:opacity-100">
