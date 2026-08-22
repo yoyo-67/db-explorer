@@ -1966,7 +1966,7 @@ const indexRow = {
 const baseRoutes: Array<[string, unknown]> = [
   ['server_version_num', [{ server_version_num: '150015' }]],
   ['FROM pg_index x', [indexRow]],
-  ['FROM pg_stat_user_tables', []],
+  ['pg_stat_user_tables table_stat', []],
   ["con.contype = 'f'", []],
   ['FROM pg_stats', []],
   ['stats_reset', [{ stats_reset: '2026-08-01T00:00:00.000Z' }]],
@@ -2059,7 +2059,7 @@ describe('getIndexUsage', () => {
     answer([
       ...baseRoutes,
       [
-        'FROM pg_stat_user_tables',
+        'pg_stat_user_tables table_stat',
         [
           {
             table_name: 'orders',
