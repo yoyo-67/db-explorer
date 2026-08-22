@@ -281,7 +281,7 @@ describe('classifyAccess', () => {
       table({ estimatedRows: 1_000_000 }),
     )
     expect(shape.pattern).toBe('full-index-read')
-    expect(shape.tableShare).toBe(8)
+    expect(shape.tableShare).toBe(0.8)
   })
 
   it('refuses to classify scans with no tuples counted against them', () => {

@@ -602,3 +602,100 @@ export interface SchemaMap {
     byTableColumn: Record<string, string>
   }
 }
+
+// ── Index inspector ────────────────────────────────────────────────────────
+
+/** One key column of an index, with the order it was declared in. */
+export interface IndexKeyColumn {
+  /** Column name, or `(expr)` for an expression position. */
+  name: string
+  descending: boolean
+  nullsFirst: boolean
+}
+
+/** `pg_stats` for one column, as far as the last ANALYZE knows. */
+export interface IndexColumnStats {
+  column: string
+  /** `n_distinct`: `>= 0` an absolute count, `< 0` a negative fraction of rows. */
+  nDistinct: number | null
+  correlation: number | null
+  nullFraction: number | null
+  averageWidth: number | null
+}
+
+/**
+ * One index, as the catalog and the statistics views describe it.
+ *
+ * Counters are `number | null`, never defaulted: a missing `pg_stat_user_indexes`
+ * row means the index was not counted, and reporting that as zero scans would
+ * turn a gap in the statistics into a finding about the index.
+ */
+export interface IndexUsageEntry {
+  table: string
+  name: string
+  method: string
+  /** `pg_get_indexdef` — the definition, for reading and copying. */
+  definition: string
+  keyColumns: IndexKeyColumn[]
+  /** INCLUDE columns: carried in the leaf, not part of the key. */
+  includeColumns: string[]
+  /** `pg_get_expr(indpred)` — the rows this index covers, when partial. */
+  predicate: string | null
+  isUnique: boolean
+  isPrimary: boolean
+  isPartial: boolean
+  hasExpression: boolean
+  constraintBacked: boolean
+  /** `indisvalid` false: a failed CREATE INDEX CONCURRENTLY. Costs writes, answers nothing. */
+  isValid: boolean
+  isReady: boolean
+  bytes: number
+  scans: number | null
+  tuplesRead: number | null
+  tuplesFetched: number | null
+  blocksHit: number | null
+  blocksRead: number | null
+  /** `pg_stats` for the key columns, in key order. Columns ANALYZE has not seen are absent. */
+  columnStats: IndexColumnStats[]
+}
+
+/** The table an index sits on: what it holds, and how hard it is written. */
+export interface IndexTableEntry {
+  table: string
+  /** `reltuples`; `-1` when the table has never been analyzed. */
+  estimatedRows: number
+  liveTuples: number | null
+  inserted: number | null
+  updated: number | null
+  /** HOT updates skip index maintenance — the difference between an honest write tax and a scary one. */
+  hotUpdated: number | null
+  deleted: number | null
+  seqScans: number | null
+  indexScans: number | null
+  tableBytes: number
+  indexBytes: number
+  totalBytes: number
+}
+
+/** One snapshot of the cumulative counters, so a rate can be worked out later. */
+export interface IndexUsageSample {
+  /** ISO timestamp the snapshot was taken. */
+  takenAt: string
+  /** `pg_stat_database.stats_reset` at the time — a change invalidates every delta across it. */
+  statsReset: string | null
+  perIndex: Record<string, { scans: number; tuplesRead: number; tuplesFetched: number }>
+}
+
+export interface SchemaIndexUsage {
+  schema: string
+  serverVersionNum: number
+  statsReset: string | null
+  indexes: IndexUsageEntry[]
+  tables: IndexTableEntry[]
+  /** For the ghost rows: a foreign key with no index to lead it. Same type the audit uses. */
+  foreignKeys: ForeignKeyColumns[]
+  /** Oldest first. Empty on a first-ever read. */
+  history: IndexUsageSample[]
+  /** Why history is missing or short, when there is a reason worth showing. */
+  historyNote: string | null
+}
