@@ -45,8 +45,11 @@ the pressure read (`'r'` only), which silently hid every index declared on a
 partitioned table.
 
 Version handling follows `query-board.ts`: `SHOW server_version_num` once, and
-`last_idx_scan` (Postgres 16+) is read when present and reported as unknown on
-15 rather than faked.
+the number is carried in the payload so the UI can say what it could not read.
+`last_idx_scan` (Postgres 16+) is deliberately *not* read: the target is 15, so a
+version-conditional column here would ship untested against every server it
+could answer for. The stored snapshots give the same answer — when an index was
+last read — for every version.
 
 `null` never becomes `0`. A missing statistics row means *not counted*; calling
 that zero scans would invent a finding.
