@@ -5,6 +5,7 @@ import { ddlRebuildTopic } from '#/lib/help/topics/ddl-rebuild'
 import { enumTypesTopic } from '#/lib/help/topics/enum-types'
 import { foreignKeysTopic } from '#/lib/help/topics/foreign-keys'
 import { indexAuditTopic } from '#/lib/help/topics/index-audit'
+import { indexUsageTopic } from '#/lib/help/topics/index-usage'
 import { queryBoardTopic } from '#/lib/help/topics/query-board'
 import { randomRowTopic } from '#/lib/help/topics/random-row'
 import { rowPageTopic } from '#/lib/help/topics/row-page'
@@ -41,6 +42,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   // Performance and cost.
   queryBoardTopic,
   indexAuditTopic,
+  indexUsageTopic,
   tableSizeTopic,
   vacuumDebtTopic,
   analyzeStalenessTopic,
