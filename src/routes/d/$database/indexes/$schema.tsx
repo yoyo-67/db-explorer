@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
+import IndexDetail from '#/components/indexes/IndexDetail'
 import IndexList from '#/components/indexes/IndexList'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
@@ -163,9 +164,13 @@ function IndexesPage() {
             sort={sort}
             onSortChange={(next) => navigate({ search: (old) => ({ ...old, order: next }) })}
           />
-          <div className="island-shell flex items-center justify-center rounded-xl p-6 text-sm text-[var(--sea-ink-soft)]">
-            Pick an index to see what it costs and what it serves.
-          </div>
+          {search.sel ? (
+            <IndexDetail usage={usage} selectedKey={search.sel} />
+          ) : (
+            <div className="island-shell flex items-center justify-center rounded-xl p-6 text-sm text-[var(--sea-ink-soft)]">
+              Pick an index to see what it costs and what it serves.
+            </div>
+          )}
         </div>
       )}
     </main>

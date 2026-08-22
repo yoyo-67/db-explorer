@@ -3395,6 +3395,11 @@ function IndexBlocks({
   const indexesOnTable = usage.indexes.filter((entry) => entry.table === index.table).length
   const tax = writeTax(index, table, indexesOnTable)
   const trend = indexTrend(usage.history, index.name)
+  // An invalid index gets a banner at the top of the pane; repeating the same
+  // sentence down here reads as two separate problems.
+  const shownNotes = capability.notes.filter(
+    (note) => index.isValid || !note.includes('not valid'),
+  )
 
   return (
     <div className="island-shell min-h-0 space-y-4 overflow-y-auto rounded-xl p-4">
@@ -3495,9 +3500,9 @@ function IndexBlocks({
             </li>
           )}
         </ul>
-        {capability.notes.length > 0 && (
+        {shownNotes.length > 0 && (
           <ul className="space-y-1 text-[10px] text-[var(--sea-ink-soft)]">
-            {capability.notes.map((note) => (
+            {shownNotes.map((note) => (
               <li key={note}>{note}</li>
             ))}
           </ul>
@@ -3505,8 +3510,9 @@ function IndexBlocks({
       </Block>
 
       <Block title="Cost and standing" note="Every insert, delete and non-HOT update on the table has to be written into this index too.">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-4">
-          <Figure label="size" value={formatBytes(index.bytes)} />
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-3">
+          {/* Size is already stated beside the name; repeating it here just makes
+              the reader check whether the two figures agree. */}
           <Figure
             label="share of table"
             value={percent(tax.byteShare)}
