@@ -4004,8 +4004,11 @@ describe('IndexSection, as a summary', () => {
   it('counts the findings and names the biggest unread index', () => {
     render(<IndexSection pressure={pressure} />)
     expect(screen.getByText(/1 never scanned/i)).toBeTruthy()
-    expect(screen.getByText(/412 MB/)).toBeTruthy()
-    expect(screen.getByText('orders_customer_idx')).toBeTruthy()
+    // The header's figure is the total unread; this line is the worst single one,
+    // so assert them together rather than on a size that appears in both.
+    const largest = screen.getByText(/Largest unread/i)
+    expect(largest.textContent).toContain('orders_customer_idx')
+    expect(largest.textContent).toContain('412 MB')
   })
 
   it('sends the reader to the inspector for the detail', () => {
