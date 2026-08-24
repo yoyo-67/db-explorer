@@ -683,9 +683,10 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
  *  `SELECT DISTINCT` may cost rather than by what an eye can scan. */
 export const DISTINCT_VALUE_LIMIT = 1_000
 
-/** Same budget as the single-row sample: a value list nobody waited for is worth
- *  no more than the page it was meant to narrow. */
-export const DISTINCT_VALUES_TIMEOUT_MS = 3_000
+/** Longer than any other read here, because this one is worth waiting for: the
+ *  list is asked for once, it is now a thousand values deep, and the answer to a
+ *  slow column used to be no list at all. */
+export const DISTINCT_VALUES_TIMEOUT_MS = 30_000
 
 /**
  * The distinct values of one column, for its set filter.
