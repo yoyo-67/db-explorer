@@ -229,6 +229,14 @@ function TablePage() {
     enabled: isConnected,
   })
 
+  // The panel filters the table's own columns, not whatever the last raw query
+  // returned — but it still needs each column's FK, so the value picker can offer
+  // the referenced table's names instead of its keys.
+  const filterColumns = useMemo(
+    () => enrichColumnsWithFks(tableInfo?.columns ?? [], fks, table),
+    [tableInfo, fks, table],
+  )
+
   const enrichedColumns = useMemo(() => {
     const withFks = enrichColumnsWithFks(displayColumns, fks, table)
     const database = crossRefsQuery.data?.database
@@ -439,7 +447,7 @@ function TablePage() {
           <FilterPanel
             open={panelOpen}
             onOpenChange={(open) => updateSearch({ fp: open ? true : undefined })}
-            columns={tableInfo?.columns ?? []}
+            columns={filterColumns}
             schema={schema}
             table={table}
             draft={draft}

@@ -174,6 +174,7 @@ export default function ConditionRow({
           schema={schema}
           table={table}
           otherConditions={otherConditions}
+          references={column?.references}
         />
       )}
 

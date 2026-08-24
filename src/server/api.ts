@@ -4,6 +4,7 @@ import {
   getSchemas,
   getTables,
   getColumnValues,
+  getRelatedValues,
   getTablePage,
   planTableQuery,
   getTablePreview,
@@ -33,6 +34,7 @@ import type {
   ConnectionPreset,
   TableCatalog,
   ColumnValuesRequest,
+  RelatedValuesRequest,
   PlanRequest,
   TablePageRequest,
 } from '#/lib/types'
@@ -196,6 +198,15 @@ export const $planTableQuery = createServerFn({ method: 'GET' })
 export const $getColumnValues = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & ColumnValuesRequest) => data)
   .handler(scoped((data) => getColumnValues(data)))
+
+/**
+ * Rows of a referenced table, searched by one of its readable columns — how an
+ * FK column gets filtered by a name instead of by keys. Asked on each keystroke,
+ * so it is capped and short-fused server-side rather than here.
+ */
+export const $getRelatedValues = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & RelatedValuesRequest) => data)
+  .handler(scoped((data) => getRelatedValues(data)))
 
 /**
  * One row of a table, drawn as randomly as its size allows (see `getRandomRow`).

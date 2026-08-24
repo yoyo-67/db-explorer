@@ -219,6 +219,47 @@ export interface ColumnValues {
   timedOut: boolean
 }
 
+/**
+ * What the picker needs to filter an FK column by the *related* row's own text:
+ * `table` is the referenced table, `valueColumn` the column the filter compares
+ * against, and `field` the parent column being searched.
+ */
+export interface RelatedValuesRequest {
+  schema: string
+  /** The referenced table — where the readable names live. */
+  table: string
+  /** The referenced column: what a pick turns into in the filter. */
+  valueColumn: string
+  /** Which parent column to search. Omit to ask only which fields exist. */
+  field?: string
+  query?: string
+}
+
+export interface RelatedField {
+  name: string
+  dataType: string
+}
+
+export interface RelatedValue {
+  /** The referenced key, as text — what the filter is actually built from. */
+  value: string
+  /** The searched field's value on that row. Null when the row leaves it empty. */
+  label: string | null
+}
+
+/** Rows of the referenced table, searched by one of its own text columns. */
+export interface RelatedValues {
+  /** Searchable columns of the referenced table, the readable ones first. */
+  fields: RelatedField[]
+  /** Which field this result searched, or null when only fields were asked for. */
+  field: string | null
+  rows: RelatedValue[]
+  /** More rows match than the cap returns — narrow the search, do not scroll. */
+  truncated: boolean
+  /** The search hit its statement_timeout; nothing was read. */
+  timedOut: boolean
+}
+
 export interface TablePage {
   schema: string
   table: string

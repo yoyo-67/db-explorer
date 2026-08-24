@@ -25,6 +25,7 @@ import {
 } from '#/lib/row-trace'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { readCatalogEdges } from '#/server/catalog-fks'
+import { isSearchableType, labelFieldsFor } from '#/lib/label-fields'
 import { samplePlan } from '#/lib/sample-plan'
 import type { SampleAttempt, SampleStrategy } from '#/lib/sample-plan'
 import type { LiveTable } from '#/lib/schema-graph'
@@ -43,6 +44,9 @@ import type {
   IntrospectResult,
   JsonValue,
   RandomRowSample,
+  RelatedValue,
+  RelatedValues,
+  RelatedValuesRequest,
   RowChildGroup,
   RowDetail,
   RowOutgoingRef,
@@ -736,6 +740,77 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
   } catch (err) {
     if (err instanceof StatementTimeoutError) {
       return { values: [], truncated: false, timedOut: true }
+    }
+    throw err
+  }
+}
+
+/** How many related rows one search returns. A name search is a lookup, not a
+ *  list: past this the answer is a better search term. */
+export const RELATED_VALUE_LIMIT = 50
+
+/** Tighter than the value list: this one runs on every keystroke, so a search
+ *  that outlives the typing is worse than no answer. */
+export const RELATED_SEARCH_TIMEOUT_MS = 5_000
+
+/**
+ * Rows of a *referenced* table, searched by one of its own readable columns.
+ *
+ * This is how an FK column gets filtered by something other than its keys: the
+ * picker asks the parent "which of you are called this?", and each answer
+ * carries the key the filter is built from. One query — the label and the key
+ * come back together, so nothing has to be resolved a second time.
+ *
+ * The field is checked against the parent's own catalog entry before it reaches
+ * the SQL, so an unknown column is a rejection rather than a query.
+ */
+export async function getRelatedValues(req: RelatedValuesRequest): Promise<RelatedValues> {
+  const schema = req.schema || DEFAULT_SCHEMA
+  const { table, valueColumn } = req
+
+  const columns = await fetchColumns(schema, table)
+  if (columns.length === 0) {
+    throw new Error(`Table ${schema}.${table} does not exist`)
+  }
+  const byName = new Map(columns.map((c) => [c.name, c]))
+  if (!byName.has(valueColumn)) {
+    throw new Error(`Column ${valueColumn} does not exist on ${schema}.${table}`)
+  }
+
+  const fields = labelFieldsFor(columns)
+  const field = req.field ?? fields[0]?.name ?? null
+  if (!field) return { fields, field: null, rows: [], truncated: false, timedOut: false }
+  const fieldColumn = byName.get(field)
+  if (!fieldColumn || !isSearchableType(fieldColumn.dataType)) {
+    throw new Error(`Column ${field} on ${schema}.${table} cannot be searched by name`)
+  }
+
+  const search = (req.query ?? '').trim()
+  // Sorted by the field so an empty search is still a useful first page, and
+  // ordered before the cap so the same search always returns the same rows.
+  const sql = format(
+    `SELECT %I::text AS value, %I::text AS label FROM %I.%I%s ORDER BY 2 NULLS LAST, 1 LIMIT %s`,
+    valueColumn,
+    field,
+    schema,
+    table,
+    search ? format(' WHERE %I::text ILIKE %L', field, `%${search}%`) : '',
+    RELATED_VALUE_LIMIT + 1,
+  )
+
+  try {
+    const result = await queryWithTimeout(sql, RELATED_SEARCH_TIMEOUT_MS)
+    const rows = result.rows as RelatedValue[]
+    return {
+      fields,
+      field,
+      rows: rows.slice(0, RELATED_VALUE_LIMIT),
+      truncated: rows.length > RELATED_VALUE_LIMIT,
+      timedOut: false,
+    }
+  } catch (err) {
+    if (err instanceof StatementTimeoutError) {
+      return { fields, field, rows: [], truncated: false, timedOut: true }
     }
     throw err
   }
