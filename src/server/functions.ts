@@ -678,9 +678,10 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 }
 
 /** How many distinct values a column may offer before its picker gives up and
- *  hands the column back to the text filter. A list longer than this is not a
- *  list anyone scrolls — it is a search box. */
-export const DISTINCT_VALUE_LIMIT = 200
+ *  hands the column back to the text filter. Nobody scrolls a list this long,
+ *  but the picker's fuzzy search reaches into it, so the cap is set by what one
+ *  `SELECT DISTINCT` may cost rather than by what an eye can scan. */
+export const DISTINCT_VALUE_LIMIT = 1_000
 
 /** Same budget as the single-row sample: a value list nobody waited for is worth
  *  no more than the page it was meant to narrow. */

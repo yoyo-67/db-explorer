@@ -2,8 +2,19 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { $getColumnValues } from '#/server/api'
-import { isValueTicked, matchesValueSearch, toggleSetValue } from '#/lib/filter-model'
+import { isValueTicked, toggleSetValue } from '#/lib/filter-model'
+import { fuzzySearch } from '#/lib/fuzzy'
+import FuzzyText from '#/components/FuzzyText'
 import type { Condition } from '#/lib/filter-model'
+
+/** How many matches the list draws. Beyond this, typing narrows faster than
+ *  scrolling — and the count below the box says what is still out there. */
+const MAX_SHOWN = 300
+
+/** NULL has no text of its own, so it answers to the word instead. */
+function searchText(value: string | null): string {
+  return value === null ? 'NULL' : value
+}
 
 /**
  * The value list behind an `in` / `notIn` condition: the column's distinct
@@ -61,7 +72,10 @@ export default function ValuePicker({
     return <p className="px-1 py-1.5 text-[11px] text-[var(--sea-ink-soft)]">{notice}</p>
   }
 
-  const visible = values.filter((v) => matchesValueSearch(v, search))
+  // Fuzzy, so a value can be found by any characters of it in order — the middle
+  // of a slug, the initials of a phrase — with the best matches first.
+  const hits = fuzzySearch(values, search, searchText)
+  const visible = hits.slice(0, MAX_SHOWN)
   const picked = condition.values.length + (condition.includeNull ? 1 : 0)
 
   return (
@@ -85,6 +99,7 @@ export default function ValuePicker({
         </button>
         <span>
           {picked} of {values.length} picked
+          {hits.length > MAX_SHOWN && ` · ${hits.length} match, showing ${MAX_SHOWN}`}
         </span>
       </div>
 
@@ -92,7 +107,7 @@ export default function ValuePicker({
         {visible.length === 0 ? (
           <p className="px-1 py-2 text-[11px] text-[var(--sea-ink-soft)]">No value matches</p>
         ) : (
-          visible.map((value) => (
+          visible.map(({ item: value, ranges }) => (
             <label
               key={value ?? ' null'}
               className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-[11px] hover:bg-[rgba(79,184,178,0.08)]"
@@ -105,9 +120,11 @@ export default function ValuePicker({
               />
               <span className="truncate" title={value ?? 'NULL'}>
                 {value === null ? (
-                  <span className="italic text-[var(--sea-ink-soft)]/70">NULL</span>
+                  <span className="italic text-[var(--sea-ink-soft)]/70">
+                    <FuzzyText text="NULL" ranges={ranges} />
+                  </span>
                 ) : (
-                  value
+                  <FuzzyText text={value} ranges={ranges} />
                 )}
               </span>
             </label>

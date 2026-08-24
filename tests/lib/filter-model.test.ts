@@ -11,7 +11,6 @@ import {
   isConditionComplete,
   isSargable,
   isValueTicked,
-  matchesValueSearch,
   operatorsForType,
   removeCondition,
   toggleCondition,
@@ -187,21 +186,6 @@ describe('set picker', () => {
 
   it('leaves the condition id alone, so the row keeps its place', () => {
     expect(toggleSetValue(picker, 'done').id).toBe('p')
-  })
-})
-
-describe('matchesValueSearch', () => {
-  it('matches a value by substring, case-insensitively', () => {
-    expect(matchesValueSearch('Open', 'pe')).toBe(true)
-    expect(matchesValueSearch('done', 'pe')).toBe(false)
-  })
-
-  it('matches the null member by the name it carries on screen', () => {
-    expect(matchesValueSearch(null, 'null')).toBe(true)
-  })
-
-  it('matches everything when nothing is typed', () => {
-    expect(matchesValueSearch('anything', '  ')).toBe(true)
   })
 })
 

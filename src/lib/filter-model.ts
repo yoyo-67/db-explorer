@@ -210,15 +210,6 @@ export function toggleSetValue(condition: Condition, value: string | null): Cond
   return { ...condition, values }
 }
 
-/** Substring match for the picker's search box. The null member answers to
- *  "null", which is what it is called on screen. */
-export function matchesValueSearch(value: string | null, search: string): boolean {
-  const needle = search.trim().toLowerCase()
-  if (!needle) return true
-  const haystack = value === null ? 'null' : value.toLowerCase()
-  return haystack.includes(needle)
-}
-
 /**
  * Whether an index can serve this operator at all. Drives the warning the panel
  * shows next to a condition — an unanchored match reads every row no matter
