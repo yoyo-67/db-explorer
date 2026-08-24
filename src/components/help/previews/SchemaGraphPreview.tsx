@@ -3,9 +3,9 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the lens graph nodes. */
 
 const NODES = [
-  { name: 'data_constructionproject', kind: 'table', rows: '1.2k', tier: 'root' },
-  { name: 'data_element', kind: 'table', rows: '48.2M', tier: 'tier 3' },
-  { name: 'v_element_status', kind: 'view', rows: '—', tier: 'tier 3' },
+  { name: 'data_project', kind: 'table', rows: '1.2k', tier: 'root' },
+  { name: 'data_widget', kind: 'table', rows: '12.4M', tier: 'tier 3' },
+  { name: 'v_widget_status', kind: 'view', rows: '—', tier: 'tier 3' },
 ]
 
 export default function SchemaGraphPreview() {

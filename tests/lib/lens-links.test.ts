@@ -10,10 +10,10 @@ import type { TableCatalog } from '#/lib/types'
 const catalog: TableCatalog = {
   groups: [
     {
-      name: 'Video & Capture',
+      name: 'Recordings',
       description: '',
       order: 1,
-      tables: ['data_video', 'data_videobatch'],
+      tables: ['data_recording', 'data_recordingbatch'],
     },
   ],
   tables: {},
@@ -21,8 +21,8 @@ const catalog: TableCatalog = {
 
 describe('schemaFromPathname', () => {
   it('reads the schema off a table route', () => {
-    expect(schemaFromPathname('/d/app_db/t/public/data_video')).toBe('public')
-    expect(schemaFromPathname('/d/app_db/t/public/data_video/row/abc')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/t/public/data_recording')).toBe('public')
+    expect(schemaFromPathname('/d/app_db/t/public/data_recording/row/abc')).toBe('public')
   })
 
   it('reads the schema off every lens route', () => {
@@ -61,16 +61,16 @@ describe('parseLensPath', () => {
   })
 
   it('recognises a group, decoding the name', () => {
-    expect(parseLensPath('/d/app_db/lens/public/g/Video%20%26%20Capture')?.view).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/g/Recordings')?.view).toEqual({
       kind: 'group',
-      group: 'Video & Capture',
+      group: 'Recordings',
     })
   })
 
   it('recognises a table relations view, decoding the name', () => {
-    expect(parseLensPath('/d/app_db/lens/public/t/data_video')?.view).toEqual({
+    expect(parseLensPath('/d/app_db/lens/public/t/data_recording')?.view).toEqual({
       kind: 'table',
-      table: 'data_video',
+      table: 'data_recording',
     })
     expect(parseLensPath('/d/app_db/lens/public/t/data%20video/')?.view).toEqual({
       kind: 'table',
@@ -79,43 +79,43 @@ describe('parseLensPath', () => {
   })
 
   it('is null off the lens', () => {
-    expect(parseLensPath('/d/app_db/t/public/data_video')).toBeNull()
+    expect(parseLensPath('/d/app_db/t/public/data_recording')).toBeNull()
   })
 })
 
 describe('lensTargetForTable', () => {
   it('points a curated table at its own group', () => {
-    expect(lensTargetForTable('data_video', catalog)).toEqual({
+    expect(lensTargetForTable('data_recording', catalog)).toEqual({
       kind: 'group',
-      group: 'Video & Capture',
+      group: 'Recordings',
     })
   })
 
   it('points a historical table at its subject table group', () => {
-    expect(lensTargetForTable('data_historicalvideo', catalog)).toEqual({
+    expect(lensTargetForTable('data_historicalrecording', catalog)).toEqual({
       kind: 'group',
-      group: 'Video & Capture',
+      group: 'Recordings',
     })
   })
 
   it('uses the map module group for a table the catalog skipped', () => {
     expect(
-      lensTargetForTable('data_clientslice', catalog, {
-        data_clientslice: 'Client Slice',
+      lensTargetForTable('data_partition', catalog, {
+        data_partition: 'Client Slice',
       }),
     ).toEqual({ kind: 'group', group: 'Client Slice' })
   })
 
   it('prefers the curated group over the map one', () => {
     expect(
-      lensTargetForTable('data_video', catalog, { data_video: 'Some Module' }),
-    ).toEqual({ kind: 'group', group: 'Video & Capture' })
+      lensTargetForTable('data_recording', catalog, { data_recording: 'Some Module' }),
+    ).toEqual({ kind: 'group', group: 'Recordings' })
   })
 
   it('falls back to the matrix rather than an empty group', () => {
     expect(lensTargetForTable('data_mystery', catalog)).toEqual({ kind: 'matrix' })
     expect(lensTargetForTable('data_mystery', catalog, {})).toEqual({ kind: 'matrix' })
-    expect(lensTargetForTable('data_video', undefined)).toEqual({ kind: 'matrix' })
+    expect(lensTargetForTable('data_recording', undefined)).toEqual({ kind: 'matrix' })
   })
 })
 

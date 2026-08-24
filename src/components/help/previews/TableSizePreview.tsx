@@ -3,8 +3,8 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the size section of `/pressure/$schema`. */
 
 const TABLES = [
-  { name: 'data_element', heap: '4.2 GB', index: '2.8 GB', toast: '110 MB', total: '7.1 GB', rows: '48.2M' },
-  { name: 'data_scanresult', heap: '1.9 GB', index: '640 MB', toast: '3.4 GB', total: '5.9 GB', rows: '12.0M' },
+  { name: 'data_widget', heap: '4.2 GB', index: '2.8 GB', toast: '110 MB', total: '7.1 GB', rows: '12.4M' },
+  { name: 'data_jobresult', heap: '1.9 GB', index: '640 MB', toast: '3.4 GB', total: '5.9 GB', rows: '12.0M' },
   { name: 'data_workflow', heap: '210 MB', index: '580 MB', toast: '0 B', total: '790 MB', rows: '3.1M' },
 ]
 
@@ -54,7 +54,7 @@ export default function TableSizePreview() {
       </table>
 
       <p className="text-[var(--sea-ink-soft)]">
-        <Marked step="est-rows">data_scanresult: 491 B/row, 58% of it TOAST</Marked>
+        <Marked step="est-rows">data_jobresult: 491 B/row, 58% of it TOAST</Marked>
       </p>
     </div>
   )

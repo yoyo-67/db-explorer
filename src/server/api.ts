@@ -384,7 +384,7 @@ export const $getMapGroups = createServerFn({ method: 'GET' })
 
 /**
  * Table → Django model name, for pages that show one table by name. Postgres
- * names are flat and prefixed (`data_hiddenactivitylocation`); the model behind
+ * names are flat and prefixed (`data_hiddenlocation`); the model behind
  * it reads as words. Names only, straight off `schema-map.json` — no DB round
  * trip, and cacheable for the whole schema so a table page pays nothing per
  * table it visits.

@@ -20,7 +20,7 @@ export const randomRowTopic: HelpTopic = {
     {
       id: 'sampled',
       clause:
-        'SELECT * FROM "public"."data_element" TABLESAMPLE SYSTEM (0.1) LIMIT 1;',
+        'SELECT * FROM "public"."data_widget" TABLESAMPLE SYSTEM (0.1) LIMIT 1;',
       title: 'Big table: sample a fraction of the pages',
       detail:
         '`TABLESAMPLE SYSTEM (0.1)` tells Postgres to read a random 0.1% of the table\'s *pages* and return the rows in them. It never scans the whole table, so the cost is set by the percentage rather than by the table size. The trade-off is clustering — you get whole pages, so the rows you see were physically stored together — and the possibility of drawing nothing at all, which is why the app widens the percentage and tries again.',
@@ -28,7 +28,7 @@ export const randomRowTopic: HelpTopic = {
     {
       id: 'random',
       clause:
-        'SELECT * FROM "public"."data_element" ORDER BY random() LIMIT 1;',
+        'SELECT * FROM "public"."data_widget" ORDER BY random() LIMIT 1;',
       title: 'Small table: shuffle it properly',
       detail:
         'Assigns a random value to every row, sorts by it and takes the first — genuinely uniform, and genuinely a full scan plus a sort. Perfectly fine on a few thousand rows, which is exactly where the plan uses it, and never chosen for a table where it would hurt.',
@@ -36,7 +36,7 @@ export const randomRowTopic: HelpTopic = {
     {
       id: 'first',
       clause:
-        'SELECT * FROM "public"."data_element" LIMIT 1;',
+        'SELECT * FROM "public"."data_widget" LIMIT 1;',
       title: 'Last resort: whatever comes first',
       detail:
         'Not random at all, and labelled that way in the UI. It is the answer when sampling is unavailable — `TABLESAMPLE` is rejected on a plain view — or when every random draw came back empty. Showing a row and saying it was not randomly chosen beats showing nothing.',

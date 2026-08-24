@@ -277,14 +277,14 @@ describe('buildMatchQuery', () => {
 
 describe('chained conditions', () => {
   const PRESET_TO_PROJECT = [
-    { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
-    { table: 'data_constructionproject', keyColumn: 'id' },
+    { table: 'data_template', keyColumn: 'id', viaColumn: 'project_id' },
+    { table: 'data_project', keyColumn: 'id' },
   ]
 
   it('emits a semi-join, and no join at all for a single hop', () => {
     const sql = buildTableQuery({
       schema: 'public',
-      table: 'data_projectpreset',
+      table: 'data_projecttemplate',
       conditions: [
         {
           id: '1',
@@ -299,7 +299,7 @@ describe('chained conditions', () => {
       offset: 0,
     })
     expect(sql).toContain(
-      `WHERE preset_id IN (SELECT t1.id FROM public.data_preset t1 WHERE t1.project_id IN ('41b1edf8'))`,
+      `WHERE preset_id IN (SELECT t1.id FROM public.data_template t1 WHERE t1.project_id IN ('41b1edf8'))`,
     )
     expect(sql).not.toContain('JOIN')
   })
@@ -307,7 +307,7 @@ describe('chained conditions', () => {
   it('adds one join per further hop, comparing on the last key it already holds', () => {
     const sql = buildTableQuery({
       schema: 'public',
-      table: 'data_projectpreset',
+      table: 'data_projecttemplate',
       conditions: [
         {
           id: '1',
@@ -315,8 +315,8 @@ describe('chained conditions', () => {
           op: 'in',
           values: ['c0'],
           chain: [
-            { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
-            { table: 'data_constructionproject', keyColumn: 'id', viaColumn: 'company_id' },
+            { table: 'data_template', keyColumn: 'id', viaColumn: 'project_id' },
+            { table: 'data_project', keyColumn: 'id', viaColumn: 'company_id' },
             { table: 'data_company', keyColumn: 'id' },
           ],
         },
@@ -326,8 +326,8 @@ describe('chained conditions', () => {
       offset: 0,
     })
     expect(sql).toContain(
-      'SELECT t1.id FROM public.data_preset t1' +
-        ' JOIN public.data_constructionproject t2 ON t2.id = t1.project_id' +
+      'SELECT t1.id FROM public.data_template t1' +
+        ' JOIN public.data_project t2 ON t2.id = t1.project_id' +
         ` WHERE t2.company_id IN ('c0')`,
     )
   })

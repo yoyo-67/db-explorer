@@ -16,7 +16,7 @@ export default function ConsolePreview() {
       <pre className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[rgba(23,58,64,0.06)] p-3 font-mono text-[10.5px]">
         <code>
           <Marked step="user-sql">
-            {'SELECT status, count(*)\nFROM data_element\nGROUP BY status ORDER BY 2 DESC;'}
+            {'SELECT status, count(*)\nFROM data_widget\nGROUP BY status ORDER BY 2 DESC;'}
           </Marked>
         </code>
       </pre>

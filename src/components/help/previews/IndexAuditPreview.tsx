@@ -3,8 +3,8 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the index section of `/pressure/$schema`. */
 
 const UNUSED = [
-  { name: 'data_element_status_idx', table: 'data_element', size: '412 MB', scans: '0', keep: false },
-  { name: 'data_scan_created_at_idx', table: 'data_scanresult', size: '96 MB', scans: '0', keep: false },
+  { name: 'data_widget_status_idx', table: 'data_widget', size: '412 MB', scans: '0', keep: false },
+  { name: 'data_job_created_at_idx', table: 'data_jobresult', size: '96 MB', scans: '0', keep: false },
   { name: 'data_workflow_uniq', table: 'data_workflow', size: '18 MB', scans: '0', keep: true },
 ]
 

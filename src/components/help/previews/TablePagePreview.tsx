@@ -6,9 +6,9 @@ import { Marked } from '#/components/help/highlight'
  */
 
 const ROWS = [
-  ['41f0…9c', 'approved', '2026-04-12 09:14', 'L03 / room 118'],
-  ['5a21…7b', 'approved', '2026-04-12 08:02', 'L03 / room 117'],
-  ['9de4…10', 'approved', '2026-04-11 17:48', 'L02 / room 044'],
+  ['41f0…9c', 'approved', '2026-04-12 09:14', 'Wing A / room 118'],
+  ['5a21…7b', 'approved', '2026-04-12 08:02', 'Wing A / room 117'],
+  ['9de4…10', 'approved', '2026-04-11 17:48', 'Wing A / room 044'],
 ]
 
 export default function TablePagePreview() {
@@ -16,7 +16,7 @@ export default function TablePagePreview() {
     <div className="space-y-3 text-[11px] leading-tight text-[var(--sea-ink)]">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="island-kicker">
-          <Marked step="from">public.data_element</Marked>
+          <Marked step="from">public.data_widget</Marked>
         </span>
         <span className="rounded border border-[var(--chip-line)] bg-[var(--chip-bg)] px-1.5 py-0.5 font-mono text-[10px]">
           <Marked step="where">status = approved</Marked>

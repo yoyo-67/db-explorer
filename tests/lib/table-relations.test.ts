@@ -24,10 +24,10 @@ describe('relationsForTable', () => {
   it('splits the edges touching a table into out and in', () => {
     const relations = relationsForTable(
       [
-        edge('data_constructionunit', 'project_id', 'data_project'),
-        edge('data_video', 'construction_unit_id', 'data_constructionunit'),
+        edge('data_zone', 'project_id', 'data_project'),
+        edge('data_recording', 'zone_id', 'data_zone'),
       ],
-      'data_constructionunit',
+      'data_zone',
     )
 
     expect(relations.outgoing).toEqual([
@@ -46,10 +46,10 @@ describe('relationsForTable', () => {
     ])
     expect(relations.incoming).toEqual([
       {
-        table: 'data_video',
+        table: 'data_recording',
         edges: [
           {
-            column: 'construction_unit_id',
+            column: 'zone_id',
             otherColumn: 'id',
             basis: 'declared',
             nullable: true,
@@ -62,8 +62,8 @@ describe('relationsForTable', () => {
 
   it('ignores edges that do not touch the table', () => {
     const relations = relationsForTable(
-      [edge('data_video', 'project_id', 'data_project')],
-      'data_constructionunit',
+      [edge('data_recording', 'project_id', 'data_project')],
+      'data_zone',
     )
     expect(relations.outgoing).toEqual([])
     expect(relations.incoming).toEqual([])
@@ -73,25 +73,19 @@ describe('relationsForTable', () => {
   it('groups several edges to the same table under one entry', () => {
     const relations = relationsForTable(
       [
-        edge('data_video', 'construction_unit_id', 'data_constructionunit'),
-        edge('data_video', 'origin_unit_id', 'data_constructionunit', {
+        edge('data_recording', 'zone_id', 'data_zone'),
+        edge('data_recording', 'origin_unit_id', 'data_zone', {
           basis: 'convention',
           nullable: false,
           indexed: false,
         }),
       ],
-      'data_constructionunit',
+      'data_zone',
     )
 
     expect(relations.incoming).toHaveLength(1)
+    // Grouped edges come back in column order, so `origin_unit_id` leads.
     expect(relations.incoming[0].edges).toEqual([
-      {
-        column: 'construction_unit_id',
-        otherColumn: 'id',
-        basis: 'declared',
-        nullable: true,
-        indexed: true,
-      },
       {
         column: 'origin_unit_id',
         otherColumn: 'id',
@@ -99,13 +93,20 @@ describe('relationsForTable', () => {
         nullable: false,
         indexed: false,
       },
+      {
+        column: 'zone_id',
+        otherColumn: 'id',
+        basis: 'declared',
+        nullable: true,
+        indexed: true,
+      },
     ])
   })
 
   it('keeps a self-reference out of both lists', () => {
     const relations = relationsForTable(
-      [edge('data_constructionunit', 'parent_id', 'data_constructionunit')],
-      'data_constructionunit',
+      [edge('data_zone', 'parent_id', 'data_zone')],
+      'data_zone',
     )
 
     expect(relations.outgoing).toEqual([])
@@ -124,12 +125,12 @@ describe('relationsForTable', () => {
   it('orders related tables by edge count, then by name', () => {
     const relations = relationsForTable(
       [
-        edge('data_zebra', 'unit_id', 'data_constructionunit'),
-        edge('data_apple', 'unit_id', 'data_constructionunit'),
-        edge('data_many', 'unit_id', 'data_constructionunit'),
-        edge('data_many', 'other_unit_id', 'data_constructionunit'),
+        edge('data_zebra', 'unit_id', 'data_zone'),
+        edge('data_apple', 'unit_id', 'data_zone'),
+        edge('data_many', 'unit_id', 'data_zone'),
+        edge('data_many', 'other_unit_id', 'data_zone'),
       ],
-      'data_constructionunit',
+      'data_zone',
     )
 
     expect(relations.incoming.map((r) => r.table)).toEqual([
@@ -142,12 +143,12 @@ describe('relationsForTable', () => {
   it('counts every edge, not just the grouped tables', () => {
     const relations = relationsForTable(
       [
-        edge('data_constructionunit', 'project_id', 'data_project'),
-        edge('data_constructionunit', 'floor_id', 'data_floor'),
-        edge('data_video', 'unit_id', 'data_constructionunit'),
-        edge('data_video', 'origin_unit_id', 'data_constructionunit'),
+        edge('data_zone', 'project_id', 'data_project'),
+        edge('data_zone', 'floor_id', 'data_floor'),
+        edge('data_recording', 'unit_id', 'data_zone'),
+        edge('data_recording', 'origin_unit_id', 'data_zone'),
       ],
-      'data_constructionunit',
+      'data_zone',
     )
 
     expect(relations.outgoingEdgeCount).toBe(2)
@@ -157,10 +158,10 @@ describe('relationsForTable', () => {
   it('sorts the edges inside a group by column name', () => {
     const relations = relationsForTable(
       [
-        edge('data_video', 'z_unit_id', 'data_constructionunit'),
-        edge('data_video', 'a_unit_id', 'data_constructionunit'),
+        edge('data_recording', 'z_unit_id', 'data_zone'),
+        edge('data_recording', 'a_unit_id', 'data_zone'),
       ],
-      'data_constructionunit',
+      'data_zone',
     )
 
     expect(relations.incoming[0].edges.map((e) => e.column)).toEqual([

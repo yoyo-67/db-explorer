@@ -335,7 +335,7 @@ function RelationList({
 
 /**
  * The referencing side is always written first, so out and in read the same way:
- * `project_id → data_project.id`, `data_video.unit_id → id`.
+ * `project_id → data_project.id`, `data_recording.unit_id → id`.
  */
 function EdgeLine({
   edge,

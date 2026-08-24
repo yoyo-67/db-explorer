@@ -5,14 +5,14 @@ import { Marked } from '#/components/help/highlight'
 const SEQUENCES = [
   {
     column: 'legacy_id (integer)',
-    seq: 'data_element_legacy_id_seq',
+    seq: 'data_widget_legacy_id_seq',
     last: '1,943,220,118',
     ceiling: '2,147,483,647',
     used: '90%',
   },
   {
     column: 'id (bigint)',
-    seq: 'data_scanresult_id_seq',
+    seq: 'data_jobresult_id_seq',
     last: '12,004,881',
     ceiling: '9.22e18',
     used: '0%',

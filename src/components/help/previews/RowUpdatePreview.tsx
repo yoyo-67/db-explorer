@@ -9,7 +9,7 @@ export default function RowUpdatePreview() {
     <div className="space-y-3 text-[11px] leading-tight text-[var(--sea-ink)]">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="island-kicker">
-          <Marked step="update">public.data_element</Marked>
+          <Marked step="update">public.data_widget</Marked>
         </span>
         <span className="rounded border border-[var(--chip-line)] bg-[var(--chip-bg)] px-1.5 py-0.5 font-mono text-[10px]">
           <Marked step="where">id = 4711</Marked>

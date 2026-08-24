@@ -133,12 +133,12 @@ describe('groupTablesByCatalog (map module groups)', () => {
 
   it('buckets a catalog-less table under its module group instead of Uncategorized', () => {
     const groups = groupTablesByCatalog(
-      [table('users'), table('data_clientslice')],
+      [table('users'), table('data_partition')],
       catalog,
-      { data_clientslice: 'Client Slice' },
+      { data_partition: 'Client Slice' },
     )
     expect(groups.map((g) => g.name)).toEqual(['Auth', 'Client Slice'])
-    expect(groups[1].tables.map((t) => t.name)).toEqual(['data_clientslice'])
+    expect(groups[1].tables.map((t) => t.name)).toEqual(['data_partition'])
   })
 
   it('sorts derived groups after curated ones and before Uncategorized', () => {

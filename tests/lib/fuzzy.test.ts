@@ -8,14 +8,14 @@ describe('fuzzyMatch', () => {
   })
 
   it('matches characters spread through the text, in order', () => {
-    expect(fuzzyMatch('data_constructionproject', 'cnstprj')).not.toBeNull()
+    expect(fuzzyMatch('data_projecttemplate', 'prjtmpl')).not.toBeNull()
     // Order is the one rule fuzzy still keeps.
-    expect(fuzzyMatch('data_constructionproject', 'jrpcn')).toBeNull()
+    expect(fuzzyMatch('data_projecttemplate', 'lpmtjrp')).toBeNull()
   })
 
   it('ignores case on both sides', () => {
-    expect(fuzzyMatch('FramePosition', 'fpos')).not.toBeNull()
-    expect(fuzzyMatch('frameposition', 'FPOS')).not.toBeNull()
+    expect(fuzzyMatch('WidgetPosition', 'wpos')).not.toBeNull()
+    expect(fuzzyMatch('widgetposition', 'WPOS')).not.toBeNull()
   })
 
   it('matches everything on an empty query, with nothing highlighted', () => {

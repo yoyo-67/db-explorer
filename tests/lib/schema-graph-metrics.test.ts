@@ -53,11 +53,11 @@ function node(
 describe('deriveDegrees', () => {
   it('counts distinct tables, so parallel edges do not inflate a hub', () => {
     const degrees = deriveDegrees([
-      edge('data_video', 'project_id', 'data_project'),
-      edge('data_video', 'original_project_id', 'data_project'),
+      edge('data_recording', 'project_id', 'data_project'),
+      edge('data_recording', 'original_project_id', 'data_project'),
     ])
     expect(degrees.get('data_project')).toMatchObject({ inDegree: 1 })
-    expect(degrees.get('data_video')).toMatchObject({ outDegree: 1 })
+    expect(degrees.get('data_recording')).toMatchObject({ outDegree: 1 })
   })
 
   it('keeps self-references out of the degrees and counts them separately', () => {
@@ -79,22 +79,22 @@ describe('isFrameworkTable', () => {
   })
 
   it('leaves application tables alone', () => {
-    expect(isFrameworkTable('data_video')).toBe(false)
+    expect(isFrameworkTable('data_recording')).toBe(false)
     expect(isFrameworkTable('users_customuser')).toBe(false)
   })
 })
 
 describe('findOrphans', () => {
   const nodes = [
-    node('data_video', 'Video'),
+    node('data_recording', 'Video'),
     node('data_project', 'Projects'),
-    node('data_shortenurl', 'Urls'),
+    node('data_shorturl', 'Urls'),
     node('django_session', 'Django'),
   ]
 
   it('requires no edges in either direction on the merged graph', () => {
-    const { candidates } = findOrphans(nodes, [edge('data_video', 'project_id', 'data_project')])
-    expect(candidates.map((n) => n.name)).toEqual(['data_shortenurl'])
+    const { candidates } = findOrphans(nodes, [edge('data_recording', 'project_id', 'data_project')])
+    expect(candidates.map((n) => n.name)).toEqual(['data_shorturl'])
   })
 
   it('tags framework tables instead of claiming them', () => {
@@ -106,7 +106,7 @@ describe('findOrphans', () => {
   it('does not call a referenced-only table an orphan', () => {
     const { candidates } = findOrphans(
       [node('data_project', 'Projects')],
-      [edge('data_video', 'project_id', 'data_project')],
+      [edge('data_recording', 'project_id', 'data_project')],
     )
     expect(candidates).toHaveLength(0)
   })
@@ -115,12 +115,12 @@ describe('findOrphans', () => {
     const { candidates, views } = findOrphans(
       [
         node('lockview', UNGROUPED, { kind: 'view' }),
-        node('data_shortenurl', 'Urls'),
+        node('data_shorturl', 'Urls'),
       ],
       [],
     )
     expect(views.map((n) => n.name)).toEqual(['lockview'])
-    expect(candidates.map((n) => n.name)).toEqual(['data_shortenurl'])
+    expect(candidates.map((n) => n.name)).toEqual(['data_shorturl'])
   })
 })
 
@@ -145,15 +145,15 @@ describe('hubRadius', () => {
 
 describe('buildCrossingMatrix', () => {
   const nodes = [
-    node('data_video', 'Video'),
-    node('data_videobatch', 'Video'),
+    node('data_recording', 'Video'),
+    node('data_recordingbatch', 'Video'),
     node('data_project', 'Projects'),
     node('data_agg', 'Aggregations', { groupIsDerived: true }),
     node('data_mystery', UNGROUPED),
   ]
   const edges = [
-    edge('data_video', 'batch_id', 'data_videobatch'),
-    edge('data_video', 'project_id', 'data_project'),
+    edge('data_recording', 'batch_id', 'data_recordingbatch'),
+    edge('data_recording', 'project_id', 'data_project'),
     edge('data_agg', 'project_id', 'data_project'),
     edge('data_mystery', 'project_id', 'data_project'),
   ]
@@ -187,12 +187,12 @@ describe('buildCrossingMatrix', () => {
 
   it('reports a damped maximum so historical volume does not set the colour scale', () => {
     const dampedNodes = [
-      node('data_video', 'Video'),
+      node('data_recording', 'Video'),
       node('data_project', 'Projects'),
       node('data_hist', 'Historical / Audit Trail'),
     ]
     const dampedEdges = [
-      edge('data_video', 'project_id', 'data_project'),
+      edge('data_recording', 'project_id', 'data_project'),
       ...Array.from({ length: 54 }, (_, i) => edge('data_hist', `c${i}_id`, 'data_project')),
     ]
     const damped = resolveDampedGroups(
@@ -210,19 +210,19 @@ describe('buildCrossingMatrix', () => {
 
 describe('edgesForGroupPair', () => {
   const nodes = [
-    node('data_video', 'Video'),
+    node('data_recording', 'Video'),
     node('data_project', 'Projects'),
     node('data_agg', 'Aggregations', { groupIsDerived: true }),
   ]
   const nodeByName = new Map(nodes.map((n) => [n.name, n]))
   const edges = [
-    edge('data_video', 'project_id', 'data_project'),
+    edge('data_recording', 'project_id', 'data_project'),
     edge('data_agg', 'project_id', 'data_project'),
   ]
 
   it('returns the edges behind one cell', () => {
     const found = edgesForGroupPair(edges, nodeByName, 'Video', 'Projects')
-    expect(found.map((e) => e.fromTable)).toEqual(['data_video'])
+    expect(found.map((e) => e.fromTable)).toEqual(['data_recording'])
   })
 
   it('matches the collapsed Derived axis the matrix drew', () => {
@@ -238,7 +238,7 @@ describe('edgesForGroupPair', () => {
 describe('resolveDampedGroups', () => {
   it('matches historical and aggregation groups by name', () => {
     const damped = resolveDampedGroups(
-      ['Historical / Audit Trail', 'Aggregation Tables', 'Aggregations', 'Video & Capture'],
+      ['Historical / Audit Trail', 'Aggregation Tables', 'Aggregations', 'Recordings'],
       ['historical', 'agg'],
     )
     expect([...damped].sort()).toEqual([

@@ -8,7 +8,7 @@ import { Marked } from '#/components/help/highlight'
 
 const ROWS = [
   {
-    sql: 'SELECT * FROM data_element WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2',
+    sql: 'SELECT * FROM data_widget WHERE project_id = $1 ORDER BY created_at DESC LIMIT $2',
     calls: '4.1M',
     total: '18m 22s',
     mean: '0.27 ms',
@@ -16,7 +16,7 @@ const ROWS = [
     cache: '99.8%',
   },
   {
-    sql: 'SELECT count(*) FROM data_scanresult WHERE unit_id = $1',
+    sql: 'SELECT count(*) FROM data_jobresult WHERE unit_id = $1',
     calls: '96.4k',
     total: '6m 05s',
     mean: '3.8 ms',

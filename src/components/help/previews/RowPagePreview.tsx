@@ -7,7 +7,7 @@ export default function RowPagePreview() {
     <div className="space-y-3 text-[11px] leading-tight text-[var(--sea-ink)]">
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="island-kicker">
-          <Marked step="root">data_element · 41f0…9c</Marked>
+          <Marked step="root">data_widget · 41f0…9c</Marked>
         </span>
       </div>
 
@@ -28,7 +28,7 @@ export default function RowPagePreview() {
             referenced by
           </p>
           <p className="font-mono text-[10.5px]">
-            data_scanresult.element_id ·{' '}
+            data_jobresult.element_id ·{' '}
             <Marked step="children">1,204 rows</Marked>
           </p>
           <p className="font-mono text-[10.5px]">

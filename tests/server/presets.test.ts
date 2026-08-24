@@ -35,7 +35,7 @@ describe('connection presets in local/', () => {
     name: 'Local Postgres',
     host: '127.0.0.1',
     port: 5432,
-    database: 'buildots_local',
+    database: 'example_local',
     user: 'postgres',
     password: 'secret',
   }
@@ -58,9 +58,9 @@ describe('connection presets in local/', () => {
 
   it('replaces a preset saved under a name already in the file', async () => {
     write([local])
-    await upsertPreset({ ...local, database: 'buildots_scratch' })
+    await upsertPreset({ ...local, database: 'example_scratch' })
     expect(raw()).toHaveLength(1)
-    expect(raw()[0].database).toBe('buildots_scratch')
+    expect(raw()[0].database).toBe('example_scratch')
   })
 
   it('removes a preset by name and leaves the others', async () => {

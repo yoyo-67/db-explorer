@@ -31,7 +31,7 @@ export const tablePageTopic: HelpTopic = {
     },
     {
       id: 'from',
-      clause: 'FROM "public"."data_element"',
+      clause: 'FROM "public"."data_widget"',
       title: 'The table, quoted',
       detail:
         'Schema and table are joined by a dot. The double quotes come from `%I` in the format string — the "identifier" placeholder. It quotes the name and doubles any quote inside it, so a table called `weird"name` cannot end the string early and inject SQL. The names themselves are also checked against the catalog before they get here, so an unknown table fails as a lookup rather than as a syntax error.',

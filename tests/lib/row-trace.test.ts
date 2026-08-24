@@ -21,13 +21,13 @@ function cols(...names: string[]): LiveColumn[] {
 
 function input(overrides: Partial<TraceMergeInput> = {}): TraceMergeInput {
   return {
-    table: 'data_constructionproject',
+    table: 'data_project',
     tableColumns: cols('id', 'name'),
     tablePkColumn: 'id',
     declaredEdges: [],
     map: null,
     otherLiveColumns: new Map(),
-    liveTables: new Set(['data_constructionproject']),
+    liveTables: new Set(['data_project']),
     catalogEdges: [],
     ...overrides,
   }
@@ -36,7 +36,7 @@ function input(overrides: Partial<TraceMergeInput> = {}): TraceMergeInput {
 describe('traceCandidateNames', () => {
   it('collects the columns whose existence the merge has to check', () => {
     const names = traceCandidateNames(
-      'data_constructionproject',
+      'data_project',
       cols('id'),
       'id',
       [],
@@ -44,40 +44,40 @@ describe('traceCandidateNames', () => {
         ...emptyMap,
         edges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
-            toTable: 'data_constructionproject',
+            toTable: 'data_project',
             toColumn: 'id',
             basis: 'model',
             nullable: true,
           },
         ],
         conventions: {
-          byColumn: { original_project_id: 'data_constructionproject.id' },
+          byColumn: { original_project_id: 'data_project.id' },
           byTableColumn: {},
         },
       },
     )
     expect(names.columnNames).toEqual(['original_project_id', 'project_id'])
-    expect(names.tableNames).toContain('data_video')
+    expect(names.tableNames).toContain('data_recording')
   })
 
   it('includes the target table of a rule pointing away from this table', () => {
-    const names = traceCandidateNames('data_video', cols('id', 'project_id'), 'id', [], {
+    const names = traceCandidateNames('data_recording', cols('id', 'project_id'), 'id', [], {
       ...emptyMap,
       conventions: {
-        byColumn: { project_id: 'data_constructionproject.id' },
+        byColumn: { project_id: 'data_project.id' },
         byTableColumn: {},
       },
     })
-    expect(names.tableNames).toContain('data_constructionproject')
+    expect(names.tableNames).toContain('data_project')
   })
 
   it('ignores declared edges that do not touch this table', () => {
-    const names = traceCandidateNames('data_video', cols('id'), 'id', [
+    const names = traceCandidateNames('data_recording', cols('id'), 'id', [
       { fromTable: 'a', fromColumn: 'b_id', toTable: 'b', toColumn: 'id' },
     ], null)
-    expect(names.tableNames).toEqual(['data_video'])
+    expect(names.tableNames).toEqual(['data_recording'])
   })
 })
 
@@ -88,27 +88,27 @@ describe('mergeTableEdges', () => {
         tableColumns: cols('id', 'customer_id'),
         declaredEdges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
-            toTable: 'data_constructionproject',
+            toTable: 'data_project',
             toColumn: 'id',
           },
           {
-            fromTable: 'data_constructionproject',
+            fromTable: 'data_project',
             fromColumn: 'customer_id',
             toTable: 'users_customer',
             toColumn: 'id',
           },
         ],
-        otherLiveColumns: new Map([['data_video.project_id', true]]),
+        otherLiveColumns: new Map([['data_recording.project_id', true]]),
         liveTables: new Set([
-          'data_constructionproject',
-          'data_video',
+          'data_project',
+          'data_recording',
           'users_customer',
         ]),
       }),
     )
-    expect(edges.incoming.map((e) => e.fromTable)).toEqual(['data_video'])
+    expect(edges.incoming.map((e) => e.fromTable)).toEqual(['data_recording'])
     expect(edges.outgoing.map((e) => e.toTable)).toEqual(['users_customer'])
   })
 
@@ -119,17 +119,17 @@ describe('mergeTableEdges', () => {
           ...emptyMap,
           edges: [
             {
-              fromTable: 'data_historicalvideo',
+              fromTable: 'data_historicalrecording',
               fromColumn: 'project_id',
-              toTable: 'data_constructionproject',
+              toTable: 'data_project',
               toColumn: 'id',
               basis: 'model',
               nullable: true,
             },
           ],
         },
-        otherLiveColumns: new Map([['data_historicalvideo.project_id', true]]),
-        liveTables: new Set(['data_constructionproject', 'data_historicalvideo']),
+        otherLiveColumns: new Map([['data_historicalrecording.project_id', true]]),
+        liveTables: new Set(['data_project', 'data_historicalrecording']),
       }),
     )
     expect(edges.incoming).toHaveLength(1)
@@ -142,36 +142,38 @@ describe('mergeTableEdges', () => {
         map: {
           ...emptyMap,
           conventions: {
-            byColumn: { project_id: 'data_constructionproject.id' },
+            byColumn: { project_id: 'data_project.id' },
             byTableColumn: {},
           },
         },
         otherLiveColumns: new Map([
-          ['data_video.project_id', true],
-          ['data_element.project_id', false],
+          ['data_recording.project_id', true],
+          ['data_widget.project_id', false],
         ]),
         liveTables: new Set([
-          'data_constructionproject',
-          'data_video',
-          'data_element',
+          'data_project',
+          'data_recording',
+          'data_widget',
         ]),
       }),
     )
+    // Alphabetical, as the merge emits them — the rename moved these two past
+    // each other, the ordering rule itself is unchanged.
     expect(edges.incoming.map((e) => e.fromTable)).toEqual([
-      'data_element',
-      'data_video',
+      'data_recording',
+      'data_widget',
     ])
     expect(edges.incoming.every((e) => e.basis === 'convention')).toBe(true)
   })
 
   it('does not let a convention rule override a declared edge pointing elsewhere', () => {
-    // The whole reason competing edges are in the candidate set: data_video's
+    // The whole reason competing edges are in the candidate set: data_recording's
     // project_id genuinely points at data_otherproject, so the name rule must lose.
     const edges = mergeTableEdges(
       input({
         declaredEdges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
             toTable: 'data_otherproject',
             toColumn: 'id',
@@ -180,14 +182,14 @@ describe('mergeTableEdges', () => {
         map: {
           ...emptyMap,
           conventions: {
-            byColumn: { project_id: 'data_constructionproject.id' },
+            byColumn: { project_id: 'data_project.id' },
             byTableColumn: {},
           },
         },
-        otherLiveColumns: new Map([['data_video.project_id', true]]),
+        otherLiveColumns: new Map([['data_recording.project_id', true]]),
         liveTables: new Set([
-          'data_constructionproject',
-          'data_video',
+          'data_project',
+          'data_recording',
           'data_otherproject',
         ]),
       }),
@@ -202,7 +204,7 @@ describe('mergeTableEdges', () => {
           ...emptyMap,
           edges: [
             {
-              fromTable: 'data_video',
+              fromTable: 'data_recording',
               fromColumn: 'project_id',
               toTable: 'data_otherproject',
               toColumn: 'id',
@@ -211,14 +213,14 @@ describe('mergeTableEdges', () => {
             },
           ],
           conventions: {
-            byColumn: { project_id: 'data_constructionproject.id' },
+            byColumn: { project_id: 'data_project.id' },
             byTableColumn: {},
           },
         },
-        otherLiveColumns: new Map([['data_video.project_id', true]]),
+        otherLiveColumns: new Map([['data_recording.project_id', true]]),
         liveTables: new Set([
-          'data_constructionproject',
-          'data_video',
+          'data_project',
+          'data_recording',
           'data_otherproject',
         ]),
       }),
@@ -229,16 +231,16 @@ describe('mergeTableEdges', () => {
   it('drops an edge whose target table is gone, so drift cannot make a dead link', () => {
     const edges = mergeTableEdges(
       input({
-        table: 'data_video',
+        table: 'data_recording',
         tableColumns: cols('id', 'project_id'),
         map: {
           ...emptyMap,
           conventions: {
-            byColumn: { project_id: 'data_constructionproject.id' },
+            byColumn: { project_id: 'data_project.id' },
             byTableColumn: {},
           },
         },
-        liveTables: new Set(['data_video']),
+        liveTables: new Set(['data_recording']),
       }),
     )
     expect(edges.outgoing).toEqual([])
@@ -247,17 +249,17 @@ describe('mergeTableEdges', () => {
   it('never treats the primary key as an outgoing reference', () => {
     const edges = mergeTableEdges(
       input({
-        table: 'data_historicalvideo',
+        table: 'data_historicalrecording',
         tableColumns: cols('history_id'),
         tablePkColumn: 'history_id',
         map: {
           ...emptyMap,
           conventions: {
-            byColumn: { history_id: 'data_video.id' },
+            byColumn: { history_id: 'data_recording.id' },
             byTableColumn: {},
           },
         },
-        liveTables: new Set(['data_historicalvideo', 'data_video']),
+        liveTables: new Set(['data_historicalrecording', 'data_recording']),
       }),
     )
     expect(edges.outgoing).toEqual([])

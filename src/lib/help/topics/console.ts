@@ -26,7 +26,7 @@ export const consoleTopic: HelpTopic = {
     },
     {
       id: 'user-sql',
-      clause: '-- your statement, sent as text with an empty parameter list\nSELECT * FROM data_element LIMIT 10;',
+      clause: '-- your statement, sent as text with an empty parameter list\nSELECT * FROM data_widget LIMIT 10;',
       title: 'Your statement, sent one at a time',
       detail:
         'Passing the SQL with an empty parameter array forces the driver down the extended query protocol, which carries exactly one statement per message. That is what stops `SELECT 1; DROP TABLE users` from being two statements — the second one is a syntax error rather than a command. The statement is also written to the query log, which is where the HUD gets its timings.',

@@ -118,7 +118,7 @@ export function findOrphans(
 
 /**
  * Node area ∝ log(1 + inDegree), expressed as a radius. Linear sizing lets
- * `data_constructionproject` (144) swamp a schema whose median is 2.
+ * `data_project` (144) swamp a schema whose median is 2.
  */
 export function hubRadius(
   inDegree: number,

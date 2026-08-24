@@ -160,7 +160,7 @@ const STANDARD_AREAS = [
 const MIN_PREFIX_GROUP = 3
 
 /**
- * Application schemas encode their subject in the table name: `data_element`,
+ * Application schemas encode their subject in the table name: `data_widget`,
  * `agg16_activity`. Group by the first underscore-delimited segment, keeping
  * only prefixes that several tables share — a group of one is a table, not a
  * grouping. Everything left over lands in one honest bucket.

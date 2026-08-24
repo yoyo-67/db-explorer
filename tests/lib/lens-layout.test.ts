@@ -76,32 +76,32 @@ describe('radialLayout', () => {
 
 describe('internalEdges', () => {
   it('keeps only edges with both ends inside the group', () => {
-    const group = new Set(['data_video', 'data_videobatch'])
+    const group = new Set(['data_recording', 'data_recordingbatch'])
     const kept = internalEdges(
       [
-        edge('data_video', 'batch_id', 'data_videobatch'),
-        edge('data_video', 'project_id', 'data_project'),
-        edge('data_project', 'video_id', 'data_video'),
+        edge('data_recording', 'batch_id', 'data_recordingbatch'),
+        edge('data_recording', 'project_id', 'data_project'),
+        edge('data_project', 'video_id', 'data_recording'),
       ],
       group,
     )
     expect(kept).toHaveLength(1)
-    expect(kept[0].toTable).toBe('data_videobatch')
+    expect(kept[0].toTable).toBe('data_recordingbatch')
   })
 })
 
 describe('boundaryStubs', () => {
-  const group = new Set(['data_video', 'data_videobatch'])
+  const group = new Set(['data_recording', 'data_recordingbatch'])
   const groupOf = (t: string) =>
     ({ data_project: 'Projects', data_user: 'Auth & Users' })[t]
 
   it('collapses edges leaving the group per target table, busiest first', () => {
     const stubs = boundaryStubs(
       [
-        edge('data_video', 'project_id', 'data_project'),
-        edge('data_video', 'original_project_id', 'data_project'),
-        edge('data_videobatch', 'project_id', 'data_project'),
-        edge('data_video', 'user_id', 'data_user'),
+        edge('data_recording', 'project_id', 'data_project'),
+        edge('data_recording', 'original_project_id', 'data_project'),
+        edge('data_recordingbatch', 'project_id', 'data_project'),
+        edge('data_recording', 'user_id', 'data_user'),
       ],
       group,
       groupOf,
@@ -110,15 +110,15 @@ describe('boundaryStubs', () => {
       ['data_project', 3],
       ['data_user', 1],
     ])
-    expect(stubs[0].sourceTables).toEqual(['data_video', 'data_videobatch'])
+    expect(stubs[0].sourceTables).toEqual(['data_recording', 'data_recordingbatch'])
     expect(stubs[0].targetGroup).toBe('Projects')
   })
 
   it('ignores internal edges and edges arriving from outside', () => {
     const stubs = boundaryStubs(
       [
-        edge('data_video', 'batch_id', 'data_videobatch'),
-        edge('data_project', 'video_id', 'data_video'),
+        edge('data_recording', 'batch_id', 'data_recordingbatch'),
+        edge('data_project', 'video_id', 'data_recording'),
       ],
       group,
       groupOf,

@@ -63,7 +63,7 @@ function mockRows(rows: { value: string; label: string | null }[]) {
 
 const REQ = {
   schema: 'public',
-  table: 'data_constructionproject',
+  table: 'data_project',
   valueColumn: 'id',
 }
 
@@ -76,7 +76,7 @@ describe('getRelatedValues', () => {
 
     const sql = mockQueryWithTimeout.mock.calls[0][0] as string
     expect(sql).toBe(
-      'SELECT id::text AS value, name::text AS label FROM public.data_constructionproject' +
+      'SELECT id::text AS value, name::text AS label FROM public.data_project' +
         ` WHERE name::text ILIKE '%tow%' ORDER BY 2 NULLS LAST, 1 LIMIT ${RELATED_VALUE_LIMIT + 1}`,
     )
     expect(result.rows).toEqual([{ value: '0f3a', label: 'Tower A' }])
@@ -158,7 +158,7 @@ describe('getRelatedValues', () => {
     const result = await getRelatedValues({ ...REQ, keys: ['0f3a', '9b12'] })
 
     expect(mockQueryWithTimeout.mock.calls[0][0]).toBe(
-      'SELECT id::text AS value, name::text AS label FROM public.data_constructionproject' +
+      'SELECT id::text AS value, name::text AS label FROM public.data_project' +
         ` WHERE id::text IN ('0f3a','9b12')`,
     )
     expect(result.rows).toEqual([{ value: '0f3a', label: 'Tower A' }])

@@ -32,7 +32,7 @@ export type FilterOp =
  * the column it follows onwards — the last step follows nothing, because that is
  * where the values are compared.
  *
- *   preset_id → [ data_preset(id, via project_id), data_constructionproject(id) ]
+ *   preset_id → [ data_template(id, via project_id), data_project(id) ]
  *
  * reads as "presets whose project is one of these", and that is what it
  * compiles to: a semi-join, not a snapshot of ids.

@@ -5,7 +5,7 @@ describe('resolveActiveSchema', () => {
   const schemas = ['aggs_staged', 'public', 'reporting']
 
   it('lets a route that names a schema decide', () => {
-    expect(resolveActiveSchema('/d/app_db/t/aggs_staged/data_video', schemas)).toBe('aggs_staged')
+    expect(resolveActiveSchema('/d/app_db/t/aggs_staged/data_recording', schemas)).toBe('aggs_staged')
     expect(resolveActiveSchema('/d/app_db/lens/reporting/orphans', schemas)).toBe('reporting')
     expect(resolveActiveSchema('/d/app_db/pressure/aggs_staged', schemas)).toBe('aggs_staged')
   })

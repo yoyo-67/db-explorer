@@ -12,9 +12,9 @@ export default function ColumnProfilePreview() {
   return (
     <div className="space-y-3 text-[11px] leading-tight text-[var(--sea-ink)]">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="island-kicker">Profile · data_element</span>
+        <span className="island-kicker">Profile · data_widget</span>
         <span className="text-[var(--sea-ink-soft)]">
-          <Marked step="joins">analyzed 6 h ago · 48.2M rows (est)</Marked>
+          <Marked step="joins">analyzed 6 h ago · 12.4M rows (est)</Marked>
         </span>
       </div>
       <table className="w-full border-collapse">

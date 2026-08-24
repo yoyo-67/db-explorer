@@ -20,7 +20,7 @@ export const rowPageTopic: HelpTopic = {
     {
       id: 'root',
       clause:
-        'SELECT * FROM "public"."data_element" WHERE "id" = \'41f0…9c\' LIMIT 1;',
+        'SELECT * FROM "public"."data_widget" WHERE "id" = \'41f0…9c\' LIMIT 1;',
       title: 'The row itself',
       detail:
         'The lookup column is chosen in order: whatever the link specified, else the table\'s primary key, else a column literally called `id`. `%L` in the format string quotes the value as a literal — the identifier placeholders `%I` and the literal placeholder `%L` are what keep a URL from becoming SQL. `LIMIT 1` matters when the lookup column is not unique: a URL that matches ten rows shows one rather than failing.',
@@ -52,7 +52,7 @@ export const rowPageTopic: HelpTopic = {
     {
       id: 'children',
       clause:
-        'SELECT COUNT(*)::bigint AS c FROM "public"."data_scanresult" WHERE "element_id" = \'41f0…9c\';',
+        'SELECT COUNT(*)::bigint AS c FROM "public"."data_jobresult" WHERE "element_id" = \'41f0…9c\';',
       title: 'Counting the rows that point here',
       detail:
         'One of these per incoming reference the budget allowed, each under a statement timeout — three seconds in the eager batch, thirty when you press the button yourself. A timeout returns "unknown" rather than an error: the page has already shown you the row, and a missing count is a smaller loss than a page that fails.',

@@ -3,9 +3,9 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the sidebar table list. */
 
 const TABLES = [
-  { name: 'data_constructionproject', rows: '1.2k', pk: 'id' },
-  { name: 'data_element', rows: '48.2M', pk: 'id' },
-  { name: 'data_scanresult', rows: '12.0M', pk: 'id' },
+  { name: 'data_project', rows: '1.2k', pk: 'id' },
+  { name: 'data_widget', rows: '12.4M', pk: 'id' },
+  { name: 'data_jobresult', rows: '12.0M', pk: 'id' },
 ]
 
 export default function TableListPreview() {
@@ -32,7 +32,7 @@ export default function TableListPreview() {
           schema in one read rather than per table.
         </p>
         <p className="font-mono text-[10.5px] text-[var(--sea-ink-soft)]">
-          data_element · id, unit_id, type_id, status, created_at… (34 columns) · pk: id
+          data_widget · id, unit_id, type_id, status, created_at… (34 columns) · pk: id
         </p>
       </div>
     </div>

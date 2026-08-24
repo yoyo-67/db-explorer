@@ -25,7 +25,7 @@ export const rowUpdateTopic: HelpTopic = {
   steps: [
     {
       id: 'update',
-      clause: 'UPDATE public.data_element',
+      clause: 'UPDATE public.data_widget',
       title: 'One table, quoted',
       detail:
         'Schema and table come from the page you are on, pasted in through `%I` — the identifier placeholder, which quotes the name and doubles any quote inside it. Before the statement is built at all, the server re-reads this table from the catalog: if it is a view, or has been dropped, or does not have the columns the browser claims, the edit is refused there rather than attempted here.',

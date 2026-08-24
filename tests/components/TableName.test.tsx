@@ -11,13 +11,13 @@ import { connectionStatusKey } from '#/hooks/useConnectionStatus'
  */
 vi.mock('@tanstack/react-router', () => ({
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
-    select({ location: { pathname: '/d/shop_db/t/public/data_videobatch' } }),
+    select({ location: { pathname: '/d/shop_db/t/public/data_recordingbatch' } }),
 }))
 
 const models = {
-  data_videopositioningpipeline: 'VideoPositioningPipeline',
+  data_recordingpipeline: 'VideoPositioningPipeline',
   auth_group: 'Group',
-  video_batch: 'VideoBatch',
+  recording_batch: 'RecordingBatch',
 }
 
 function renderName(table: string) {
@@ -35,14 +35,14 @@ afterEach(cleanup)
 
 describe('TableName', () => {
   it('names the model behind a flat table name', () => {
-    renderName('data_videopositioningpipeline')
-    expect(screen.getByText('data_videopositioningpipeline')).toBeTruthy()
+    renderName('data_recordingpipeline')
+    expect(screen.getByText('data_recordingpipeline')).toBeTruthy()
     expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
   })
 
   it('shows a table the map does not know on its own', () => {
-    renderName('data_shortenurl')
-    expect(screen.getByText('data_shortenurl')).toBeTruthy()
+    renderName('data_shorturl')
+    expect(screen.getByText('data_shorturl')).toBeTruthy()
     expect(screen.queryByText(/\(/)).toBeNull()
   })
 
@@ -52,7 +52,7 @@ describe('TableName', () => {
   })
 
   it('leaves out a model that only re-cases the table name', () => {
-    renderName('video_batch')
+    renderName('recording_batch')
     expect(screen.queryByText(/\(/)).toBeNull()
   })
 })

@@ -63,30 +63,30 @@ describe('isReferenceColumn', () => {
 
 describe('resolveGroup', () => {
   const curated = new Map([
-    ['data_video', 'Video & Capture'],
-    ['data_element', 'Elements & Types'],
+    ['data_recording', 'Recordings'],
+    ['data_widget', 'Widgets & Types'],
   ])
   const modules = new Map([
-    ['data_video', 'Videos'],
-    ['data_shortenurl', 'Urls'],
+    ['data_recording', 'Videos'],
+    ['data_shorturl', 'Urls'],
   ])
 
   it('prefers the hand catalog over the module group', () => {
-    expect(resolveGroup('data_video', curated, modules)).toEqual({
-      group: 'Video & Capture',
+    expect(resolveGroup('data_recording', curated, modules)).toEqual({
+      group: 'Recordings',
       groupIsDerived: false,
     })
   })
 
   it('gives a historical table its subject table group, not marked derived', () => {
-    expect(resolveGroup('data_historicalvideo', curated, modules)).toEqual({
-      group: 'Video & Capture',
+    expect(resolveGroup('data_historicalrecording', curated, modules)).toEqual({
+      group: 'Recordings',
       groupIsDerived: false,
     })
   })
 
   it('falls back to the module group and flags it as derived', () => {
-    expect(resolveGroup('data_shortenurl', curated, modules)).toEqual({
+    expect(resolveGroup('data_shorturl', curated, modules)).toEqual({
       group: 'Urls',
       groupIsDerived: true,
     })
@@ -102,8 +102,8 @@ describe('resolveGroup', () => {
 
 describe('mergeSchemaGraph — merge order', () => {
   const liveTables = [
-    table('data_video', [['id', false], ['project_id', true]]),
-    table('data_constructionproject', [['id', false]]),
+    table('data_recording', [['id', false], ['project_id', true]]),
+    table('data_project', [['id', false]]),
   ]
 
   it('keeps the declared constraint when the map also describes the column', () => {
@@ -111,9 +111,9 @@ describe('mergeSchemaGraph — merge order', () => {
       ...emptyMap,
       edges: [
         {
-          fromTable: 'data_video',
+          fromTable: 'data_recording',
           fromColumn: 'project_id',
-          toTable: 'data_constructionproject',
+          toTable: 'data_project',
           toColumn: 'id',
           basis: 'model',
           nullable: true,
@@ -125,9 +125,9 @@ describe('mergeSchemaGraph — merge order', () => {
         liveTables,
         declaredEdges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
-            toTable: 'data_constructionproject',
+            toTable: 'data_project',
             toColumn: 'id',
           },
         ],
@@ -143,9 +143,9 @@ describe('mergeSchemaGraph — merge order', () => {
       ...emptyMap,
       edges: [
         {
-          fromTable: 'data_video',
+          fromTable: 'data_recording',
           fromColumn: 'project_id',
-          toTable: 'data_constructionproject',
+          toTable: 'data_project',
           toColumn: 'id',
           basis: 'model',
           nullable: true,
@@ -161,7 +161,7 @@ describe('mergeSchemaGraph — merge order', () => {
     const map: SchemaMap = {
       ...emptyMap,
       conventions: {
-        byColumn: { project_id: 'data_constructionproject.id' },
+        byColumn: { project_id: 'data_project.id' },
         byTableColumn: {},
       },
     }
@@ -174,13 +174,13 @@ describe('mergeSchemaGraph — merge order', () => {
     const map: SchemaMap = {
       ...emptyMap,
       conventions: {
-        byColumn: { project_id: 'data_constructionproject.id' },
-        byTableColumn: { 'data_video.project_id': 'data_video.id' },
+        byColumn: { project_id: 'data_project.id' },
+        byTableColumn: { 'data_recording.project_id': 'data_recording.id' },
       },
     }
     const graph = mergeSchemaGraph(input({ liveTables, map }))
     expect(graph.edges[0]).toMatchObject({
-      toTable: 'data_video',
+      toTable: 'data_recording',
       basis: 'convention',
     })
   })
@@ -190,7 +190,7 @@ describe('mergeSchemaGraph — merge order', () => {
       ...emptyMap,
       edges: [
         {
-          fromTable: 'data_video',
+          fromTable: 'data_recording',
           fromColumn: 'project_id',
           toTable: 'data_gone',
           toColumn: 'id',
@@ -208,9 +208,9 @@ describe('mergeSchemaGraph — merge order', () => {
       ...emptyMap,
       edges: [
         {
-          fromTable: 'data_video',
+          fromTable: 'data_recording',
           fromColumn: 'dropped_id',
-          toTable: 'data_constructionproject',
+          toTable: 'data_project',
           toColumn: 'id',
           basis: 'model',
           nullable: true,
@@ -226,9 +226,9 @@ describe('mergeSchemaGraph — merge order', () => {
       ...emptyMap,
       edges: [
         {
-          fromTable: 'data_video',
+          fromTable: 'data_recording',
           fromColumn: 'project_id',
-          toTable: 'data_constructionproject',
+          toTable: 'data_project',
           toColumn: 'id',
           basis: 'declared',
           nullable: true,
@@ -245,16 +245,16 @@ describe('mergeSchemaGraph — nodes', () => {
     const graph = mergeSchemaGraph(
       input({
         liveTables: [
-          table('data_video', [['id', false], ['project_id', false]]),
-          table('data_constructionproject', [['id', false]]),
+          table('data_recording', [['id', false], ['project_id', false]]),
+          table('data_project', [['id', false]]),
         ],
         map: {
           ...emptyMap,
           edges: [
             {
-              fromTable: 'data_video',
+              fromTable: 'data_recording',
               fromColumn: 'project_id',
-              toTable: 'data_constructionproject',
+              toTable: 'data_project',
               toColumn: 'id',
               basis: 'model',
               nullable: true,
@@ -270,25 +270,25 @@ describe('mergeSchemaGraph — nodes', () => {
     const graph = mergeSchemaGraph(
       input({
         liveTables: [
-          table('data_video', [['id', false], ['project_id', true], ['batch_id', true]]),
-          table('data_constructionproject', [['id', false]]),
-          table('data_videobatch', [['id', false]]),
+          table('data_recording', [['id', false], ['project_id', true], ['batch_id', true]]),
+          table('data_project', [['id', false]]),
+          table('data_recordingbatch', [['id', false]]),
         ],
         declaredEdges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
-            toTable: 'data_constructionproject',
+            toTable: 'data_project',
             toColumn: 'id',
           },
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'batch_id',
-            toTable: 'data_videobatch',
+            toTable: 'data_recordingbatch',
             toColumn: 'id',
           },
         ],
-        indexedColumns: new Set(['data_video.project_id']),
+        indexedColumns: new Set(['data_recording.project_id']),
       }),
     )
     const byColumn = new Map(graph.edges.map((e) => [e.fromColumn, e.indexed]))
@@ -300,26 +300,26 @@ describe('mergeSchemaGraph — nodes', () => {
     const graph = mergeSchemaGraph(
       input({
         liveTables: [
-          table('data_video', [
+          table('data_recording', [
             ['id', false],
             ['project_id', true],
             ['celery_task_id', true],
             ['jira_ticket_id', true],
             ['name', true],
           ]),
-          table('data_constructionproject', [['id', false]]),
+          table('data_project', [['id', false]]),
         ],
         declaredEdges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
-            toTable: 'data_constructionproject',
+            toTable: 'data_project',
             toColumn: 'id',
           },
         ],
       }),
     )
-    const video = graph.nodes.find((n) => n.name === 'data_video')!
+    const video = graph.nodes.find((n) => n.name === 'data_recording')!
     expect(video.unresolvedRefColumns).toBe(2)
   })
 
@@ -327,7 +327,7 @@ describe('mergeSchemaGraph — nodes', () => {
     const graph = mergeSchemaGraph(
       input({
         liveTables: [
-          table('data_historicalvideo', [['history_id', false]], {
+          table('data_historicalrecording', [['history_id', false]], {
             pkColumn: 'history_id',
           }),
         ],
@@ -349,7 +349,7 @@ describe('mergeSchemaGraph — nodes', () => {
 describe('mergeSchemaGraph — staleness', () => {
   const catalog: TableCatalog = {
     groups: [
-      { name: 'Video & Capture', description: '', order: 1, tables: ['data_video'] },
+      { name: 'Recordings', description: '', order: 1, tables: ['data_recording'] },
     ],
     tables: {},
   }
@@ -358,16 +358,16 @@ describe('mergeSchemaGraph — staleness', () => {
     const graph = mergeSchemaGraph(
       input({
         liveTables: [
-          table('data_video', [['id', false]]),
-          table('data_shortenurl', [['id', false]]),
+          table('data_recording', [['id', false]]),
+          table('data_shorturl', [['id', false]]),
           table('data_mystery', [['id', false]]),
         ],
         catalog,
         map: {
           ...emptyMap,
           tables: {
-            data_video: { model: 'Video', module: 'a.b', group: 'Videos' },
-            data_shortenurl: { model: 'ShortenUrl', module: 'a.c', group: 'Urls' },
+            data_recording: { model: 'Video', module: 'a.b', group: 'Videos' },
+            data_shorturl: { model: 'ShortenUrl', module: 'a.c', group: 'Urls' },
             data_deleted: { model: 'Gone', module: 'a.d', group: 'Urls' },
           },
         },
@@ -379,7 +379,7 @@ describe('mergeSchemaGraph — staleness', () => {
       catalogTableCount: 1,
       liveNotMapped: ['data_mystery'],
       mappedNotLive: ['data_deleted'],
-      derivedGroupTables: ['data_shortenurl'],
+      derivedGroupTables: ['data_shorturl'],
       ungroupedTables: ['data_mystery'],
     })
   })

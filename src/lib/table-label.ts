@@ -1,7 +1,7 @@
 /**
  * The name a drawing shows for a table.
  *
- * Postgres names are flat and prefixed (`data_videopositioningpipeline`), which
+ * Postgres names are flat and prefixed (`data_recordingpipeline`), which
  * on a crowded ring reads as one long lowercase run. The Django model behind it
  * (`VideoPositioningPipeline`, from `local/schema-map.json`) has the word breaks
  * already, so labels use that. The raw table name is never replaced, only
@@ -23,7 +23,7 @@ export function pascalCase(name: string): string {
 /**
  * The raw table name with the model behind it in parentheses, for the many
  * places that show the identifier rather than a drawing's label:
- * `data_videopositioningpipeline (VideoPositioningPipeline)`.
+ * `data_recordingpipeline (VideoPositioningPipeline)`.
  *
  * The raw name leads, because it is the one you match against a query, a log
  * line or the sidebar. The parenthesis is dropped whenever it would carry no

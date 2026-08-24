@@ -3,9 +3,9 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the edge list behind every link in the app. */
 
 const EDGES = [
-  ['data_element', 'unit_id', 'data_constructionunit', 'id', 'declared'],
-  ['data_element', 'type_id', 'data_elementtype', 'id', 'declared'],
-  ['data_scanresult', 'element_id', 'data_element', 'id', 'mapped'],
+  ['data_widget', 'unit_id', 'data_zone', 'id', 'declared'],
+  ['data_widget', 'type_id', 'data_widgettype', 'id', 'declared'],
+  ['data_jobresult', 'element_id', 'data_widget', 'id', 'mapped'],
 ]
 
 export default function ForeignKeysPreview() {

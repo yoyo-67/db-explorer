@@ -3,7 +3,7 @@ import { pascalCase, tableLabel, tableWithModel } from '#/lib/table-label'
 
 describe('tableLabel', () => {
   it('prefers the Django model over the flat table name', () => {
-    expect(tableLabel('data_videopositioningpipeline', 'VideoPositioningPipeline')).toBe(
+    expect(tableLabel('data_recordingpipeline', 'VideoPositioningPipeline')).toBe(
       'VideoPositioningPipeline',
     )
   })
@@ -15,15 +15,15 @@ describe('tableLabel', () => {
   })
 
   it('falls back to the table name when the map does not know it', () => {
-    expect(tableLabel('data_shortenurl', null)).toBe('DataShortenurl')
-    expect(tableLabel('data_shortenurl', undefined)).toBe('DataShortenurl')
-    expect(tableLabel('data_shortenurl', '')).toBe('DataShortenurl')
+    expect(tableLabel('data_shorturl', null)).toBe('DataShorturl')
+    expect(tableLabel('data_shorturl', undefined)).toBe('DataShorturl')
+    expect(tableLabel('data_shorturl', '')).toBe('DataShorturl')
   })
 })
 
 describe('pascalCase', () => {
   it('keeps inner casing, so an already-Pascal name is unchanged', () => {
-    expect(pascalCase('VideoBatch')).toBe('VideoBatch')
+    expect(pascalCase('RecordingBatch')).toBe('RecordingBatch')
   })
 
   it('tolerates doubled and trailing underscores', () => {
@@ -39,20 +39,20 @@ describe('tableWithModel', () => {
   })
 
   it('leaves the table bare when the map does not know it', () => {
-    expect(tableWithModel('data_shortenurl', null)).toBe('data_shortenurl')
-    expect(tableWithModel('data_shortenurl', undefined)).toBe('data_shortenurl')
-    expect(tableWithModel('data_shortenurl', '')).toBe('data_shortenurl')
+    expect(tableWithModel('data_shorturl', null)).toBe('data_shorturl')
+    expect(tableWithModel('data_shorturl', undefined)).toBe('data_shorturl')
+    expect(tableWithModel('data_shorturl', '')).toBe('data_shorturl')
   })
 
   // A parenthesis that only re-spells the name it follows is noise on every row.
   it('leaves the table bare when the model only re-cases it', () => {
     expect(tableWithModel('group', 'Group')).toBe('group')
-    expect(tableWithModel('video_batch', 'VideoBatch')).toBe('video_batch')
+    expect(tableWithModel('recording_batch', 'RecordingBatch')).toBe('recording_batch')
   })
 
   it('still names a model the flat table name hides', () => {
-    expect(tableWithModel('data_videopositioningpipeline', 'VideoPositioningPipeline')).toBe(
-      'data_videopositioningpipeline (VideoPositioningPipeline)',
+    expect(tableWithModel('data_recordingpipeline', 'VideoPositioningPipeline')).toBe(
+      'data_recordingpipeline (VideoPositioningPipeline)',
     )
   })
 })

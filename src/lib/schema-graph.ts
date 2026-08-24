@@ -62,7 +62,7 @@ export interface MergeInput {
 
 export const UNGROUPED = 'Uncategorized'
 
-/** `data_historicalvideo` → `data_video`, so history inherits its subject's Group. */
+/** `data_historicalrecording` → `data_recording`, so history inherits its subject's Group. */
 const HISTORICAL_PREFIX = 'data_historical'
 
 /**

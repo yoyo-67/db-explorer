@@ -6,7 +6,7 @@ export default function EnumTypesPreview() {
   return (
     <div className="space-y-3 text-[11px] leading-tight text-[var(--sea-ink)]">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="island-kicker">Types · data_element</span>
+        <span className="island-kicker">Types · data_widget</span>
         <span className="text-[var(--sea-ink-soft)]">
           <Marked step="joins">2 enum columns</Marked>
         </span>

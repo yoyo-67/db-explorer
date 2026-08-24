@@ -311,8 +311,8 @@ describe('hasCondition', () => {
 
 describe('chain conditions on the wire', () => {
   const CHAIN = [
-    { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
-    { table: 'data_constructionproject', keyColumn: 'id' },
+    { table: 'data_template', keyColumn: 'id', viaColumn: 'project_id' },
+    { table: 'data_project', keyColumn: 'id' },
   ]
 
   function condition(over: Partial<Condition> = {}): Condition {
@@ -344,7 +344,7 @@ describe('chain conditions on the wire', () => {
   })
 
   it('drops a chain whose steps do not say how to leave them', () => {
-    const [back] = decodeConditions(['preset_id~in~@data_preset:id~41b1'])
+    const [back] = decodeConditions(['preset_id~in~@data_template:id~41b1'])
     expect(back?.chain).toBeUndefined()
     expect(back?.values).toEqual(['41b1'])
   })

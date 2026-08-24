@@ -118,8 +118,8 @@ export function compileCondition(
  * A chained condition: the column is not compared to anything, it is matched
  * against the keys of rows found by walking its foreign key.
  *
- *   preset_id IN (SELECT t1.id FROM public.data_preset t1
- *                 JOIN public.data_constructionproject t2 ON t2.id = t1.project_id
+ *   preset_id IN (SELECT t1.id FROM public.data_template t1
+ *                 JOIN public.data_project t2 ON t2.id = t1.project_id
  *                 WHERE t2.company_id IN ('…'))
  *
  * A semi-join, so it stays true as rows are added — the alternative, resolving

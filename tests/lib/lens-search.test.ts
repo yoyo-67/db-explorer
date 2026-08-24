@@ -9,8 +9,8 @@ import {
 describe('validateLensSearch', () => {
   it('keeps the three known params', () => {
     expect(
-      validateLensSearch({ damp: 'historical', basis: 'declared', focus: 'data_video' }),
-    ).toEqual({ damp: 'historical', basis: 'declared', focus: 'data_video' })
+      validateLensSearch({ damp: 'historical', basis: 'declared', focus: 'data_recording' }),
+    ).toEqual({ damp: 'historical', basis: 'declared', focus: 'data_recording' })
   })
 
   it('drops an unknown basis rather than filtering to nothing', () => {
@@ -18,8 +18,8 @@ describe('validateLensSearch', () => {
   })
 
   it('keeps the fallback notice from a Group this schema does not have', () => {
-    expect(validateLensSearch({ absentGroup: 'Video & Capture' }).absentGroup).toBe(
-      'Video & Capture',
+    expect(validateLensSearch({ absentGroup: 'Recordings' }).absentGroup).toBe(
+      'Recordings',
     )
   })
 

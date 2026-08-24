@@ -3,9 +3,9 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the vacuum section of `/pressure/$schema`. */
 
 const TABLES = [
-  { name: 'data_element', dead: '8.4M', ratio: '15%', trigger: '9.6M', last: '2 h ago', level: 'watch' },
+  { name: 'data_widget', dead: '8.4M', ratio: '15%', trigger: '9.6M', last: '2 h ago', level: 'watch' },
   { name: 'data_workflow', dead: '2.1M', ratio: '41%', trigger: '620k', last: '9 d ago', level: 'overdue' },
-  { name: 'data_modelroom', dead: '1.2k', ratio: '0.4%', trigger: '61k', last: '20 min ago', level: 'ok' },
+  { name: 'data_room', dead: '1.2k', ratio: '0.4%', trigger: '61k', last: '20 min ago', level: 'ok' },
 ]
 
 export default function VacuumDebtPreview() {

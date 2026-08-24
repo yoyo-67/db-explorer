@@ -3,9 +3,9 @@ import { Marked } from '#/components/help/highlight'
 /** Slim stand-in for the analyze section of `/pressure/$schema`. */
 
 const TABLES = [
-  { name: 'data_scanresult', state: 'never analyzed', mods: '—', trigger: '—', rows: '12.0M' },
-  { name: 'data_element', state: 'stale', mods: '6.1M', trigger: '4.8M', rows: '48.2M' },
-  { name: 'data_modelroom', state: 'fresh', mods: '12k', trigger: '31k', rows: '310k' },
+  { name: 'data_jobresult', state: 'never analyzed', mods: '—', trigger: '—', rows: '12.0M' },
+  { name: 'data_widget', state: 'stale', mods: '1.8M', trigger: '1.5M', rows: '12.4M' },
+  { name: 'data_room', state: 'fresh', mods: '12k', trigger: '31k', rows: '310k' },
 ]
 
 export default function AnalyzeStalenessPreview() {
@@ -50,7 +50,7 @@ export default function AnalyzeStalenessPreview() {
       </table>
 
       <p className="font-mono text-[10.5px] text-[var(--sea-ink-soft)]">
-        ANALYZE public.data_scanresult;
+        ANALYZE public.data_jobresult;
       </p>
     </div>
   )

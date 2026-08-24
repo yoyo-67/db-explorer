@@ -36,9 +36,9 @@ function mapWith(overrides: Partial<SchemaMap>): SchemaMap {
 describe('resolveSchemaFks', () => {
   it('reports a declared constraint with its basis', () => {
     const fks = resolveSchemaFks({
-      liveTables: [table('data_video', ['id', 'project_id']), table('data_project', ['id'])],
+      liveTables: [table('data_recording', ['id', 'project_id']), table('data_project', ['id'])],
       declaredEdges: [
-        { fromTable: 'data_video', fromColumn: 'project_id', toTable: 'data_project', toColumn: 'id' },
+        { fromTable: 'data_recording', fromColumn: 'project_id', toTable: 'data_project', toColumn: 'id' },
       ],
       map: null,
       catalogEdges: [],
@@ -46,7 +46,7 @@ describe('resolveSchemaFks', () => {
 
     expect(fks).toEqual([
       {
-        fromTable: 'data_video',
+        fromTable: 'data_recording',
         fromColumn: 'project_id',
         toTable: 'data_project',
         toColumn: 'id',
@@ -68,12 +68,12 @@ describe('resolveSchemaFks', () => {
 
   it('carries the model edges the extractor recorded, where nothing is declared', () => {
     const fks = resolveSchemaFks({
-      liveTables: [table('data_video', ['id', 'project_id']), table('data_project', ['id'])],
+      liveTables: [table('data_recording', ['id', 'project_id']), table('data_project', ['id'])],
       declaredEdges: [],
       map: mapWith({
         edges: [
           {
-            fromTable: 'data_video',
+            fromTable: 'data_recording',
             fromColumn: 'project_id',
             toTable: 'data_project',
             toColumn: 'id',
@@ -90,7 +90,7 @@ describe('resolveSchemaFks', () => {
 
   it('falls back to the name convention on a column no other source claims', () => {
     const fks = resolveSchemaFks({
-      liveTables: [table('data_video', ['id', 'project_id']), table('data_project', ['id'])],
+      liveTables: [table('data_recording', ['id', 'project_id']), table('data_project', ['id'])],
       declaredEdges: [],
       map: mapWith({ conventions: { byColumn: { project_id: 'data_project.id' }, byTableColumn: {} } }),
       catalogEdges: [],
@@ -102,12 +102,12 @@ describe('resolveSchemaFks', () => {
   it('keeps one edge per column, highest-priority source winning', () => {
     const fks = resolveSchemaFks({
       liveTables: [
-        table('data_video', ['id', 'project_id']),
+        table('data_recording', ['id', 'project_id']),
         table('data_project', ['id']),
         table('data_other', ['id']),
       ],
       declaredEdges: [
-        { fromTable: 'data_video', fromColumn: 'project_id', toTable: 'data_project', toColumn: 'id' },
+        { fromTable: 'data_recording', fromColumn: 'project_id', toTable: 'data_project', toColumn: 'id' },
       ],
       map: mapWith({ conventions: { byColumn: { project_id: 'data_other.id' }, byTableColumn: {} } }),
       catalogEdges: [],
@@ -119,7 +119,7 @@ describe('resolveSchemaFks', () => {
 
   it('drops an edge whose target table is gone, so no link is dead', () => {
     const fks = resolveSchemaFks({
-      liveTables: [table('data_video', ['id', 'project_id'])],
+      liveTables: [table('data_recording', ['id', 'project_id'])],
       declaredEdges: [],
       map: mapWith({ conventions: { byColumn: { project_id: 'data_project.id' }, byTableColumn: {} } }),
       catalogEdges: [],
