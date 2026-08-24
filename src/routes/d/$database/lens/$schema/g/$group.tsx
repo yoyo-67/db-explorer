@@ -9,7 +9,6 @@ import {
   arrowHead,
   boundaryStubs,
   chordEnds,
-  chordPath,
   internalEdges,
   labelLadder,
   radialLayout,
@@ -57,6 +56,11 @@ const MIN_HIT_RADIUS = 15
  *  head sits on the *referenced* table's edge, where the eye ends the line. */
 const ARROW_SIZE = 7.5
 const ARROW_SIZE_LIT = 10
+
+/** What a node is drawn at right now — hover swells it (BUILD-SPEC §4.2). */
+function drawnRadius(node: RadialNode, hovered: boolean): number {
+  return hovered ? node.radius * HOVER_SCALE + HOVER_BONUS : node.radius
+}
 
 function GroupPage() {
   const database = useDatabaseParam()
@@ -285,11 +289,17 @@ function GroupPage() {
                   const base = e.basis === 'declared' ? 0.75 : 0.45
                   const lit = !!hovered && touched
                   const opacity = hovered ? (touched ? 0.95 : 0.07) : base
-                  const ends = chordEnds(from, to)
+                  // Trimmed to the radius each end is *drawn* at: the hovered node
+                  // paints after the chords, so a chord trimmed to the resting
+                  // radius would end — arrowhead and all — under its circle.
+                  const ends = chordEnds(
+                    { ...from, radius: drawnRadius(from, hovered === from.table) },
+                    { ...to, radius: drawnRadius(to, hovered === to.table) },
+                  )
                   return (
                     <g key={`${e.fromTable}.${e.fromColumn}`}>
                       <path
-                        d={chordPath(from, to)}
+                        d={`M${ends.x1},${ends.y1} L${ends.x2},${ends.y2}`}
                         fill="none"
                         stroke="var(--lagoon-deep)"
                         strokeOpacity={opacity}
@@ -437,7 +447,7 @@ function RingNode({
   onHover: (table: string | null) => void
   onOpen: () => void
 }) {
-  const r = hovered ? node.radius * HOVER_SCALE + HOVER_BONUS : node.radius
+  const r = drawnRadius(node, hovered)
   const anchor = slot?.anchor ?? node.labelAnchor
   const labelY = slot?.y ?? node.y
   const text = kind === 'view' ? `${label} ⃰` : label
@@ -575,10 +585,11 @@ function StubGroup({
         const from = nodeByTable.get(e.fromTable)
         if (!from) return null
         const onHovered = hovered === e.fromTable || hovered === stub.targetTable
+        const leaveAt = from.x + drawnRadius(from, hovered === e.fromTable)
         return (
           <path
             key={`${e.fromTable}.${e.fromColumn}`}
-            d={stubPath({ x: from.x + from.radius, y: from.y }, { x, y: anchorY })}
+            d={stubPath({ x: leaveAt, y: from.y }, { x, y: anchorY })}
             fill="none"
             stroke="#c07a24"
             strokeOpacity={hovered ? (onHovered ? 0.95 : 0.06) : 0.4}

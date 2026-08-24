@@ -211,6 +211,11 @@ describe('chordEnds', () => {
     expect(Math.abs(chordEnds(to, from).angle)).toBeCloseTo(Math.PI)
   })
 
+  it('respects a radius the caller grew — a hovered node is not drawn over', () => {
+    const swollen = { ...to, radius: 40 }
+    expect(chordEnds(from, swollen).x2).toBe(260)
+  })
+
   it('agrees with the path chordPath draws', () => {
     const { x1, y1, x2, y2 } = chordEnds(from, to)
     expect(chordPath(from, to)).toBe(`M${x1},${y1} L${x2},${y2}`)

@@ -194,6 +194,17 @@ export function stubPath(
   return `M${from.x},${from.y} C ${midX},${from.y} ${midX},${to.y} ${to.x},${to.y}`
 }
 
+/**
+ * What a chord needs from a node: where it is and how big it is drawn *now*.
+ * Hover swells a node, so the caller passes the swollen radius and the chord
+ * stays outside the circle instead of ending underneath it.
+ */
+export interface ChordNode {
+  x: number
+  y: number
+  radius: number
+}
+
 export interface ChordEnds {
   x1: number
   y1: number
@@ -204,7 +215,7 @@ export interface ChordEnds {
 }
 
 /** Where a chord meets each node's edge, and which way it travels. */
-export function chordEnds(from: RadialNode, to: RadialNode): ChordEnds {
+export function chordEnds(from: ChordNode, to: ChordNode): ChordEnds {
   const dx = to.x - from.x
   const dy = to.y - from.y
   const len = Math.hypot(dx, dy) || 1
@@ -220,7 +231,7 @@ export function chordEnds(from: RadialNode, to: RadialNode): ChordEnds {
 }
 
 /** Straight chord between two ring nodes, trimmed to each node's edge. */
-export function chordPath(from: RadialNode, to: RadialNode): string {
+export function chordPath(from: ChordNode, to: ChordNode): string {
   const { x1, y1, x2, y2 } = chordEnds(from, to)
   return `M${x1},${y1} L${x2},${y2}`
 }
