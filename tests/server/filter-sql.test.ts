@@ -274,3 +274,126 @@ describe('buildMatchQuery', () => {
     ).toBe(['SELECT *', 'FROM public.orders'].join('\n'))
   })
 })
+
+describe('chained conditions', () => {
+  const PRESET_TO_PROJECT = [
+    { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
+    { table: 'data_constructionproject', keyColumn: 'id' },
+  ]
+
+  it('emits a semi-join, and no join at all for a single hop', () => {
+    const sql = buildTableQuery({
+      schema: 'public',
+      table: 'data_projectpreset',
+      conditions: [
+        {
+          id: '1',
+          column: 'preset_id',
+          op: 'in',
+          values: ['41b1edf8'],
+          chain: PRESET_TO_PROJECT,
+        },
+      ],
+      columnTypes: {},
+      limit: 50,
+      offset: 0,
+    })
+    expect(sql).toContain(
+      `WHERE preset_id IN (SELECT t1.id FROM public.data_preset t1 WHERE t1.project_id IN ('41b1edf8'))`,
+    )
+    expect(sql).not.toContain('JOIN')
+  })
+
+  it('adds one join per further hop, comparing on the last key it already holds', () => {
+    const sql = buildTableQuery({
+      schema: 'public',
+      table: 'data_projectpreset',
+      conditions: [
+        {
+          id: '1',
+          column: 'preset_id',
+          op: 'in',
+          values: ['c0'],
+          chain: [
+            { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
+            { table: 'data_constructionproject', keyColumn: 'id', viaColumn: 'company_id' },
+            { table: 'data_company', keyColumn: 'id' },
+          ],
+        },
+      ],
+      columnTypes: {},
+      limit: 50,
+      offset: 0,
+    })
+    expect(sql).toContain(
+      'SELECT t1.id FROM public.data_preset t1' +
+        ' JOIN public.data_constructionproject t2 ON t2.id = t1.project_id' +
+        ` WHERE t2.company_id IN ('c0')`,
+    )
+  })
+
+  it('qualifies the compared column, so a shared column name cannot be ambiguous', () => {
+    const sql = buildTableQuery({
+      schema: 'public',
+      table: 'child',
+      conditions: [
+        {
+          id: '1',
+          column: 'id',
+          op: 'in',
+          values: ['x'],
+          chain: [
+            { table: 'mid', keyColumn: 'id', viaColumn: 'id' },
+            { table: 'far', keyColumn: 'id' },
+          ],
+        },
+      ],
+      columnTypes: {},
+      limit: 50,
+      offset: 0,
+    })
+    expect(sql).toContain(`WHERE t1.id IN ('x')`)
+  })
+
+  it('quotes every identifier the chain names', () => {
+    const sql = buildTableQuery({
+      schema: 'public',
+      table: 'child',
+      conditions: [
+        {
+          id: '1',
+          column: 'ref id',
+          op: 'in',
+          values: ['x'],
+          chain: [
+            { table: 'odd table', keyColumn: 'the key', viaColumn: 'via col' },
+            { table: 'far', keyColumn: 'id' },
+          ],
+        },
+      ],
+      columnTypes: {},
+      limit: 50,
+      offset: 0,
+    })
+    expect(sql).toContain(
+      `"ref id" IN (SELECT t1."the key" FROM public."odd table" t1 WHERE t1."via col" IN ('x'))`,
+    )
+  })
+
+  it('skips a chained condition when there is no schema to name its tables in', () => {
+    expect(
+      compileConditions(
+        [
+          {
+            id: '1',
+            column: 'preset_id',
+            op: 'in',
+            values: ['x'],
+            chain: PRESET_TO_PROJECT,
+          },
+        ],
+        {},
+      ),
+    ).toBe('')
+  })
+})

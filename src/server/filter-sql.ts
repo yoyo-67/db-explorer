@@ -1,6 +1,6 @@
 import format from 'pg-format'
 import type { Condition } from '#/lib/filter-model'
-import { arityForOp, isConditionComplete, kindForType } from '#/lib/filter-model'
+import { arityForOp, hasChain, isConditionComplete, kindForType } from '#/lib/filter-model'
 import type { TableSort } from '#/lib/types'
 
 /**
@@ -31,9 +31,19 @@ function isTextual(dataType?: string): boolean {
   return kindForType(dataType) === 'text' && !needsTextCast(dataType)
 }
 
-function columnRef(columnName: string, dataType: string | undefined, forPattern: boolean): string {
+/** `qualifier` prefixes the column with a table alias — needed inside a chain's
+ *  subquery, where two tables can carry the same column name. */
+function columnRef(
+  columnName: string,
+  dataType: string | undefined,
+  forPattern: boolean,
+  qualifier?: string,
+): string {
   const cast = forPattern ? !isTextual(dataType) : needsTextCast(dataType)
-  return cast ? format('%I::text', columnName) : format('%I', columnName)
+  const ref = qualifier
+    ? `${format('%I', qualifier)}.${format('%I', columnName)}`
+    : format('%I', columnName)
+  return cast ? `${ref}::text` : ref
 }
 
 /**
@@ -60,10 +70,14 @@ const COMPARISONS: Partial<Record<Condition['op'], string>> = {
  * `dataType` is the column's `information_schema.columns.data_type`. It decides
  * whether the comparison is native (index-usable) or goes through `::text`.
  */
-export function compileCondition(condition: Condition, dataType?: string): string {
+export function compileCondition(
+  condition: Condition,
+  dataType?: string,
+  qualifier?: string,
+): string {
   const { column, op, values } = condition
-  const plain = columnRef(column, dataType, false)
-  const pattern = columnRef(column, dataType, true)
+  const plain = columnRef(column, dataType, false, qualifier)
+  const pattern = columnRef(column, dataType, true, qualifier)
 
   switch (op) {
     case 'isNull':
@@ -101,6 +115,64 @@ export function compileCondition(condition: Condition, dataType?: string): strin
 }
 
 /**
+ * A chained condition: the column is not compared to anything, it is matched
+ * against the keys of rows found by walking its foreign key.
+ *
+ *   preset_id IN (SELECT t1.id FROM public.data_preset t1
+ *                 JOIN public.data_constructionproject t2 ON t2.id = t1.project_id
+ *                 WHERE t2.company_id IN ('…'))
+ *
+ * A semi-join, so it stays true as rows are added — the alternative, resolving
+ * the far end to a list of keys once, is a snapshot that quietly goes stale.
+ *
+ * The last step is where the values live, and it is reached without a join: the
+ * step before it already holds the key column to compare, so a two-step chain
+ * emits no join at all and every further step adds exactly one.
+ */
+/**
+ * What the far end of a chain is compared as. The column there is always a key —
+ * uuid, integer, or text — so equality and `IN` must stay native or the FK index
+ * goes unused, while a pattern match still has to reach text. `uuid` is the type
+ * that decides both of those the right way; the chain does not carry the real
+ * one, and paying a `::text` cast on every key comparison to learn it would cost
+ * more than it tells.
+ */
+const KEY_TYPE = 'uuid'
+
+function compileChained(condition: Condition, schema: string): string {
+  const chain = condition.chain!
+  const alias = (i: number) => `t${i + 1}`
+  const joined = chain.slice(1, -1)
+  const joins = joined.map((step, i) =>
+    format(
+      ' JOIN %I.%I %s ON %s.%I = %s.%I',
+      schema,
+      step.table,
+      alias(i + 1),
+      alias(i + 1),
+      step.keyColumn,
+      alias(i),
+      chain[i].viaColumn!,
+    ),
+  )
+  // The comparison happens on the second-to-last step's own FK column, which is
+  // the last step's key by definition — one join lighter, same rows.
+  const lastJoinIndex = chain.length - 2
+  const inner: Condition = { ...condition, column: chain[lastJoinIndex].viaColumn!, chain: undefined }
+  const where = compileCondition(inner, KEY_TYPE, alias(lastJoinIndex))
+  const head = format(
+    '%I IN (SELECT %s.%I FROM %I.%I %s',
+    condition.column,
+    alias(0),
+    chain[0].keyColumn,
+    schema,
+    chain[0].table,
+    alias(0),
+  )
+  return `${head}${joins.join('')} WHERE ${where})`
+}
+
+/**
  * Compile a condition list into a WHERE clause body (without the leading
  * `WHERE`), AND-ing every complete condition. Incomplete ones — a range with
  * one bound typed, a value box still empty — are skipped rather than rejected:
@@ -109,12 +181,20 @@ export function compileCondition(condition: Condition, dataType?: string): strin
 export function compileConditionList(
   conditions: Condition[],
   columnTypes: Record<string, string> = {},
+  schema?: string,
 ): string[] {
   const fragments: string[] = []
   for (const condition of conditions) {
     if (!isConditionComplete(condition)) continue
     const arity = arityForOp(condition.op)
     if (arity !== 'many' && condition.values.length < arity) continue
+    if (hasChain(condition)) {
+      // A chain names tables, so it cannot be written without a schema to name
+      // them in. Every caller that builds a statement has one; one that does not
+      // is asking for a fragment a chain has no place in.
+      if (schema) fragments.push(compileChained(condition, schema))
+      continue
+    }
     fragments.push(compileCondition(condition, columnTypes[condition.column]))
   }
   return fragments
@@ -123,8 +203,9 @@ export function compileConditionList(
 export function compileConditions(
   conditions: Condition[],
   columnTypes: Record<string, string> = {},
+  schema?: string,
 ): string {
-  return compileConditionList(conditions, columnTypes).join(' AND ')
+  return compileConditionList(conditions, columnTypes, schema).join(' AND ')
 }
 
 /**
@@ -132,8 +213,12 @@ export function compileConditions(
  * further one on an indented `AND`. Postgres does not care, and the panel shows
  * the statement it runs — so the statement is the thing that has to be legible.
  */
-function whereLines(conditions: Condition[], columnTypes?: Record<string, string>): string[] {
-  const fragments = compileConditionList(conditions, columnTypes)
+function whereLines(
+  conditions: Condition[],
+  columnTypes: Record<string, string> | undefined,
+  schema: string,
+): string[] {
+  const fragments = compileConditionList(conditions, columnTypes, schema)
   if (fragments.length === 0) return []
   const [first, ...rest] = fragments
   return [`WHERE ${first}`, ...rest.map((fragment) => `  AND ${fragment}`)]
@@ -154,7 +239,7 @@ export interface TableQueryArgs {
  */
 export function buildTableQuery(args: TableQueryArgs & { limit: number; offset: number }): string {
   const lines = ['SELECT *', format('FROM %I.%I', args.schema, args.table)]
-  lines.push(...whereLines(args.conditions, args.columnTypes))
+  lines.push(...whereLines(args.conditions, args.columnTypes, args.schema))
   if (args.sort) {
     lines.push(
       format('ORDER BY %I %s', args.sort.column, args.sort.direction === 'desc' ? 'DESC' : 'ASC'),
@@ -169,13 +254,13 @@ export function buildTableQuery(args: TableQueryArgs & { limit: number; offset: 
  * about, so its row estimate is of matching rows rather than of one page.
  */
 export function buildMatchQuery(args: TableQueryArgs): string {
-  return ['SELECT *', format('FROM %I.%I', args.schema, args.table), ...whereLines(args.conditions, args.columnTypes)].join('\n')
+  return ['SELECT *', format('FROM %I.%I', args.schema, args.table), ...whereLines(args.conditions, args.columnTypes, args.schema)].join('\n')
 }
 
 export function buildCountQuery(args: TableQueryArgs): string {
   return [
     'SELECT COUNT(*)::bigint AS c',
     format('FROM %I.%I', args.schema, args.table),
-    ...whereLines(args.conditions, args.columnTypes),
+    ...whereLines(args.conditions, args.columnTypes, args.schema),
   ].join('\n')
 }

@@ -233,6 +233,12 @@ export interface RelatedValuesRequest {
   /** Which parent column to search. Omit to ask only which fields exist. */
   field?: string
   query?: string
+  /**
+   * Resolve exactly these keys instead of searching. What a picked value is
+   * called does not depend on the search that found it — and after a reload
+   * nothing found it, so the picks would otherwise read as bare keys.
+   */
+  keys?: string[]
 }
 
 export interface RelatedField {

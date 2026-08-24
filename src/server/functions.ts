@@ -714,7 +714,7 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
     (c) => c.column !== column && validColumnNames.has(c.column),
   )
   const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
-  const whereBody = compileConditions(otherConditions, columnTypes)
+  const whereBody = compileConditions(otherConditions, columnTypes, schema)
   const whereClause = whereBody ? `WHERE ${whereBody}` : ''
 
   // `::text` so every type comes back as a string the filter DSL can round-trip
@@ -753,6 +753,10 @@ export const RELATED_VALUE_LIMIT = 50
  *  that outlives the typing is worse than no answer. */
 export const RELATED_SEARCH_TIMEOUT_MS = 5_000
 
+/** How many picked keys are resolved to names in one go. A filter with more
+ *  picks than this is not being read one name at a time. */
+export const RELATED_KEY_LIMIT = 200
+
 /**
  * Rows of a *referenced* table, searched by one of its own readable columns.
  *
@@ -778,11 +782,46 @@ export async function getRelatedValues(req: RelatedValuesRequest): Promise<Relat
   }
 
   const fields = labelFieldsFor(columns)
-  const field = req.field ?? fields[0]?.name ?? null
-  if (!field) return { fields, field: null, rows: [], truncated: false, timedOut: false }
+  // The key itself is always searchable, whatever its type: a chain that has
+  // walked past a table with no readable column still has to offer *something*,
+  // and the key is what the filter compares anyway.
+  const field = req.field ?? fields[0]?.name ?? valueColumn
   const fieldColumn = byName.get(field)
-  if (!fieldColumn || !isSearchableType(fieldColumn.dataType)) {
+  if (!fieldColumn) {
+    throw new Error(`Column ${field} does not exist on ${schema}.${table}`)
+  }
+  if (field !== valueColumn && !isSearchableType(fieldColumn.dataType)) {
     throw new Error(`Column ${field} on ${schema}.${table} cannot be searched by name`)
+  }
+
+  // Resolving named keys is a different question from searching, and the answer
+  // is reached by the key's own index rather than by a scan.
+  if (req.keys && req.keys.length > 0) {
+    const keys = req.keys.slice(0, RELATED_KEY_LIMIT)
+    const sql = format(
+      'SELECT %I::text AS value, %I::text AS label FROM %I.%I WHERE %I::text IN (%L)',
+      valueColumn,
+      field,
+      schema,
+      table,
+      valueColumn,
+      keys,
+    )
+    try {
+      const result = await queryWithTimeout(sql, RELATED_SEARCH_TIMEOUT_MS)
+      return {
+        fields,
+        field,
+        rows: result.rows as RelatedValue[],
+        truncated: false,
+        timedOut: false,
+      }
+    } catch (err) {
+      if (err instanceof StatementTimeoutError) {
+        return { fields, field, rows: [], truncated: false, timedOut: true }
+      }
+      throw err
+    }
   }
 
   const search = (req.query ?? '').trim()

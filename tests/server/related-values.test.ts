@@ -31,7 +31,9 @@ vi.mock('#/server/local-metadata', () => ({
   readTableCatalog: vi.fn(async () => null),
 }))
 
-const { getRelatedValues, RELATED_VALUE_LIMIT } = await import('#/server/functions')
+const { getRelatedValues, RELATED_VALUE_LIMIT, RELATED_KEY_LIMIT } = await import(
+  '#/server/functions'
+)
 
 beforeEach(() => {
   mockQuery.mockReset()
@@ -124,22 +126,57 @@ describe('getRelatedValues', () => {
     expect(result.rows).toHaveLength(RELATED_VALUE_LIMIT)
   })
 
-  it('answers with no fields at all when the related table has no readable column', async () => {
+  it('falls back to the key when the related table has no readable column', async () => {
     mockColumns([
       ['id', 'uuid'],
       ['n', 'integer'],
     ])
+    mockRows([{ value: '0f3a', label: '0f3a' }])
 
     const result = await getRelatedValues(REQ)
 
-    expect(result).toEqual({
-      fields: [],
-      field: null,
-      rows: [],
-      truncated: false,
-      timedOut: false,
+    // Nothing to offer as a name, but a chain that has walked here still has to
+    // be able to pick something — so the key answers for itself.
+    expect(result.fields).toEqual([])
+    expect(result.field).toBe('id')
+    expect(mockQueryWithTimeout.mock.calls[0][0]).toContain('id::text AS label')
+  })
+
+  it('searches the key itself as text when the key is the chosen field', async () => {
+    mockColumns(PROJECT_COLUMNS)
+    mockRows([{ value: '0f3a', label: '0f3a' }])
+
+    await getRelatedValues({ ...REQ, field: 'id', query: '0f3' })
+
+    expect(mockQueryWithTimeout.mock.calls[0][0]).toContain(`WHERE id::text ILIKE '%0f3%'`)
+  })
+
+  it('resolves named keys by the key index instead of searching', async () => {
+    mockColumns(PROJECT_COLUMNS)
+    mockRows([{ value: '0f3a', label: 'Tower A' }])
+
+    const result = await getRelatedValues({ ...REQ, keys: ['0f3a', '9b12'] })
+
+    expect(mockQueryWithTimeout.mock.calls[0][0]).toBe(
+      'SELECT id::text AS value, name::text AS label FROM public.data_constructionproject' +
+        ` WHERE id::text IN ('0f3a','9b12')`,
+    )
+    expect(result.rows).toEqual([{ value: '0f3a', label: 'Tower A' }])
+    expect(result.truncated).toBe(false)
+  })
+
+  it('caps how many keys one resolve asks about', async () => {
+    mockColumns(PROJECT_COLUMNS)
+    mockRows([])
+
+    await getRelatedValues({
+      ...REQ,
+      keys: Array.from({ length: RELATED_KEY_LIMIT + 5 }, (_, i) => `k${i}`),
     })
-    expect(mockQueryWithTimeout).not.toHaveBeenCalled()
+
+    const sql = mockQueryWithTimeout.mock.calls[0][0] as string
+    expect(sql).toContain(`'k${RELATED_KEY_LIMIT - 1}'`)
+    expect(sql).not.toContain(`'k${RELATED_KEY_LIMIT}'`)
   })
 
   it('refuses a field the related table does not have, before any SQL runs', async () => {

@@ -24,6 +24,30 @@ export type FilterOp =
   | 'isNull'
   | 'notNull'
 
+/**
+ * One table along a chain of foreign keys.
+ *
+ * `chain[0]` is the table the filtered column references; each step after it is
+ * one hop further out. A step names the key the step before it points at, and
+ * the column it follows onwards — the last step follows nothing, because that is
+ * where the values are compared.
+ *
+ *   preset_id → [ data_preset(id, via project_id), data_constructionproject(id) ]
+ *
+ * reads as "presets whose project is one of these", and that is what it
+ * compiles to: a semi-join, not a snapshot of ids.
+ */
+export interface ChainStep {
+  table: string
+  /** Column of `table` that the previous step's `viaColumn` points at. */
+  keyColumn: string
+  /** Column of `table` followed to reach the next step. Absent on the last. */
+  viaColumn?: string
+}
+
+/** How far a chain may be walked. Seven hops past the referenced table. */
+export const MAX_CHAIN_HOPS = 7
+
 export interface Condition {
   /** Stable across edits, so React keys and the URL agree on identity. */
   id: string
@@ -33,6 +57,23 @@ export interface Condition {
   values: string[]
   /** `in`/`notIn` only: whether the null member is part of the set. */
   includeNull?: boolean
+  /**
+   * Follow the column's foreign key instead of comparing it: the values then
+   * belong to the last table in the chain, not to this column. Absent for the
+   * ordinary case of a column compared against itself.
+   */
+  chain?: ChainStep[]
+}
+
+/** Whether a chain says anything — one step is just the referenced table. */
+export function hasChain(condition: Condition): boolean {
+  return (condition.chain?.length ?? 0) > 1
+}
+
+/** The table the values belong to: the far end of the chain, or nothing. */
+export function chainTarget(condition: Condition): ChainStep | undefined {
+  const chain = condition.chain
+  return chain && chain.length > 1 ? chain[chain.length - 1] : undefined
 }
 
 /** What kind of column this is, as far as filtering cares. */
@@ -132,6 +173,48 @@ function escapeSegment(raw: string): string {
   return raw.replace(/\\/g, '\\\\').replace(/~/g, '\\~')
 }
 
+/**
+ * A value is escaped like any segment, except that a leading `@` is spoken for:
+ * that is how the chain announces itself in the value list, and an email address
+ * must not be mistaken for one.
+ */
+function escapeValue(raw: string): string {
+  const escaped = escapeSegment(raw)
+  return escaped.startsWith(CHAIN_MARK) ? `\\${escaped}` : escaped
+}
+
+/** Marks the chain segment. No operator starts with it, so old URLs still read. */
+const CHAIN_MARK = '@'
+const STEP_SEP = '>'
+const PART_SEP = ':'
+
+function encodeChain(chain: ChainStep[]): string {
+  // The last step follows nothing, so it writes two parts rather than a trailing
+  // separator — the URL is read by people often enough to be worth the branch.
+  const steps = chain.map((s) =>
+    (s.viaColumn ? [s.table, s.keyColumn, s.viaColumn] : [s.table, s.keyColumn]).join(PART_SEP),
+  )
+  return CHAIN_MARK + steps.join(STEP_SEP)
+}
+
+/** Null when the text is not a chain, or is one no compiler could follow. */
+function decodeChain(segment: string): ChainStep[] | null {
+  if (!segment.startsWith(CHAIN_MARK)) return null
+  const steps: ChainStep[] = []
+  for (const raw of segment.slice(CHAIN_MARK.length).split(STEP_SEP)) {
+    const [table, keyColumn, viaColumn] = raw.split(PART_SEP)
+    if (!table || !keyColumn) return null
+    steps.push(viaColumn ? { table, keyColumn, viaColumn } : { table, keyColumn })
+  }
+  // Every step but the last has to say how the chain leaves it, or the joins
+  // cannot be written; and the walk is bounded so a hand-edited URL cannot ask
+  // for a hundred joins.
+  if (steps.length < 2 || steps.length > MAX_CHAIN_HOPS + 1) return null
+  if (steps.slice(0, -1).some((s) => !s.viaColumn)) return null
+  if (steps[steps.length - 1].viaColumn) return null
+  return steps
+}
+
 function unescapeSegment(segment: string): string {
   return segment.replace(/\\(.)/g, '$1')
 }
@@ -157,9 +240,10 @@ function splitEscaped(encoded: string): string[] {
 
 export function encodeConditions(conditions: Condition[]): string[] {
   return conditions.map((c) => {
-    const values = c.values.map(escapeSegment)
+    const values = c.values.map(escapeValue)
     if (c.includeNull) values.push(NULL_TOKEN)
-    return [escapeSegment(c.column), c.op, ...values].join(SEP)
+    const chain = hasChain(c) ? [encodeChain(c.chain!)] : []
+    return [escapeSegment(c.column), c.op, ...chain, ...values].join(SEP)
   })
 }
 
@@ -172,14 +256,22 @@ export function decodeConditions(encoded: string[] | undefined): Condition[] {
     const segments = splitEscaped(entry)
     const [rawColumn, op, ...rawValues] = segments
     if (!rawColumn || !op || !KNOWN_OPS.has(op)) return
-    const includeNull = rawValues.includes(NULL_TOKEN)
-    const values = rawValues.filter((v) => v !== NULL_TOKEN).map(unescapeSegment)
+    const chain = rawValues.length > 0 ? decodeChain(rawValues[0]) : null
+    // A leading segment that opens with the mark was the chain's, whether or not
+    // it parsed — dropping it beats compiling it as a value.
+    const rest =
+      rawValues.length > 0 && rawValues[0].startsWith(CHAIN_MARK)
+        ? rawValues.slice(1)
+        : rawValues
+    const includeNull = rest.includes(NULL_TOKEN)
+    const values = rest.filter((v) => v !== NULL_TOKEN).map(unescapeSegment)
     const condition: Condition = {
       id: `${index}-${unescapeSegment(rawColumn)}-${op}`,
       column: unescapeSegment(rawColumn),
       op: op as FilterOp,
       values,
       ...(includeNull ? { includeNull: true } : {}),
+      ...(chain ? { chain } : {}),
     }
     if (!isConditionComplete(condition)) return
     const arity = arityForOp(condition.op)
@@ -220,13 +312,18 @@ export function isSargable(op: FilterOp): boolean {
 }
 
 /** Whether two conditions say the same thing, ignoring their id. */
+function encodeChainKey(c: Condition): string {
+  return hasChain(c) ? encodeChain(c.chain!) : ''
+}
+
 export function sameCondition(a: Condition, b: Condition): boolean {
   return (
     a.column === b.column &&
     a.op === b.op &&
     a.values.length === b.values.length &&
     a.values.every((v, i) => v === b.values[i]) &&
-    (a.includeNull ?? false) === (b.includeNull ?? false)
+    (a.includeNull ?? false) === (b.includeNull ?? false) &&
+    encodeChainKey(a) === encodeChainKey(b)
   )
 }
 

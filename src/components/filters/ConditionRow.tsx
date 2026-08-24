@@ -2,7 +2,7 @@ import ValuePicker from '#/components/filters/ValuePicker'
 import { arityForOp, changeOp, defaultOpForType, operatorsForType } from '#/lib/filter-model'
 import type { Condition, FilterOp } from '#/lib/filter-model'
 import { warningsFor } from '#/lib/filter-plan'
-import type { ColumnInfo } from '#/lib/types'
+import type { ColumnInfo, ForeignKey } from '#/lib/types'
 
 /** What each operator is called in the panel. Short enough to read as a phrase
  *  with the column name in front of it: `status is one of`. */
@@ -32,6 +32,7 @@ export const OP_LABELS: Record<FilterOp, string> = {
 export default function ConditionRow({
   condition,
   columns,
+  fks,
   schema,
   table,
   otherConditions,
@@ -40,6 +41,7 @@ export default function ConditionRow({
 }: {
   condition: Condition
   columns: ColumnInfo[]
+  fks?: ForeignKey[]
   schema: string
   table: string
   otherConditions: Condition[]
@@ -175,6 +177,7 @@ export default function ConditionRow({
           table={table}
           otherConditions={otherConditions}
           references={column?.references}
+          fks={fks}
         />
       )}
 

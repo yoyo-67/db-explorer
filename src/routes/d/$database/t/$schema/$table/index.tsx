@@ -448,6 +448,7 @@ function TablePage() {
             open={panelOpen}
             onOpenChange={(open) => updateSearch({ fp: open ? true : undefined })}
             columns={filterColumns}
+            fks={fks}
             schema={schema}
             table={table}
             draft={draft}

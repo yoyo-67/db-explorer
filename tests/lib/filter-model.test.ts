@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  MAX_CHAIN_HOPS,
+  sameCondition,
   arityForOp,
   changeOp,
   conditionsEqual,
@@ -304,5 +306,57 @@ describe('hasCondition', () => {
 
   it('does not find one that differs in its value', () => {
     expect(hasCondition(list, cond({ id: 'a', column: 'status', op: 'eq', values: ['done'] }))).toBe(false)
+  })
+})
+
+describe('chain conditions on the wire', () => {
+  const CHAIN = [
+    { table: 'data_preset', keyColumn: 'id', viaColumn: 'project_id' },
+    { table: 'data_constructionproject', keyColumn: 'id' },
+  ]
+
+  function condition(over: Partial<Condition> = {}): Condition {
+    return { id: '1', column: 'preset_id', op: 'in', values: ['41b1'], ...over }
+  }
+
+  it('round-trips a chain through the URL', () => {
+    const [encoded] = encodeConditions([condition({ chain: CHAIN })])
+    const [back] = decodeConditions([encoded])
+    expect(back.chain).toEqual(CHAIN)
+    expect(back.values).toEqual(['41b1'])
+  })
+
+  it('leaves a chainless condition encoded exactly as before', () => {
+    expect(encodeConditions([condition()])).toEqual(['preset_id~in~41b1'])
+  })
+
+  it('keeps the null member alongside a chain', () => {
+    const [encoded] = encodeConditions([condition({ chain: CHAIN, includeNull: true })])
+    const [back] = decodeConditions([encoded])
+    expect(back).toMatchObject({ includeNull: true, chain: CHAIN })
+  })
+
+  it('does not mistake a value that starts with @ for a chain', () => {
+    const [encoded] = encodeConditions([condition({ values: ['@acme.com'] })])
+    const [back] = decodeConditions([encoded])
+    expect(back.values).toEqual(['@acme.com'])
+    expect(back.chain).toBeUndefined()
+  })
+
+  it('drops a chain whose steps do not say how to leave them', () => {
+    const [back] = decodeConditions(['preset_id~in~@data_preset:id~41b1'])
+    expect(back?.chain).toBeUndefined()
+    expect(back?.values).toEqual(['41b1'])
+  })
+
+  it('refuses a hand-written chain longer than the walk allows', () => {
+    const steps = Array.from({ length: MAX_CHAIN_HOPS + 2 }, (_, i) => `t${i}:id:via`)
+    const [back] = decodeConditions([`c~in~@${steps.join('>')}~v`])
+    expect(back?.chain).toBeUndefined()
+  })
+
+  it('tells two conditions apart when only the chain differs', () => {
+    expect(sameCondition(condition({ chain: CHAIN }), condition())).toBe(false)
+    expect(sameCondition(condition({ chain: CHAIN }), condition({ chain: CHAIN }))).toBe(true)
   })
 })

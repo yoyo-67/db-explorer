@@ -7,7 +7,7 @@ import { conditionsEqual, isConditionComplete, newCondition } from '#/lib/filter
 import type { Condition } from '#/lib/filter-model'
 import { describePlan } from '#/lib/filter-plan'
 import { $planTableQuery } from '#/server/api'
-import type { ColumnInfo, TableSort } from '#/lib/types'
+import type { ColumnInfo, ForeignKey, TableSort } from '#/lib/types'
 
 /** Wide enough for a condition row plus its value picker; the rail is what is
  *  left when the panel is closed, and stays clickable. */
@@ -39,6 +39,7 @@ export default function FilterPanel({
   open,
   onOpenChange,
   columns,
+  fks,
   schema,
   table,
   draft,
@@ -57,6 +58,8 @@ export default function FilterPanel({
   open: boolean
   onOpenChange: (open: boolean) => void
   columns: ColumnInfo[]
+  /** The schema's foreign keys — what the value picker walks to reach names. */
+  fks?: ForeignKey[]
   schema: string
   table: string
   draft: Condition[]
@@ -180,6 +183,7 @@ export default function FilterPanel({
                 key={condition.id}
                 condition={condition}
                 columns={columns}
+                fks={fks}
                 schema={schema}
                 table={table}
                 otherConditions={complete.filter((c) => c.id !== condition.id)}
