@@ -204,6 +204,7 @@ function GroupPage() {
           group={group}
           damp={search.damp}
           basis={search.basis}
+          tables={lens.graph?.nodes ?? []}
           dampKeys={lens.dampKeys}
           staleness={lens.graph?.staleness}
           edgeCount={lens.edges.length}
@@ -223,6 +224,27 @@ function GroupPage() {
             {members.length} tables · {inside.length} internal ·{' '}
             {stubs.reduce((a, s) => a + s.count, 0)} leaving · {inbound} arriving
           </span>
+          {/* The focus arrives from a search or a boundary link and then stays in
+              the URL, so the ring keeps one node marked long after the question
+              was answered. This is how you put it down. */}
+          {search.focus && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate({
+                  to: '/d/$database/lens/$schema/g/$group',
+                  params: { database, schema, group },
+                  search: (prev) => ({ ...prev, focus: undefined }),
+                  replace: true,
+                })
+              }
+              title={`Stop marking ${search.focus} on the ring`}
+              className="flex items-center gap-1 rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-0.5 text-[11px] text-[var(--sea-ink)]"
+            >
+              <span className="font-mono">{search.focus}</span>
+              <span className="text-[var(--sea-ink-soft)]">clear</span>
+            </button>
+          )}
           {lens.groupDescriptions.get(group) && (
             <span className="w-full text-xs text-[var(--sea-ink-soft)]">
               {lens.groupDescriptions.get(group)}
@@ -469,7 +491,7 @@ function RingNode({
       onMouseLeave={() => onHover(null)}
       style={{
         cursor: 'pointer',
-        opacity: dimmed ? 0.22 : 1,
+        opacity: dimmed && !focused ? 0.22 : 1,
         transition: 'opacity 120ms ease',
       }}
       aria-label={node.table}
@@ -515,7 +537,7 @@ function RingNode({
               ? 'var(--palm)'
               : 'var(--surface-strong)'
         }
-        strokeWidth={hovered ? 2 : related ? 1.5 : focused ? 2.5 : 1}
+        strokeWidth={hovered ? 2 : focused ? 2.5 : related ? 1.5 : 1}
         style={{ transition: 'r 120ms ease, fill-opacity 120ms ease' }}
         pointerEvents="none"
       />
@@ -539,7 +561,7 @@ function RingNode({
         y={labelY + (hovered ? 4 : 3)}
         textAnchor={anchor}
         fontSize={hovered ? 13 : 10}
-        fill="var(--sea-ink)"
+        fill={focused && !hovered ? 'var(--palm)' : 'var(--sea-ink)'}
         fontWeight={hovered || related || focused ? 600 : 400}
         /* Halo: even laddered, a hovered label grows over its neighbours, so each
            one carries its own background rather than relying on space. */

@@ -9,6 +9,8 @@
  *
  *   local/<connection>/<database>/<schema>/table-catalog.json
  *   local/<connection>/<database>/<schema>/schema-map.json
+ *
+ * `<connection>` is the host — see {@link connectionSlug}.
  */
 
 /** Path-safe, lowercase, and stable — the folder name is read by people too. */
@@ -24,18 +26,20 @@ export function slugify(value: string): string {
 /**
  * Which connection, as a folder name.
  *
- * A preset names the connection when one was used, because `devgrounds` beats a
- * slugified RDS hostname for anyone opening the folder. Host and port answer for
- * an ad-hoc connection. The database is deliberately not part of this: switching
- * database keeps you on the same connection, and its metadata should not move.
+ * The connection's own `slug` when it has one, and the host otherwise. The slug
+ * is there because a host is not always an identity: every local cluster is
+ * `localhost`, and two of them — a restored dump and the app's own database,
+ * say — hold entirely different tables under the same name. Naming the folder
+ * at connect time is the only thing that can tell those apart, and it is the
+ * one thing a person can also read.
+ *
+ * The preset's *name* is deliberately not used: a name is a label people edit,
+ * and renaming one moved every file the extractor had written under it. The
+ * database is not used either — switching database keeps you on the same
+ * connection, and its metadata should not move.
  */
-export function connectionSlug(input: {
-  presetName?: string | null
-  host: string
-  port: number
-}): string {
-  if (input.presetName) return slugify(input.presetName)
-  return slugify(`${input.host}-${input.port}`)
+export function connectionSlug(input: { slug?: string | null; host: string }): string {
+  return slugify(input.slug?.trim() || input.host)
 }
 
 /**

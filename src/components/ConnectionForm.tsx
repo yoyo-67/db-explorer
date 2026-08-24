@@ -53,6 +53,7 @@ export default function ConnectionForm({
       user: preset.user,
       password: preset.password,
       ssl: preset.ssl,
+      slug: preset.slug,
     })
     setSelectedPresetName(preset.name)
   }
@@ -275,6 +276,26 @@ export default function ConnectionForm({
             placeholder="password"
           />
         </div>
+      </div>
+
+      <div>
+        <label className={labelClass} htmlFor={fieldId('slug')}>
+          Metadata folder <span className="font-normal text-[var(--sea-ink-soft)]">(optional)</span>
+        </label>
+        <input
+          id={fieldId('slug')}
+          type="text"
+          value={config.slug ?? ''}
+          onChange={(e) => update('slug', e.target.value)}
+          className={inputClass}
+          placeholder={config.host}
+        />
+        <p className="mt-1.5 text-xs text-[var(--sea-ink-soft)]">
+          Which folder under <code>local/</code> holds this server's private schema
+          metadata. Defaults to the host — name it yourself when the host does not
+          identify the server, as two local clusters both called{' '}
+          <code>localhost</code> do.
+        </p>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-[var(--sea-ink-soft)]">

@@ -1,12 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import {
-  $getMapGroups,
-  $getTableActivity,
-  $getTableCatalog,
-  $introspect,
-} from '#/server/api'
+import { $getTableActivity, $introspect } from '#/server/api'
+import { useMapGroups, useTableCatalog } from '#/hooks/useSchemaMetadata'
 import {
   filterGroups,
   groupTablesByCatalog,
@@ -118,17 +114,8 @@ function SidebarBody({
     staleTime: Infinity,
   })
 
-  const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', database, schema],
-    queryFn: () => $getTableCatalog({ data: { database, schema } }),
-    staleTime: Infinity,
-  })
-
-  const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups', database, schema],
-    queryFn: () => $getMapGroups({ data: { database, schema } }),
-    staleTime: Infinity,
-  })
+  const catalogQuery = useTableCatalog(database, schema)
+  const mapGroupsQuery = useMapGroups(database, schema)
 
   // Only asked for while the changed view is on: it is one cheap catalog query,
   // but a stats read on every sidebar render would still be a read nobody asked

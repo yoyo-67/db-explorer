@@ -42,16 +42,9 @@ export async function currentScope(): Promise<{
   connection: string | null
   database: string | null
 }> {
-  const { getLastConfig, getPresetName, resolveDatabase } = await import('#/server/db')
+  const { getLastConfig, resolveDatabase } = await import('#/server/db')
   const config = getLastConfig()
   if (!config) return { connection: null, database: null }
-
-  // The session's own preset name first, then the one `local/presets.json` gives this
-  // server. Without that second look the folder would move the moment a
-  // reconnect forgot the name — and a host that rotates (a managed endpoint
-  // reassigned nightly, say) would take the fallback somewhere new every day.
-  const { findPresetName } = await import('#/server/presets')
-  const presetName = getPresetName() ?? (await findPresetName(config))
 
   // The database THIS request is about, not the one the session happened to
   // connect with. Reading `config.database` here filed every page's metadata
@@ -59,7 +52,7 @@ export async function currentScope(): Promise<{
   // catalog — its tables then fell back to prefix grouping, or to a curated
   // grouping that named none of them.
   return {
-    connection: connectionSlug({ presetName, host: config.host, port: config.port }),
+    connection: connectionSlug({ slug: config.slug, host: config.host }),
     database: resolveDatabase() ?? config.database,
   }
 }

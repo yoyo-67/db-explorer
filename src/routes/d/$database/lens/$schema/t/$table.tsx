@@ -84,6 +84,7 @@ function TableRelationsPage() {
           table={table}
           damp={search.damp}
           basis={search.basis}
+          tables={lens.graph?.nodes ?? []}
           dampKeys={lens.dampKeys}
           staleness={lens.graph?.staleness}
           edgeCount={lens.edges.length}

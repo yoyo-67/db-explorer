@@ -10,16 +10,20 @@ import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
  */
 vi.mock('#/server/db', () => ({
   getLastConfig: () => scope.config,
-  getPresetName: () => scope.presetName,
   resolveDatabase: () => scope.requestDatabase ?? scope.config?.database,
 }))
 
 const scope: {
-  config: { host: string; port: number; database: string; user: string } | null
-  presetName: string | null
+  config: {
+    host: string
+    port: number
+    database: string
+    user: string
+    slug?: string
+  } | null
   /** The database the request named, which is what a page is about. */
   requestDatabase?: string
-} = { config: null, presetName: null }
+} = { config: null }
 
 describe('local metadata lookup', () => {
   let root: string
@@ -34,7 +38,6 @@ describe('local metadata lookup', () => {
       database: 'reporting_db',
       user: 'reporter',
     }
-    scope.presetName = 'Reporting (prod)'
     scope.requestDatabase = undefined
   })
 
@@ -49,7 +52,7 @@ describe('local metadata lookup', () => {
     writeFileSync(path, JSON.stringify(body))
   }
 
-  const scoped = (rest: string) => `reporting-prod/reporting-db/${rest}`
+  const scoped = (rest: string) => `reporting-internal/reporting-db/${rest}`
 
   it('reads the file for this connection, database and schema', async () => {
     write(scoped('public/table-catalog.json'), { groups: [{ name: 'Projects' }], tables: {} })
@@ -74,30 +77,21 @@ describe('local metadata lookup', () => {
     expect(await readTableCatalog('public')).toBeNull()
   })
 
-  it('names the connection from local/presets.json when the session forgot it', async () => {
-    scope.presetName = null
-    mkdirSync(join(root, 'local'), { recursive: true })
-    writeFileSync(
-      join(root, 'local', 'presets.json'),
-      JSON.stringify([
-        {
-          name: 'Reporting (prod)',
-          host: 'reporting.internal',
-          port: 5432,
-          database: 'some_other_db',
-          user: 'reporter',
-          password: 'x',
-        },
-      ]),
-    )
-    write(scoped('public/table-catalog.json'), { groups: [{ name: 'Projects' }], tables: {} })
-    expect((await readTableCatalog('public'))?.groups[0].name).toBe('Projects')
-  })
-
-  it('names an ad-hoc connection by host and port', async () => {
-    scope.presetName = null
-    write('reporting-internal-5432/reporting-db/public/schema-map.json', { tables: {} })
+  // Two connections can share a host — a restored dump beside the app's own
+  // database — and the slug is the only thing that keeps their metadata apart.
+  it('files a connection under its own slug when it has one', async () => {
+    scope.config = {
+      host: 'localhost',
+      port: 5432,
+      database: 'reporting_db',
+      user: 'reporter',
+      slug: 'dump-restore',
+    }
+    write('dump-restore/reporting-db/public/schema-map.json', { tables: {} })
     expect(await readSchemaMap('public')).not.toBeNull()
+
+    scope.config = { ...scope.config, slug: undefined }
+    expect(await readSchemaMap('public')).toBeNull()
   })
 
   // The bug this guards: metadata was filed under the database the session
@@ -105,7 +99,7 @@ describe('local metadata lookup', () => {
   // handed a catalog that named none of its tables.
   it('reads the database the request is about, not the one the session opened', async () => {
     write(
-      'reporting-prod/archive-db/public/table-catalog.json',
+      'reporting-internal/archive-db/public/table-catalog.json',
       { groups: [{ name: 'Archive' }], tables: {} },
     )
     scope.requestDatabase = 'archive_db'

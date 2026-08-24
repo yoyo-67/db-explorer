@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo } from 'react'
-import { $getSchemaGraph, $getTableCatalog } from '#/server/api'
+import { $getSchemaGraph } from '#/server/api'
+import { useTableCatalog } from '#/hooks/useSchemaMetadata'
 import {
   deriveDegrees,
   filterEdgesByBasis,
@@ -51,11 +52,7 @@ export function useLensGraph(
     staleTime: Infinity,
   })
 
-  const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', database, schema],
-    queryFn: () => $getTableCatalog({ data: { database, schema } }),
-    staleTime: Infinity,
-  })
+  const catalogQuery = useTableCatalog(database, schema)
 
   const graph = graphQuery.data
   const dampKeys = useMemo(() => dampKeysFromSearch(opts.damp), [opts.damp])

@@ -16,22 +16,26 @@ describe('slugify', () => {
 })
 
 describe('connectionSlug', () => {
-  it('prefers the preset name, so the folder is readable', () => {
-    expect(
-      connectionSlug({ presetName: 'Reporting (prod)', host: 'h', port: 5432 }),
-    ).toBe('reporting-prod')
-  })
-
-  it('falls back to host and port for an ad-hoc connection', () => {
-    expect(connectionSlug({ presetName: null, host: 'db.internal', port: 5433 })).toBe(
-      'db-internal-5433',
+  it('names the server by host, so renaming a preset does not move the folder', () => {
+    expect(connectionSlug({ host: 'reporting-01.db.internal' })).toBe(
+      'reporting-01-db-internal',
     )
   })
 
-  it('does not move when the database changes', () => {
-    const a = connectionSlug({ presetName: 'reporting', host: 'h', port: 5432 })
-    const b = connectionSlug({ presetName: 'reporting', host: 'h', port: 5432 })
-    expect(a).toBe(b)
+  it('takes the connection\u2019s own slug when it has one', () => {
+    expect(connectionSlug({ slug: 'Dump restore', host: 'localhost' })).toBe('dump-restore')
+  })
+
+  it('tells two connections on one host apart only by their slugs', () => {
+    expect(connectionSlug({ slug: 'app-dev', host: 'localhost' })).not.toBe(
+      connectionSlug({ slug: 'dump-restore', host: 'localhost' }),
+    )
+    expect(connectionSlug({ host: 'localhost' })).toBe(connectionSlug({ host: 'localhost' }))
+  })
+
+  it('falls back to the host for a blank or absent slug', () => {
+    expect(connectionSlug({ slug: '   ', host: 'db.internal' })).toBe('db-internal')
+    expect(connectionSlug({ slug: null, host: 'db.internal' })).toBe('db-internal')
   })
 })
 

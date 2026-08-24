@@ -6,14 +6,12 @@ import type { IndexUsageSample } from '#/lib/types'
 
 vi.mock('#/server/db', () => ({
   getLastConfig: () => scope.config,
-  getPresetName: () => scope.presetName,
   resolveDatabase: () => scope.config?.database,
 }))
 
 const scope: {
   config: { host: string; port: number; database: string; user: string } | null
-  presetName: string | null
-} = { config: null, presetName: null }
+} = { config: null }
 
 const { appendIndexSample, readIndexSamples, SAMPLE_HISTORY_LIMIT } = await import(
   '#/server/index-samples'
@@ -31,13 +29,12 @@ describe('the index sample store', () => {
   let root: string
   let cwd: ReturnType<typeof vi.spyOn>
   const file = () =>
-    join(root, 'local', 'reporting-prod', 'reporting-db', 'public', 'index-samples.json')
+    join(root, 'local', 'db-internal', 'reporting-db', 'public', 'index-samples.json')
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'db-explorer-samples-'))
     cwd = vi.spyOn(process, 'cwd').mockReturnValue(root)
     scope.config = { host: 'db.internal', port: 5432, database: 'reporting_db', user: 'r' }
-    scope.presetName = 'Reporting (prod)'
   })
 
   afterEach(() => {

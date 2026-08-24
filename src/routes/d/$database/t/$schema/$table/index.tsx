@@ -11,14 +11,13 @@ import { parseInspectorTab } from '#/lib/inspect/tabs'
 import type { InspectorTab } from '#/lib/inspect/tabs'
 import {
   $getCrossDbRefs,
-  $getMapGroups,
   $getMapModels,
-  $getTableCatalog,
   $getTablePage,
   $introspect,
   $runReadOnlyQuery,
 } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
+import { useMapGroups, useTableCatalog } from '#/hooks/useSchemaMetadata'
 import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import {
@@ -89,16 +88,8 @@ function formatSort(sort: TableSort | null): string | undefined {
  */
 function ShowInLens({ schema, table }: { schema: string; table: string }) {
   const database = useDatabaseParam()
-  const catalogQuery = useQuery({
-    queryKey: ['tableCatalog', database, schema],
-    queryFn: () => $getTableCatalog({ data: { database, schema } }),
-    staleTime: Infinity,
-  })
-  const mapGroupsQuery = useQuery({
-    queryKey: ['mapGroups', database, schema],
-    queryFn: () => $getMapGroups({ data: { database, schema } }),
-    staleTime: Infinity,
-  })
+  const catalogQuery = useTableCatalog(database, schema)
+  const mapGroupsQuery = useMapGroups(database, schema)
   const target = lensTargetForTable(table, catalogQuery.data, mapGroupsQuery.data)
   const className =
     'rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] no-underline hover:bg-[rgba(79,184,178,0.1)]'

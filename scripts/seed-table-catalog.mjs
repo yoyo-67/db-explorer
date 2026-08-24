@@ -50,7 +50,7 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'unnamed'
 
-const connectionSlug = preset.name ? slugify(preset.name) : slugify(`${preset.host}-${preset.port}`)
+const connectionSlug = slugify(preset.slug?.trim() || preset.host)
 const catalogPath = (database) =>
   resolve('local', connectionSlug, slugify(database), schema, 'table-catalog.json')
 

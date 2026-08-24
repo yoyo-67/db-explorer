@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { DAMP_OFF } from '#/lib/lens-search'
-import type { EdgeBasis, SchemaGraphStaleness } from '#/lib/types'
+import type { EdgeBasis, SchemaGraphNode, SchemaGraphStaleness } from '#/lib/types'
+import LensTableSearch from '#/components/lens/LensTableSearch'
 import TableName from '#/components/TableName'
 
 /**
@@ -14,6 +15,7 @@ export default function LensNav({
   schema,
   group,
   table,
+  tables,
   damp,
   basis,
   dampKeys,
@@ -26,6 +28,8 @@ export default function LensNav({
   group?: string
   /** Set on a table's relations view — the deepest crumb. */
   table?: string
+  /** Every node in the graph, so the search can reach outside this view. */
+  tables: readonly SchemaGraphNode[]
   damp: string | undefined
   basis: EdgeBasis | undefined
   dampKeys: string[]
@@ -90,6 +94,8 @@ export default function LensNav({
       </nav>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--sea-ink-soft)]">
+        <LensTableSearch schema={schema} tables={tables} damp={damp} basis={basis} />
+
         <label className="flex items-center gap-1.5" title={DAMP_HINT}>
           <input
             type="checkbox"

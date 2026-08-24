@@ -20,6 +20,9 @@ export interface ConnectionConfig {
   user: string
   password: string
   ssl?: boolean
+  /** Which folder under `local/` this connection's private metadata lives in.
+   *  Optional — see `connectionSlug` in `#/lib/local-metadata-path`. */
+  slug?: string
 }
 
 /** Where a connected session should land: the first table worth showing, or why
