@@ -6,7 +6,9 @@ import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useLensGraph } from '#/hooks/useLensGraph'
 import { validateLensSearch } from '#/lib/lens-search'
 import {
+  arrowHead,
   boundaryStubs,
+  chordEnds,
   chordPath,
   internalEdges,
   labelLadder,
@@ -51,6 +53,10 @@ const HOVER_SCALE = 1.9
 const HOVER_BONUS = 7
 /** Invisible disc under each node — hover/click without pixel hunting. */
 const MIN_HIT_RADIUS = 15
+/** Arrowhead length. An FK has a direction and the ring never showed it: the
+ *  head sits on the *referenced* table's edge, where the eye ends the line. */
+const ARROW_SIZE = 7.5
+const ARROW_SIZE_LIT = 10
 
 function GroupPage() {
   const database = useDatabaseParam()
@@ -246,8 +252,9 @@ function GroupPage() {
         {lens.graph && members.length > 0 && (
           <>
             <p className="text-[11px] text-[var(--sea-ink-soft)]">
-              solid = declared constraint · dashed = inferred (model or convention) ·
-              node area ∝ log(1 + referencing tables) · amber = leaves the Group,
+              arrow points at the referenced table (the FK's target) · solid =
+              declared constraint · dashed = inferred (model or convention) · node
+              area ∝ log(1 + referencing tables) · amber = leaves the Group,
               stubbed at the boundary
             </p>
 
@@ -276,17 +283,33 @@ function GroupPage() {
                   const touched =
                     !hovered || e.fromTable === hovered || e.toTable === hovered
                   const base = e.basis === 'declared' ? 0.75 : 0.45
+                  const lit = !!hovered && touched
+                  const opacity = hovered ? (touched ? 0.95 : 0.07) : base
+                  const ends = chordEnds(from, to)
                   return (
-                    <path
-                      key={`${e.fromTable}.${e.fromColumn}`}
-                      d={chordPath(from, to)}
-                      fill="none"
-                      stroke="var(--lagoon-deep)"
-                      strokeOpacity={hovered ? (touched ? 0.95 : 0.07) : base}
-                      strokeWidth={hovered && touched ? 2 : 1}
-                      strokeDasharray={e.basis === 'declared' ? undefined : '4 3'}
-                      style={{ transition: 'stroke-opacity 120ms ease' }}
-                    />
+                    <g key={`${e.fromTable}.${e.fromColumn}`}>
+                      <path
+                        d={chordPath(from, to)}
+                        fill="none"
+                        stroke="var(--lagoon-deep)"
+                        strokeOpacity={opacity}
+                        strokeWidth={lit ? 2 : 1}
+                        strokeDasharray={e.basis === 'declared' ? undefined : '4 3'}
+                        style={{ transition: 'stroke-opacity 120ms ease' }}
+                      />
+                      {/* Head, not a marker: markers ignore stroke-opacity, so the
+                          dimmed chords would keep solid arrows. */}
+                      <path
+                        d={arrowHead(
+                          { x: ends.x2, y: ends.y2 },
+                          ends.angle,
+                          lit ? ARROW_SIZE_LIT : ARROW_SIZE,
+                        )}
+                        fill="var(--lagoon-deep)"
+                        fillOpacity={opacity}
+                        style={{ transition: 'fill-opacity 120ms ease' }}
+                      />
+                    </g>
                   )
                 })}
 
@@ -565,6 +588,14 @@ function StubGroup({
           />
         )
       })}
+      {/* One head per box, not per line: every line into a box converges on the
+          same anchor, so per-edge arrows would just stack up. */}
+      <path
+        d={arrowHead({ x, y: anchorY }, 0, lit ? ARROW_SIZE_LIT : ARROW_SIZE)}
+        fill="#c07a24"
+        fillOpacity={hovered ? (lit ? 0.95 : 0.06) : 0.4}
+        style={{ transition: 'fill-opacity 120ms ease' }}
+      />
       <g
         onClick={onOpen}
         onMouseEnter={() => onHover(stub.targetTable)}

@@ -194,16 +194,57 @@ export function stubPath(
   return `M${from.x},${from.y} C ${midX},${from.y} ${midX},${to.y} ${to.x},${to.y}`
 }
 
-/** Straight chord between two ring nodes, trimmed to each node's edge. */
-export function chordPath(from: RadialNode, to: RadialNode): string {
+export interface ChordEnds {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  /** Heading from the referencing node to the referenced one, radians. */
+  angle: number
+}
+
+/** Where a chord meets each node's edge, and which way it travels. */
+export function chordEnds(from: RadialNode, to: RadialNode): ChordEnds {
   const dx = to.x - from.x
   const dy = to.y - from.y
   const len = Math.hypot(dx, dy) || 1
   const ux = dx / len
   const uy = dy / len
-  const x1 = round(from.x + ux * from.radius)
-  const y1 = round(from.y + uy * from.radius)
-  const x2 = round(to.x - ux * to.radius)
-  const y2 = round(to.y - uy * to.radius)
+  return {
+    x1: round(from.x + ux * from.radius),
+    y1: round(from.y + uy * from.radius),
+    x2: round(to.x - ux * to.radius),
+    y2: round(to.y - uy * to.radius),
+    angle: Math.atan2(dy, dx),
+  }
+}
+
+/** Straight chord between two ring nodes, trimmed to each node's edge. */
+export function chordPath(from: RadialNode, to: RadialNode): string {
+  const { x1, y1, x2, y2 } = chordEnds(from, to)
   return `M${x1},${y1} L${x2},${y2}`
+}
+
+/** Half-angle of the arrowhead's point — narrow enough to read at 7px. */
+const ARROW_SPREAD = 0.42
+
+/**
+ * A filled triangle pointing along `angle`, tip at `tip`.
+ *
+ * Drawn as geometry rather than an SVG `<marker>` on purpose: a marker's fill
+ * ignores the path's `stroke-opacity`, so every faded edge would keep a
+ * full-strength arrowhead and the hover dimming would stop reading.
+ */
+export function arrowHead(
+  tip: { x: number; y: number },
+  angle: number,
+  size: number,
+): string {
+  const back = (spread: number) => ({
+    x: round(tip.x - size * Math.cos(angle + spread)),
+    y: round(tip.y - size * Math.sin(angle + spread)),
+  })
+  const a = back(ARROW_SPREAD)
+  const b = back(-ARROW_SPREAD)
+  return `M${round(tip.x)},${round(tip.y)} L${a.x},${a.y} L${b.x},${b.y} Z`
 }

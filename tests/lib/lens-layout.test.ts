@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  arrowHead,
   boundaryStubs,
+  chordEnds,
+  chordPath,
   internalEdges,
   labelLadder,
   radialLayout,
@@ -183,5 +186,53 @@ describe('labelLadder', () => {
   it('keeps node order within a column', () => {
     const slots = labelLadder([n('late', 160, 90), n('early', 160, 30)], opts)
     expect(slots.get('early')!.y).toBeLessThan(slots.get('late')!.y)
+  })
+})
+
+describe('chordEnds', () => {
+  const from: RadialNode = {
+    table: 'a',
+    x: 100,
+    y: 200,
+    radius: 10,
+    labelAnchor: 'start',
+    inDegree: 0,
+    outDegree: 0,
+    selfRefs: 0,
+  }
+  const to: RadialNode = { ...from, table: 'b', x: 300, y: 200, radius: 20 }
+
+  it('trims the chord to each node edge', () => {
+    expect(chordEnds(from, to)).toMatchObject({ x1: 110, y1: 200, x2: 280, y2: 200 })
+  })
+
+  it('reports the direction the chord travels, from referencing to referenced', () => {
+    expect(chordEnds(from, to).angle).toBeCloseTo(0)
+    expect(Math.abs(chordEnds(to, from).angle)).toBeCloseTo(Math.PI)
+  })
+
+  it('agrees with the path chordPath draws', () => {
+    const { x1, y1, x2, y2 } = chordEnds(from, to)
+    expect(chordPath(from, to)).toBe(`M${x1},${y1} L${x2},${y2}`)
+  })
+})
+
+describe('arrowHead', () => {
+  it('puts the point at the tip and the tail behind it', () => {
+    const d = arrowHead({ x: 100, y: 50 }, 0, 8)
+    expect(d.startsWith('M100,50 ')).toBe(true)
+    const xs = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => Number(m[1]))
+    // Both back corners sit upstream of the tip, never past it.
+    expect(Math.max(...xs.slice(1))).toBeLessThan(100)
+  })
+
+  it('turns with the angle so a chord and a stub can share it', () => {
+    const down = arrowHead({ x: 0, y: 0 }, Math.PI / 2, 8)
+    const ys = [...down.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => Number(m[2]))
+    expect(Math.max(...ys.slice(1))).toBeLessThan(0)
+  })
+
+  it('closes the triangle so it fills as one mark', () => {
+    expect(arrowHead({ x: 0, y: 0 }, 0, 8).endsWith('Z')).toBe(true)
   })
 })
