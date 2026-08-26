@@ -17,8 +17,9 @@
  *                                       [--schema public] [--force]
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname } from 'node:path'
 import pg from 'pg'
+import { clientConfig, loadPreset, metadataPath } from './lib/local-metadata.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
@@ -33,26 +34,10 @@ if (!from || !to) {
   process.exit(1)
 }
 
-const presets = JSON.parse(readFileSync(resolve('presets.json'), 'utf-8'))
-const preset = presetName
-  ? presets.find((p) => p.name === presetName)
-  : (presets.find((p) => !p.host.startsWith('127.') && !p.host.startsWith('localhost')) ??
-    presets[0])
-if (!preset) {
-  console.error(`No preset named ${presetName}`)
-  process.exit(1)
-}
+const preset = loadPreset(presetName)
 
-/** Kept in step with `src/lib/local-metadata-path.ts`, the reader's authority. */
-const slugify = (value) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'unnamed'
-
-const connectionSlug = slugify(preset.slug?.trim() || preset.host)
 const catalogPath = (database) =>
-  resolve('local', connectionSlug, slugify(database), schema, 'table-catalog.json')
+  metadataPath(preset, database, schema, 'table-catalog.json')
 
 const sourcePath = catalogPath(from)
 if (!existsSync(sourcePath)) {
@@ -65,14 +50,7 @@ if (existsSync(targetPath) && !force) {
   process.exit(1)
 }
 
-const client = new pg.Client({
-  host: preset.host,
-  port: preset.port,
-  database: to,
-  user: preset.user,
-  password: preset.password,
-  ssl: preset.ssl ? { rejectUnauthorized: false } : undefined,
-})
+const client = new pg.Client(clientConfig(preset, to))
 await client.connect()
 const live = new Set(
   (
@@ -110,7 +88,7 @@ const tables = Object.fromEntries(
   Object.entries(curated.tables ?? {}).filter(([name]) => live.has(name)),
 )
 
-mkdirSync(resolve(targetPath, '..'), { recursive: true })
+mkdirSync(dirname(targetPath), { recursive: true })
 writeFileSync(
   targetPath,
   JSON.stringify(

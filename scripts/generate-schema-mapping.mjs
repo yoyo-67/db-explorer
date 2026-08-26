@@ -26,9 +26,10 @@
  *   node scripts/generate-schema-mapping.mjs [--force] [--preset NAME]
  *                                           [--database NAME] [--schema NAME]
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { dirname } from 'node:path'
 import pg from 'pg'
+import { clientConfig, connectionSlug, loadPreset, metadataPath } from './lib/local-metadata.mjs'
 
 const args = process.argv.slice(2)
 const force = args.includes('--force')
@@ -37,39 +38,15 @@ const onlySchema = flag('--schema')
 const onlyDatabase = flag('--database')
 const presetName = flag('--preset')
 
-const presets = JSON.parse(readFileSync(resolve('presets.json'), 'utf-8'))
-const preset = presetName
-  ? presets.find((p) => p.name === presetName)
-  : (presets.find((p) => !p.host.startsWith('127.') && !p.host.startsWith('localhost')) ??
-    presets[0])
-if (!preset) {
-  console.error(`No preset named ${presetName}. Known: ${presets.map((p) => p.name).join(', ')}`)
-  process.exit(1)
-}
+const preset = loadPreset(presetName)
 
-/**
- * Folder names, kept in step with `src/lib/local-metadata-path.ts` — that module
- * is the authority the app reads through, this is the writer's copy of it. The
- * paths written are printed below so a drift shows up as a file the app cannot
- * find.
- */
-const slugify = (value) =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'unnamed'
-
-const connectionSlug = slugify(preset.slug?.trim() || preset.host)
+/** Folder names come from `scripts/lib/local-metadata.mjs`, which mirrors the
+ *  reader's authority in `src/lib/local-metadata-path.ts`. The paths written are
+ *  printed below, so a drift shows up as a file the app cannot find. */
+const connection = connectionSlug(preset)
 
 const connect = async (database) => {
-  const client = new pg.Client({
-    host: preset.host,
-    port: preset.port,
-    database,
-    user: preset.user,
-    password: preset.password,
-    ssl: preset.ssl ? { rejectUnauthorized: false } : undefined,
-  })
+  const client = new pg.Client(clientConfig(preset, database))
   await client.connect()
   return client
 }
@@ -241,7 +218,7 @@ if (databases.length === 0) {
   process.exit(1)
 }
 
-console.log(`connection ${connectionSlug} — ${databases.length} database(s)\n`)
+console.log(`connection ${connection} — ${databases.length} database(s)\n`)
 
 for (const database of databases) {
   let client
@@ -258,8 +235,8 @@ for (const database of databases) {
 
   for (const schema of schemas) {
     const name = schema.schema_name
-    const dir = resolve('local', connectionSlug, slugify(database), name)
-    const path = resolve(dir, 'table-catalog.json')
+    const path = metadataPath(preset, database, name, 'table-catalog.json')
+    const dir = dirname(path)
     if (existsSync(path) && !force) {
       console.log(`${database}/${name}`.padEnd(56) + 'skipped — exists (--force to replace)')
       continue

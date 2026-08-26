@@ -141,10 +141,34 @@ the shape is:
 already explains. Live constraints always win, and anything unresolved is left
 undrawn rather than guessed at.
 
+**`local/<connection>/<database>/<schema>/table-inventory.json`** is the other
+side of the catalog: what the schema actually has, written by
+`npm run catalog:sync` and never by hand. Every live table with its kind, row
+estimate, columns, declared foreign keys in both directions, comment, and the
+group and description the catalog currently gives it — plus an `unsorted` list of
+the ones no group names. That list is the worklist for curating the catalog after
+a migration, and it is what the `organize-table-catalog` skill works from.
+
 ## Scripts
 
 ```bash
 npm run dev      # dev server on :3001
 npm run build    # production build
 npm run test     # run the Vitest suite
+
+# refresh one schema's inventory, and prune names the schema no longer has
+# out of its catalog
+npm run catalog:sync -- --preset "Devgrounds" --database mydb --schema public
 ```
+
+`catalog:sync` defaults to the first remote preset in `local/presets.json`, that
+preset's database, and schema `public`; `--schema a,b` does several, and
+`--dry-run` reports without writing. It prunes only — dropped tables and their
+descriptions leave the catalog, and new tables are left for a person (or the
+`organize-table-catalog` skill) to file, because a generated bucket in a curated
+file reads as curation.
+
+The other two scripts under `scripts/` are one-offs for bootstrapping a catalog:
+`generate-schema-mapping.mjs` writes a derived grouping for every schema on a
+connection that has none, and `seed-table-catalog.mjs` carries one database's
+curated groups over to another database holding overlapping tables.
