@@ -1,3 +1,4 @@
+import { brotliCompressSync } from 'node:zlib'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockQuery = vi.fn()
@@ -37,6 +38,8 @@ vi.mock('#/server/local-metadata', () => ({
 const {
   getTablePage,
   getRandomRow,
+  getRawCell,
+  RAW_CELL_BYTE_LIMIT,
   getRowChildren,
   getRowDetail,
   EXACT_COUNT_THRESHOLD,
@@ -49,11 +52,11 @@ beforeEach(() => {
   mockQueryWithTimeout.mockReset()
 })
 
-function mockColumns(names: string[]) {
+function mockColumns(names: string[], types: Record<string, string> = {}) {
   mockQuery.mockResolvedValueOnce({
     rows: names.map((name) => ({
       column_name: name,
-      data_type: 'text',
+      data_type: types[name] ?? 'text',
       is_nullable: 'YES',
     })),
   })
@@ -354,13 +357,14 @@ function fkRow(fromTable: string, fromColumn: string, toTable: string, toColumn:
  */
 function mockRowDetailMetadata(opts: {
   columns: string[]
+  types?: Record<string, string>
   root: Record<string, unknown> | null
   fks?: Array<ReturnType<typeof fkRow>>
   stats?: Record<string, number>
   indexed?: string[]
   table?: string
 }) {
-  mockColumns(opts.columns)
+  mockColumns(opts.columns, opts.types)
   mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] }) // resolvePrimaryKey
   mockQuery.mockResolvedValueOnce({ rows: opts.root ? [opts.root] : [] }) // root row
   mockQuery.mockResolvedValueOnce({ rows: opts.fks ?? [] }) // getForeignKeys
@@ -483,5 +487,129 @@ describe('getRandomRow sampling', () => {
     expect(sample.row).toBeNull()
     expect(sample.timedOut).toBe(false)
     expect(sample.columns.map((c) => c.name)).toEqual(['id'])
+  })
+})
+
+/**
+ * Nothing in the catalog says a `bytea` was compressed by whatever wrote it, so
+ * every screen that reads rows has to find out the same way — from a value.
+ */
+describe('compressed bytea columns', () => {
+  const events = JSON.stringify([{ event_type: 'ANNOTATIONS_DELETED', num_elements_affected: 1 }])
+  const compressed = () => brotliCompressSync(Buffer.from(events))
+
+  it('labels the column and ships the decoded document on a table page', async () => {
+    mockColumns(['id', 'events'], { events: 'bytea' })
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'a', events: compressed() }] })
+    mockApprox(1)
+    mockQuery.mockResolvedValueOnce({ rows: [{ c: '1' }] })
+
+    const page = await getTablePage({ schema: 'public', table: 'activity_area_state' })
+
+    expect(page.columns[1].compression).toEqual({ codec: 'brotli', encoding: 'json' })
+    expect(page.rows[0].events).toBe(events)
+  })
+
+  it('leaves an ordinary bytea column as hex', async () => {
+    const thumb = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    mockColumns(['id', 'thumb'], { thumb: 'bytea' })
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 'a', thumb }] })
+    mockApprox(1)
+    mockQuery.mockResolvedValueOnce({ rows: [{ c: '1' }] })
+
+    const page = await getTablePage({ schema: 'public', table: 'image' })
+
+    expect(page.columns[1].compression).toBeUndefined()
+    expect(page.rows[0].thumb).toBe(thumb.toString('hex'))
+  })
+
+  it('labels the column and decodes the root row on a row page', async () => {
+    mockRowDetailMetadata({
+      columns: ['id', 'events'],
+      types: { events: 'bytea' },
+      root: { id: 'abc', events: compressed() },
+    })
+
+    const detail = await getRowDetail('public', 'activity_area_state', 'abc')
+
+    expect(detail.columns[1].compression).toEqual({ codec: 'brotli', encoding: 'json' })
+    expect(detail.root?.events).toBe(events)
+  })
+
+  it('decodes the row a random draw returns', async () => {
+    mockColumns(['id', 'events'], { events: 'bytea' })
+    mockApprox(900)
+    mockQuery.mockResolvedValueOnce({ rows: [{ column_name: 'id' }] })
+    mockTimeoutQuery({ rows: [{ id: 'abc', events: compressed() }] })
+
+    const sample = await getRandomRow('public', 'activity_area_state')
+
+    expect(sample.columns[1].compression).toEqual({ codec: 'brotli', encoding: 'json' })
+    expect(sample.row?.events).toBe(events)
+  })
+})
+
+/**
+ * The hex a decoded column no longer shows. Fetched per cell, on request, so a
+ * page of decoded documents does not also carry the bytes behind them.
+ */
+describe('getRawCell', () => {
+  const request = {
+    schema: 'public',
+    table: 'activity_area_state',
+    column: 'events',
+    keyColumn: 'id',
+    keyValue: 'abc',
+  }
+
+  function mockByteaColumn(dataType = 'bytea') {
+    mockQuery.mockResolvedValueOnce({ rows: [{ data_type: dataType }] })
+  }
+
+  it('reads the bytes hex-encoded and capped in SQL, keyed on the column given', async () => {
+    mockByteaColumn()
+    mockQuery.mockResolvedValueOnce({ rows: [{ hex: '1b6102', byte_length: '3' }] })
+
+    const cell = await getRawCell(request)
+
+    expect(cell).toEqual({ hex: '1b6102', byteLength: 3, truncated: false })
+    const sql = mockQuery.mock.calls[1][0] as string
+    expect(sql).toContain('encode(')
+    expect(sql).toContain('octet_length')
+    expect(sql).toContain(String(RAW_CELL_BYTE_LIMIT))
+    expect(sql).toContain(`WHERE id = 'abc'`)
+  })
+
+  it('reports the cut when the value is longer than the cap', async () => {
+    mockByteaColumn()
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ hex: 'aa'.repeat(RAW_CELL_BYTE_LIMIT), byte_length: String(RAW_CELL_BYTE_LIMIT * 2) }],
+    })
+
+    const cell = await getRawCell(request)
+
+    expect(cell).toMatchObject({ truncated: true, byteLength: RAW_CELL_BYTE_LIMIT * 2 })
+  })
+
+  it('has no answer when the key matches no row', async () => {
+    mockByteaColumn()
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+
+    await expect(getRawCell(request)).resolves.toBeNull()
+  })
+
+  it('refuses a column that does not hold bytes', async () => {
+    mockByteaColumn('text')
+
+    await expect(getRawCell(request)).rejects.toThrow(/bytea/)
+    // Nothing was read from the table itself.
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a column the table does not have', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+
+    await expect(getRawCell(request)).rejects.toThrow(/events/)
+    expect(mockQuery).toHaveBeenCalledTimes(1)
   })
 })

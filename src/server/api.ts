@@ -10,6 +10,7 @@ import {
   getTablePreview,
   getForeignKeys,
   getRandomRow,
+  getRawCell,
   getChildCount,
   getRowDetail,
   getRowChildren,
@@ -29,6 +30,7 @@ import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
 import { readPresets, removePreset, upsertPreset } from '#/server/presets'
 import { runWithDatabase } from '#/server/db-context'
+import type { RawCellRequest } from '#/server/functions'
 import type { RowEdit } from '#/lib/row-edit'
 import type {
   ConnectionConfig,
@@ -221,6 +223,15 @@ export const $getRelatedValues = createServerFn({ method: 'GET' })
 export const $getRandomRow = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema: string; table: string }) => data)
   .handler(scoped((data) => getRandomRow(data.schema, data.table)))
+
+/**
+ * The stored bytes of one cell, as hex — what a compressed column's page no
+ * longer carries. Asked per cell, on a click, so the bytes are fetched by
+ * whoever wants to see them and by nobody else.
+ */
+export const $getRawCell = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & RawCellRequest) => data)
+  .handler(scoped((data) => getRawCell(data)))
 
 export const $getForeignKeys = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)

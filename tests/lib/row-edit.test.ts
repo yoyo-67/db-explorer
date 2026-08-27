@@ -142,8 +142,16 @@ describe('fieldBlock — whether one column can be edited', () => {
     expect(fieldBlock(col('tags', 'ARRAY'), ['a'], 'id')).toBeNull()
   })
 
+  it('stops a column whose bytes were decoded for display', () => {
+    // The box would hold the decoded document, and writing it back would store
+    // that text as the bytes — the compressed original overwritten by a
+    // rendering of itself.
+    const events = col('events', 'bytea', { compression: { codec: 'brotli', encoding: 'json' } })
+    expect(fieldBlock(events, '[]', 'id')).toBe('compressed')
+  })
+
   it('explains every block in a sentence', () => {
-    for (const block of ['primary-key', 'generated', 'nested'] as const) {
+    for (const block of ['primary-key', 'generated', 'nested', 'compressed'] as const) {
       expect(describeFieldBlock(block).length).toBeGreaterThan(10)
     }
   })

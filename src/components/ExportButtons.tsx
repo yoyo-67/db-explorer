@@ -20,6 +20,14 @@ export default function ExportButtons({
   const [copied, setCopied] = useState(false)
   const disabled = rows.length === 0
 
+  // An export is the view, and a compressed column's view is its decoded
+  // document — so a dump is not byte-faithful for those columns, and says so.
+  const decoded = columns.filter((col) => col.compression).map((col) => col.name)
+  const note =
+    decoded.length > 0
+      ? ` — ${decoded.join(', ')} ${decoded.length > 1 ? 'carry' : 'carries'} the decoded document, not the stored bytes`
+      : ''
+
   const copyJson = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(rows, null, 2))
@@ -50,7 +58,7 @@ export default function ExportButtons({
         onClick={copyJson}
         disabled={disabled}
         className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--sea-ink)] hover:bg-[var(--surface-strong)] disabled:opacity-40"
-        title="Copy current view as JSON"
+        title={`Copy current view as JSON${note}`}
       >
         {copied ? 'Copied' : 'Copy JSON'}
       </button>
@@ -59,7 +67,7 @@ export default function ExportButtons({
         onClick={downloadCsv}
         disabled={disabled}
         className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--sea-ink)] hover:bg-[var(--surface-strong)] disabled:opacity-40"
-        title="Download current view as CSV"
+        title={`Download current view as CSV${note}`}
       >
         CSV
       </button>

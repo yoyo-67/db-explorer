@@ -11,6 +11,8 @@ import { useAppSettings } from '#/hooks/useAppSettings'
 import { describeRowBlock, fieldText, rowBlock } from '#/lib/row-edit'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
 import TableName from '#/components/TableName'
+import CompressionBadge from '#/components/CompressionBadge'
+import RawBytes from '#/components/RawBytes'
 
 interface DataTableProps {
   columns: ColumnInfo[]
@@ -176,6 +178,8 @@ function ColumnHeader({
           {col.dataType}
         </span>
 
+        <CompressionBadge compression={col.compression} />
+
         {col.references && (
           <span
             title={`References ${col.references.table}.${col.references.column}${
@@ -265,6 +269,14 @@ function ExpandableRow({
 
   // Armed by the setting, allowed by the data. Both have to hold: the setting is
   // the user's stance, and the rest is whether this row can be addressed at all.
+  // Re-reading a cell needs the same three facts an edit does: which relation,
+  // and a key that addresses this row inside it.
+  const pkText = pkColumn ? fieldText(row[pkColumn] ?? null) : null
+  const rawSource =
+    schema && table && pkColumn && pkText !== null
+      ? { schema, table, keyColumn: pkColumn, keyValue: pkText }
+      : null
+
   const armed = settings.editMode && columnsEditable && !!schema && !!table
   const block = armed
     ? rowBlock({
@@ -358,6 +370,7 @@ function ExpandableRow({
                     target={target}
                     crossTarget={col.crossRef}
                     variant={isPkCell ? 'pk' : 'fk'}
+                    rawSource={rawSource ?? undefined}
                   />
                 )
               })}
@@ -377,6 +390,7 @@ function ExpandedField({
   target,
   crossTarget,
   variant,
+  rawSource,
 }: {
   col: ColumnInfo
   value: JsonValue
@@ -384,6 +398,9 @@ function ExpandedField({
   target?: { schema: string; table: string; column: string }
   crossTarget?: ColumnInfo['crossRef']
   variant: 'fk' | 'pk'
+  /** How to re-read this cell's stored bytes, where the row can be addressed at
+   *  all. Absent for a preview or a keyless row, which has no cell to ask for. */
+  rawSource?: { schema: string; table: string; keyColumn: string; keyValue: string }
 }) {
   // Covers a `text` column carrying a JSON document as well as a real json/jsonb
   // one — same layout either way, since the declared type does not decide it.
@@ -393,6 +410,11 @@ function ExpandedField({
       <span className="whitespace-nowrap py-0.5 text-xs font-semibold text-[var(--sea-ink-soft)]">
         {col.name}
         <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">{col.dataType}</span>
+        {col.compression && (
+          <span className="ml-1 align-middle">
+            <CompressionBadge compression={col.compression} />
+          </span>
+        )}
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
         {pretty !== null ? (
@@ -406,6 +428,15 @@ function ExpandedField({
             target={target}
             crossTarget={crossTarget}
             variant={variant}
+          />
+        )}
+        {col.compression && rawSource && (
+          <RawBytes
+            schema={rawSource.schema}
+            table={rawSource.table}
+            column={col.name}
+            keyColumn={rawSource.keyColumn}
+            keyValue={rawSource.keyValue}
           />
         )}
       </span>

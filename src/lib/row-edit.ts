@@ -44,7 +44,7 @@ export interface RowEdit {
 export type RowBlock = 'view' | 'no-pk' | 'null-pk'
 
 /** Why one column is not editable. */
-export type FieldBlock = 'primary-key' | 'generated' | 'nested'
+export type FieldBlock = 'primary-key' | 'generated' | 'nested' | 'compressed'
 
 export function describeRowBlock(block: RowBlock): string {
   switch (block) {
@@ -65,6 +65,8 @@ export function describeFieldBlock(block: FieldBlock): string {
       return 'The database computes this column; it takes no value from a client.'
     case 'nested':
       return 'This value nests — an array of arrays or of documents. A text box cannot round-trip it back to the same literal, so it is shown and left alone.'
+    case 'compressed':
+      return 'These bytes are a compressed document, shown decoded. A box holding the decoded text would write that text back as the bytes, replacing the original with a rendering of it.'
   }
 }
 
@@ -92,6 +94,7 @@ export function fieldBlock(
 ): FieldBlock | null {
   if (col.name === pkColumn) return 'primary-key'
   if (col.isGenerated) return 'generated'
+  if (col.compression) return 'compressed'
   if (!isRoundTrippable(value)) return 'nested'
   return null
 }

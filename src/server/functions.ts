@@ -13,7 +13,8 @@ import {
   compileConditions,
 } from '#/server/filter-sql'
 import { appendPerfEntry } from '#/server/perf-log'
-import { sanitizeRow, sanitizeRows } from '#/server/json-row'
+import { sanitizeRows } from '#/server/json-row'
+import { sanitizeRowsWithBlobs } from '#/server/blob-columns'
 import { mergeSchemaGraph } from '#/lib/schema-graph'
 import type { CandidateEdge } from '#/lib/schema-graph'
 import { resolveSchemaFks } from '#/lib/schema-fks'
@@ -700,11 +701,15 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 
   const totalPages = Math.max(1, Math.ceil(count / pageSize))
 
+  // A compressed `bytea` is only knowable from a value, so the columns this page
+  // reports are the ones the rows came back labelled with.
+  const decoded = sanitizeRowsWithBlobs(columns, dataResult.rows)
+
   return {
     schema,
     table,
-    columns,
-    rows: sanitizeRows(dataResult.rows),
+    columns: decoded.columns,
+    rows: decoded.rows,
     page,
     pageSize,
     count,
@@ -732,6 +737,74 @@ export const DISTINCT_VALUES_TIMEOUT_MS = 30_000
  * one-way door. Every other column's filter applies, so the picker offers what
  * the grid can actually show.
  */
+/** How many bytes of a blob the raw view fetches. Enough to read a header or a
+ *  short document, small enough that asking for it is never the expensive part. */
+export const RAW_CELL_BYTE_LIMIT = 64 * 1024
+
+export interface RawCellRequest {
+  schema: string
+  table: string
+  column: string
+  /** The column the row is addressed by — the page's primary key. */
+  keyColumn: string
+  keyValue: string
+}
+
+export interface RawCell {
+  hex: string
+  /** The whole value's length, not the length of `hex` — the cut is reported,
+   *  never hidden. */
+  byteLength: number
+  truncated: boolean
+}
+
+/**
+ * The stored bytes of one `bytea` cell, as hex.
+ *
+ * A page whose compressed column is shown decoded no longer carries the hex, so
+ * this answers for one cell at a time. `substring` does the cut inside Postgres:
+ * a 200 MB blob must not cross the wire to be truncated on arrival.
+ */
+export async function getRawCell(req: RawCellRequest): Promise<RawCell | null> {
+  const typeResult = await query(
+    `
+    SELECT data_type
+    FROM information_schema.columns
+    WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+  `,
+    [req.schema, req.table, req.column],
+  )
+  const dataType = typeResult.rows[0]?.data_type as string | undefined
+  if (!dataType) {
+    throw new Error(`${req.schema}.${req.table} has no column ${req.column}.`)
+  }
+  if (dataType.toLowerCase() !== 'bytea') {
+    throw new Error(`${req.column} is ${dataType}, not bytea — it holds no bytes to show.`)
+  }
+
+  const sql = format(
+    'SELECT encode(substring(%I from 1 for %s), %L) AS hex, octet_length(%I) AS byte_length FROM %I.%I WHERE %I = %L LIMIT 1',
+    req.column,
+    RAW_CELL_BYTE_LIMIT,
+    'hex',
+    req.column,
+    req.schema,
+    req.table,
+    req.keyColumn,
+    req.keyValue,
+  )
+  const result = await query(sql)
+  const row = result.rows[0]
+  if (!row) return null
+
+  const byteLength = Number(row.byte_length ?? 0)
+  return {
+    hex: String(row.hex ?? ''),
+    byteLength,
+    truncated: byteLength > RAW_CELL_BYTE_LIMIT,
+  }
+}
+
 export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnValues> {
   const schema = req.schema || DEFAULT_SCHEMA
   const { table, column } = req
@@ -1014,12 +1087,13 @@ export async function getRandomRow(
       continue
     }
     if (rows.length > 0) {
+      const drawn = sanitizeRowsWithBlobs(columns, [rows[0]])
       return {
         schema,
         table,
-        columns,
+        columns: drawn.columns,
         pkColumn,
-        row: sanitizeRow(rows[0]),
+        row: drawn.rows[0] ?? null,
         strategy,
         timedOut: false,
       }
@@ -1246,7 +1320,7 @@ export async function getRowDetail(
   if (!column) column = pkColumn && validColumnNames.has(pkColumn) ? pkColumn : null
   if (!column && validColumnNames.has(FALLBACK_PK)) column = FALLBACK_PK
 
-  const root = column
+  const rawRoot = column
     ? await (async () => {
         const rootQuery = format(
           'SELECT * FROM %I.%I WHERE %I = %L LIMIT 1',
@@ -1256,9 +1330,13 @@ export async function getRowDetail(
           rowId,
         )
         const rootResult = await query(rootQuery)
-        return rootResult.rows[0] ? sanitizeRow(rootResult.rows[0]) : null
+        return (rootResult.rows[0] as Record<string, unknown> | undefined) ?? null
       })()
     : null
+
+  const decoded = sanitizeRowsWithBlobs(columns, rawRoot ? [rawRoot] : [])
+  const rootColumns = decoded.columns
+  const root = decoded.rows[0] ?? null
 
   const { incoming, outgoing, rowCounts, indexedColumns } = await fetchTraceEdges(
     schema,
@@ -1273,7 +1351,7 @@ export async function getRowDetail(
 
   const outgoingRefs = root ? await resolveOutgoing(schema, root, outgoing) : []
 
-  return { schema, table, columns, root, children, outgoing: outgoingRefs }
+  return { schema, table, columns: rootColumns, root, children, outgoing: outgoingRefs }
 }
 
 /**

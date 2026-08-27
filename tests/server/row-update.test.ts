@@ -149,6 +149,22 @@ describe('previewRowUpdate — the statement, checked against the catalog', () =
     expect(result.ok === false && result.error).toContain('slug')
   })
 
+  it('refuses a bytea column, whose bytes no text box can state', async () => {
+    // The editor sends the text Postgres will read, and text cast to `bytea` is
+    // stored as its own characters: sending back the hex a page showed would
+    // write the string '1b6102...' over the bytes it was rendering.
+    mockQuery.mockResolvedValueOnce({
+      rows: catalogRows([
+        { column_name: 'events', data_type: 'bytea', is_nullable: 'YES', is_generated: 'NEVER', identity_generation: null },
+      ]),
+    })
+    const result = await previewRowUpdate({
+      ...edit,
+      changes: [{ column: 'events', from: '1b6102', to: '1b6103' }],
+    })
+    expect(result.ok === false && result.error).toContain('events')
+  })
+
   it('refuses to move the key it is keyed on', async () => {
     mockQuery.mockResolvedValueOnce({ rows: catalogRows() })
     const result = await previewRowUpdate({

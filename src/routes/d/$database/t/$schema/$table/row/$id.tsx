@@ -17,6 +17,8 @@ import { formatJsonText } from '#/lib/json-text'
 import { getRowLabel } from '#/lib/row-label'
 import { formatSidebarView, parseSidebarView } from '#/lib/table-creation'
 import TableName from '#/components/TableName'
+import CompressionBadge from '#/components/CompressionBadge'
+import RawBytes from '#/components/RawBytes'
 import type {
   ColumnInfo,
   ForeignKey,
@@ -179,6 +181,11 @@ function RowDetailPage() {
                     target={target}
                     crossTarget={col.crossRef}
                     variant={variant}
+                    rawSource={
+                      rootPkColumn
+                        ? { schema, table, keyColumn: rootPkColumn, keyValue: id }
+                        : undefined
+                    }
                   />
                 )
               })}
@@ -248,6 +255,7 @@ function FieldRow({
   target,
   crossTarget,
   variant = 'fk',
+  rawSource,
 }: {
   col: ColumnInfo
   value: JsonValue | undefined
@@ -255,6 +263,9 @@ function FieldRow({
   target?: { schema: string; table: string; column: string }
   crossTarget?: ColumnInfo['crossRef']
   variant?: 'fk' | 'pk' | 'self-pk'
+  /** How to re-read this cell's stored bytes, where the row can be addressed.
+   *  Absent on the reference tables below, whose rows are not keyed here. */
+  rawSource?: { schema: string; table: string; keyColumn: string; keyValue: string }
 }) {
   // A `text` column holding a JSON document lays out like a `jsonb` one — the
   // declared type says nothing about what was stored in it.
@@ -266,6 +277,11 @@ function FieldRow({
         <span className="ml-1 text-[10px] font-normal text-[var(--sea-ink-soft)]/60">
           {col.dataType}
         </span>
+        {col.compression && (
+          <span className="ml-1 align-middle">
+            <CompressionBadge compression={col.compression} />
+          </span>
+        )}
       </span>
       <span className="min-w-0 break-all py-0.5 text-[var(--sea-ink)]">
         {pretty !== null ? (
@@ -279,6 +295,15 @@ function FieldRow({
             target={target}
             crossTarget={crossTarget}
             variant={variant}
+          />
+        )}
+        {col.compression && rawSource && (
+          <RawBytes
+            schema={rawSource.schema}
+            table={rawSource.table}
+            column={col.name}
+            keyColumn={rawSource.keyColumn}
+            keyValue={rawSource.keyValue}
           />
         )}
       </span>

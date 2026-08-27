@@ -50,6 +50,13 @@ export interface ColumnInfo {
    * the row trace) mistakes it for one.
    */
   crossRef?: { database: string; schema: string; table: string; column: string; note?: string }
+  /**
+   * The column's bytes are a compressed document, and the values shipped with it
+   * are the decoded text rather than hex. Not in the catalog — nothing in
+   * Postgres records that a `bytea` was compressed by whatever wrote it — so it
+   * is detected from a value on the way out (`#/server/blob-columns`).
+   */
+  compression?: { codec: 'brotli' | 'gzip' | 'deflate'; encoding: 'json' | 'text' }
 }
 
 /**
