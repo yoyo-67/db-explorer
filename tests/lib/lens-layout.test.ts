@@ -4,9 +4,11 @@ import {
   boundaryStubs,
   chordEnds,
   chordPath,
+  highlightedTable,
   internalEdges,
   labelLadder,
   radialLayout,
+  ringNeighbours,
   stubPath,
 } from '#/lib/lens-layout'
 import type { RadialInput, RadialNode } from '#/lib/lens-layout'
@@ -239,5 +241,56 @@ describe('arrowHead', () => {
 
   it('closes the triangle so it fills as one mark', () => {
     expect(arrowHead({ x: 0, y: 0 }, 0, 8).endsWith('Z')).toBe(true)
+  })
+})
+
+describe('highlightedTable', () => {
+  const known = (t: string) => t === 'data_orthopipeline' || t === 'data_slice'
+
+  it('lets the pointer win while it is down', () => {
+    expect(highlightedTable('data_slice', 'data_orthopipeline', known)).toBe('data_slice')
+  })
+
+  // The point of the change: a focus should dim the ring the way a hover does,
+  // not sit there as one differently-coloured circle among fifty.
+  it('falls back to the focus when nothing is hovered', () => {
+    expect(highlightedTable(null, 'data_orthopipeline', known)).toBe('data_orthopipeline')
+  })
+
+  it('ignores a focus this ring cannot place', () => {
+    expect(highlightedTable(null, 'auth_user', known)).toBeNull()
+  })
+
+  it('highlights nothing when there is neither', () => {
+    expect(highlightedTable(null, undefined, known)).toBeNull()
+  })
+})
+
+describe('ringNeighbours', () => {
+  const inside = [
+    { fromTable: 'a', toTable: 'b', fromColumn: 'b_id', toColumn: 'id', basis: 'declared' },
+    { fromTable: 'c', toTable: 'a', fromColumn: 'a_id', toColumn: 'id', basis: 'declared' },
+    { fromTable: 'd', toTable: 'e', fromColumn: 'e_id', toColumn: 'id', basis: 'declared' },
+  ] as never
+  const stubs = [
+    { targetTable: 'far', targetGroup: 'Other', count: 2, sourceTables: ['b', 'e'], edges: [] },
+  ] as never
+
+  it('is null when nothing is highlighted', () => {
+    expect(ringNeighbours(null, inside, stubs)).toBeNull()
+  })
+
+  it('collects both ends of every chord the table touches, and itself', () => {
+    expect([...(ringNeighbours('a', inside, stubs) ?? [])].sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  // A stub's target is off the ring, so the neighbourhood is what feeds it —
+  // otherwise the stub lights its own lines and their sources go dark.
+  it('answers a stub target with the members feeding it', () => {
+    expect([...(ringNeighbours('far', inside, stubs) ?? [])].sort()).toEqual(['b', 'e', 'far'])
+  })
+
+  it('leaves an untouched table out', () => {
+    expect(ringNeighbours('a', inside, stubs)?.has('d')).toBe(false)
   })
 })

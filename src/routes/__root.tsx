@@ -9,6 +9,8 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import Header from '../components/Header'
 import { useServerSettingsSync } from '#/hooks/useServerSettings'
 import Sidebar from '../components/Sidebar'
+import TextScaleSync from '../components/TextScaleSync'
+import ThemeSync from '../components/ThemeSync'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
@@ -65,6 +67,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="font-sans antialiased [overflow-wrap:anywhere] selection:bg-[rgba(79,184,178,0.24)]">
+        {/* Before anything visible: hydration reconciles `<html>` and drops the
+            class the head script set, so the palette needs an owner that
+            outlives it. */}
+        <ThemeSync />
+        <TextScaleSync />
         <Header />
         <div className="flex">
           <Sidebar />

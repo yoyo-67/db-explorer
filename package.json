@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:types": "vitest typecheck",
     "test:live": "vitest run -c vitest.live.config.ts",
-    "catalog:sync": "node scripts/sync-table-catalog.mjs"
+    "catalog:sync": "node scripts/sync-table-catalog.mjs",
+    "flow": "node scripts/flow.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
@@ -60,4 +61,3 @@
     ]
   }
 }
-

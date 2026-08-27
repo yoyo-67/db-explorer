@@ -15,6 +15,7 @@ import { enrichColumnsWithFks } from '#/lib/fk-resolver'
 import { enrichColumnsWithCrossDbRefs } from '#/lib/cross-db-refs'
 import { formatJsonText } from '#/lib/json-text'
 import { getRowLabel } from '#/lib/row-label'
+import { formatSidebarView, parseSidebarView } from '#/lib/table-creation'
 import TableName from '#/components/TableName'
 import type {
   ColumnInfo,
@@ -28,12 +29,15 @@ import type {
 
 interface RowDetailSearch {
   col?: string
+  /** The sidebar's list, carried so it survives opening a row. */
+  view?: string
 }
 
 export const Route = createFileRoute('/d/$database/t/$schema/$table/row/$id')({
   component: RowDetailPage,
   validateSearch: (search: Record<string, unknown>): RowDetailSearch => ({
     col: typeof search.col === 'string' && search.col.length > 0 ? search.col : undefined,
+    view: formatSidebarView(parseSidebarView(search.view)),
   }),
 })
 

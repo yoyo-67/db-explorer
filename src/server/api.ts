@@ -15,6 +15,7 @@ import {
   getRowChildren,
   getSchemaGraph,
   getTableActivity,
+  getTableCreationOrder,
   introspect,
   listDatabases,
   resolveEntryTarget,
@@ -171,6 +172,10 @@ export const $getCrossDbRefs = createServerFn({ method: 'GET' })
 export const $getTableActivity = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)
   .handler(scoped((data) => getTableActivity(data.schema || 'public')))
+
+export const $getTableCreationOrder = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string }) => data)
+  .handler(scoped((data) => getTableCreationOrder(data.schema || 'public')))
 
 export const $getTablePreview = createServerFn({ method: 'GET' })
   .inputValidator(
@@ -455,3 +460,24 @@ export const $getIndexUsage = createServerFn({ method: 'GET' })
 export const $getQueryStats = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped) => data)
   .handler(scoped(() => getQueryStats()))
+
+/**
+ * Flow docs — a captured investigation, read from a file rather than a database.
+ *
+ * Deliberately not `scoped`: a flow doc is a file, and the database it talks
+ * about is written inside it. Wrapping these would mean a doc could not be
+ * opened before connecting, and most of what it holds — the story, the rows it
+ * captured — needs no connection to read. The links inside it need one, and they
+ * are the part that waits.
+ */
+export const $listFlows = createServerFn({ method: 'GET' }).handler(async () => {
+  const { listFlowDocs } = await import('#/server/flows')
+  return listFlowDocs()
+})
+
+export const $getFlow = createServerFn({ method: 'GET' })
+  .inputValidator((data: { slug?: string; file?: string }) => data)
+  .handler(async ({ data }) => {
+    const { readFlowDoc } = await import('#/server/flows')
+    return readFlowDoc(data)
+  })

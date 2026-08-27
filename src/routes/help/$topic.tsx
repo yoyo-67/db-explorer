@@ -60,10 +60,14 @@ function HelpTopicPage() {
    * answer is only needed if someone actually opens it.
    */
   const openInConsole = async () => {
-    stageConsoleSql(sql)
+    const handoff = stageConsoleSql(sql)
     const target = await $resolveEntryTarget()
     if (target.ok && target.database) {
-      void navigate({ to: '/d/$database/console', params: { database: target.database } })
+      void navigate({
+        to: '/d/$database/console',
+        params: { database: target.database },
+        search: handoff ? { handoff } : {},
+      })
       return
     }
     void navigate({ to: '/' })

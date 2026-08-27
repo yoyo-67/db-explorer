@@ -15,16 +15,26 @@ import { $runReadOnlyQuery } from '#/server/api'
 import type { ConsoleResult } from '#/lib/types'
 
 export const Route = createFileRoute('/d/$database/console')({
+  // `?handoff=<ticket>` names a statement parked by whoever opened this console —
+  // the query board, a help page, a flow doc. The statement itself never travels
+  // in the URL; see `console-handoff`. Absent rather than `undefined` when unset,
+  // so a plain link to the console does not have to pass one.
+  validateSearch: (search: Record<string, unknown>): { handoff?: string } => {
+    const handoff = typeof search.handoff === 'string' ? search.handoff.trim() : ''
+    return handoff ? { handoff } : {}
+  },
   component: ConsolePage,
 })
 
 function ConsolePage() {
   const database = useDatabaseParam()
   const { isChecking, isConnected } = useConnectionGuard()
-  // A statement staged by the query board, taken once (see `console-handoff`).
-  // Prefilled, never auto-run: it still carries the normalizer's `$1`
-  // placeholders, so it is a draft to edit rather than one to execute.
-  const [sql, setSql] = useState(() => takeConsoleSql() ?? 'SELECT 1')
+  const { handoff } = Route.useSearch()
+  // The statement this console was opened with, taken once (see
+  // `console-handoff`). Prefilled, never auto-run: it may still carry the
+  // normalizer's `$1` placeholders, so it is a draft to edit rather than one to
+  // execute.
+  const [sql, setSql] = useState(() => takeConsoleSql(handoff) ?? 'SELECT 1')
   const [result, setResult] = useState<ConsoleResult | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)

@@ -1,7 +1,7 @@
-import { Link, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { $getTableActivity, $introspect } from '#/server/api'
+import { $getTableActivity, $getTableCreationOrder, $introspect } from '#/server/api'
 import { useMapGroups, useTableCatalog } from '#/hooks/useSchemaMetadata'
 import {
   filterGroups,
@@ -9,7 +9,22 @@ import {
   UNCATEGORIZED_GROUP_NAME,
 } from '#/lib/catalog-grouping'
 import { describeChange, formatMods, rankByRecentChange } from '#/lib/table-activity'
+import {
+  CREATION_ORDER_CAVEAT,
+  formatSidebarView,
+  parseSidebarView,
+  rankByCreation,
+  type SidebarView,
+  type TableCreationEntry,
+} from '#/lib/table-creation'
 import TableName, { useTableNameText } from '#/components/TableName'
+import { useModelNames } from '#/hooks/useModelNames'
+import { matchesTableName } from '#/lib/table-label'
+import {
+  allGroupsExpanded,
+  toggleAllGroups,
+  togglableGroupNames,
+} from '#/lib/sidebar-groups'
 import {
   clampSidebarWidth,
   DEFAULT_SIDEBAR_WIDTH,
@@ -25,15 +40,14 @@ const COLLAPSED_KEY = 'sidebar:collapsed'
 /** Matches the filter panel's rail on the other side of the rows. */
 const RAIL_WIDTH = 14
 
-/**
- * How the sidebar orders tables. Grouped is the catalog's own structure;
- * changed asks the statistics views what has been written lately, which no
- * grouping can tell you.
- */
-type View = 'grouped' | 'changed'
-
 export default function Sidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  // The view is part of the address, so a link someone pastes opens on the list
+  // they were reading. Read loosely rather than through a route's typed search:
+  // the sidebar draws over several routes and does not own any of their schemas.
+  const viewParam = useRouterState({
+    select: (s) => (s.location.search as { view?: unknown }).view,
+  })
   // The table browser only: the database and schema both come off the path, so a
   // route without them has no sidebar to draw.
   const match = pathname.match(/^\/d\/([^/]+)\/t\/([^/]+)(?:\/([^/]+))?/)
@@ -41,22 +55,40 @@ export default function Sidebar() {
   const database = decodeURIComponent(match[1])
   const schema = decodeURIComponent(match[2])
   const activeTable = match[3] ? decodeURIComponent(match[3]) : undefined
-  return <SidebarBody database={database} schema={schema} activeTable={activeTable} />
+  return (
+    <SidebarBody
+      database={database}
+      schema={schema}
+      activeTable={activeTable}
+      view={parseSidebarView(viewParam)}
+    />
+  )
 }
 
 function SidebarBody({
   database,
   schema,
   activeTable,
+  view,
 }: {
   database: string
   schema: string
   activeTable?: string
+  view: SidebarView
 }) {
   const [filter, setFilter] = useState('')
   // The rows truncate, so the untruncated name — model and all — lives in the title.
   const nameText = useTableNameText()
-  const [view, setView] = useState<View>('grouped')
+  const navigate = useNavigate()
+  // Replace rather than push: switching list is a change of view, and stacking
+  // one history entry per chip press makes Back stop meaning "the last table".
+  const setView = (next: SidebarView) => {
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => ({ ...prev, view: formatSidebarView(next) }),
+      replace: true,
+    })
+  }
   // Remembered per browser, like the expanded groups: which panes are open is
   // how someone has arranged their workspace, not what they are looking at.
   const [collapsed, setCollapsed] = useState(false)
@@ -127,23 +159,45 @@ function SidebarBody({
     enabled: view === 'changed',
   })
 
+  // Same bargain as the activity read: one cheap catalog query, and only while
+  // the list that needs it is on screen. Creation order does not move under a
+  // reader, so it stays fresh for a minute.
+  const creationQuery = useQuery({
+    queryKey: ['tableCreationOrder', database, schema],
+    queryFn: () => $getTableCreationOrder({ data: { database, schema } }),
+    staleTime: 60_000,
+    enabled: view === 'new',
+  })
+
   const tables = introspectQuery.data?.tables ?? []
   const groups = useMemo(
     () => groupTablesByCatalog(tables, catalogQuery.data, mapGroupsQuery.data),
     [tables, catalogQuery.data, mapGroupsQuery.data],
   )
-  const visibleGroups = useMemo(() => filterGroups(groups, filter), [groups, filter])
+  // Both names answer the box, whatever the display setting prints: someone
+  // reading models still pastes a raw identifier out of a log line.
+  const models = useModelNames()
+  const visibleGroups = useMemo(
+    () => filterGroups(groups, filter, models),
+    [groups, filter, models],
+  )
 
   // Ranked by the statistics views, then narrowed to tables this schema actually
   // lists — `pg_stat_all_tables` counts partitions and TOAST-side relations the
   // browser has no page for.
   const changed = useMemo(() => {
     const listed = new Set(tables.map((t) => t.name))
-    const needle = filter.trim().toLowerCase()
     return rankByRecentChange(activityQuery.data?.tables ?? [])
       .filter((entry) => listed.has(entry.table))
-      .filter((entry) => !needle || entry.table.toLowerCase().includes(needle))
-  }, [activityQuery.data, tables, filter])
+      .filter((entry) => matchesTableName(entry.table, models[entry.table], filter))
+  }, [activityQuery.data, tables, filter, models])
+
+  // Narrowed to what this schema lists, like the changed view: `pg_class` also
+  // holds partitions and relations the browser has no page for.
+  const newest = useMemo(() => {
+    const listed = new Set(tables.map((t) => t.name))
+    return rankByCreation(creationQuery.data ?? [], { listed, filter, models })
+  }, [creationQuery.data, tables, filter, models])
 
   // Keep the active table's group expanded automatically
   useEffect(() => {
@@ -155,6 +209,16 @@ function SidebarBody({
       }
     }
   }, [activeTable, groups])
+
+  // The groups on screen right now — a filtered-out group keeps whatever state
+  // the reader left it in.
+  const togglableGroups = useMemo(() => togglableGroupNames(visibleGroups), [visibleGroups])
+  const allExpanded = allGroupsExpanded(expanded, togglableGroups)
+
+  /** One button, because the label already says which way it goes. */
+  const toggleAll = () => {
+    setExpanded((prev) => toggleAllGroups(prev, togglableGroups))
+  }
 
   const toggle = (name: string) => {
     setExpanded((prev) => {
@@ -228,7 +292,35 @@ function SidebarBody({
         >
           Changed
         </ViewChip>
+        <ViewChip
+          active={view === 'new'}
+          onClick={() => setView('new')}
+          title={`Newest table first. ${CREATION_ORDER_CAVEAT}`}
+        >
+          New
+        </ViewChip>
       </div>
+
+      {/* Its own line under the view chips: it is not a fourth view, and sat in
+          that row it read as one. Grouped only — the other two lists are flat,
+          so there is nothing to open. */}
+      {view === 'grouped' && togglableGroups.length > 0 && (
+        <div className="mb-2 flex">
+          <button
+            type="button"
+            onClick={toggleAll}
+            aria-expanded={allExpanded}
+            title={
+              allExpanded
+                ? 'Close every group'
+                : 'Open every group — a long list, but one you can scan'
+            }
+            className="ml-auto rounded px-1 py-0.5 text-[10px] text-[var(--sea-ink-soft)] hover:text-[var(--lagoon-deep)]"
+          >
+            {allExpanded ? 'Collapse all' : 'Expand all'}
+          </button>
+        </div>
+      )}
 
       <Link
         to="/d/$database/lens/$schema"
@@ -264,6 +356,17 @@ function SidebarBody({
           isLoading={activityQuery.isLoading}
           error={activityQuery.error}
           statsReset={activityQuery.data?.statsReset ?? null}
+        />
+      )}
+
+      {view === 'new' && (
+        <NewestList
+          database={database}
+          schema={schema}
+          activeTable={activeTable}
+          entries={newest}
+          isLoading={creationQuery.isLoading}
+          error={creationQuery.error}
         />
       )}
 
@@ -313,7 +416,7 @@ function SidebarBody({
                           }`}
                         >
                           <span className="truncate" title={nameText(t.name)}>
-                            <TableName table={t.name} />
+                            <TableName table={t.name} stacked />
                           </span>
                           {/* A view has no rows of its own, so its row slot says
                               what it is instead of claiming a count of zero. */}
@@ -482,6 +585,9 @@ function ChangedList({
             <Link
               to="/d/$database/t/$schema/$table"
               params={{ database, schema, table: entry.table }}
+              // Opening a table from this list keeps the list: the reader is
+              // working through it, not leaving it.
+              search={{ view: 'changed' }}
               title={describeChange(entry, now)}
               className={`group flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] no-underline transition ${
                 isActive
@@ -490,7 +596,7 @@ function ChangedList({
               }`}
             >
               <span className="truncate">
-                <TableName table={entry.table} />
+                <TableName table={entry.table} stacked />
               </span>
               {/* The count, not a time: the timestamp belongs to the ANALYZE it
                   is counted from, and lives in the row's title. */}
@@ -502,6 +608,75 @@ function ChangedList({
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * Flat, like the changed view, and deliberately without dates: the ranking is
+ * `pg_class.oid` order, which is a sequence and not a clock. Writing a time next
+ * to a table would be inventing one — the caveat rides along in the row's title
+ * instead, so what the position claims stays legible.
+ */
+function NewestList({
+  database,
+  schema,
+  activeTable,
+  entries,
+  isLoading,
+  error,
+}: {
+  database: string
+  schema: string
+  activeTable?: string
+  entries: TableCreationEntry[]
+  isLoading: boolean
+  error: unknown
+}) {
+  if (isLoading) {
+    return <div className="px-2 py-1 text-xs text-[var(--sea-ink-soft)]">Reading the catalog...</div>
+  }
+  if (error) {
+    return <div className="px-2 py-1 text-xs text-red-500">Failed: {String(error)}</div>
+  }
+  if (entries.length === 0) {
+    return <div className="px-2 py-1 text-xs text-[var(--sea-ink-soft)]">No tables to rank.</div>
+  }
+
+  return (
+    <>
+      <ul className="space-y-0.5">
+        {entries.map((entry, position) => {
+          const isActive = entry.table === activeTable
+          return (
+            <li key={entry.table}>
+              <Link
+                to="/d/$database/t/$schema/$table"
+                params={{ database, schema, table: entry.table }}
+                search={{ view: 'new' }}
+                title={`#${position + 1} newest in ${schema}. ${CREATION_ORDER_CAVEAT}`}
+                className={`group flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] no-underline transition ${
+                  isActive
+                    ? 'bg-[rgba(79,184,178,0.18)] text-[var(--lagoon-deep)]'
+                    : 'text-[var(--sea-ink)] hover:bg-[var(--surface-strong)]'
+                }`}
+              >
+                <span className="truncate">
+                  <TableName table={entry.table} stacked />
+                </span>
+                {entry.kind === 'view' && (
+                  <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)] opacity-70">
+                    view
+                  </span>
+                )}
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+      <p className="px-1.5 pt-2 text-[10px] leading-snug text-[var(--sea-ink-soft)]">
+        {CREATION_ORDER_CAVEAT}
+      </p>
+    </>
   )
 }
 

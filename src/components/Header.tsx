@@ -339,6 +339,17 @@ function Menu() {
           )}
 
           <Link
+            to="/flow"
+            role="menuitem"
+            className={MENU_ITEM_CLASS}
+            activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+          >
+            Flows
+            <span className={MENU_HINT_CLASS}>
+              Captured walks through the data — the story with its queries attached
+            </span>
+          </Link>
+          <Link
             to="/help"
             role="menuitem"
             className={MENU_ITEM_CLASS}

@@ -1,3 +1,5 @@
+import { TABLE_NAME_DISPLAYS, type TableNameDisplay } from '#/lib/table-label'
+
 /**
  * Local, per-browser preferences — the things a tab should remember without a
  * server round trip. Everything here defaults to off: an explorer that quietly
@@ -25,6 +27,14 @@ export interface AppSettings {
    * knobs are, and remembered the same way.
    */
   statementTimeoutMs: number
+  /**
+   * Which of a table's two names leads, and whether the other one comes along.
+   *
+   * A browser preference and nothing more: it changes what the lists print, not
+   * what any of them match — a search still answers to either name, so the
+   * setting can never hide a table from the person looking for it.
+   */
+  tableNameDisplay: TableNameDisplay
 }
 
 /** Offered in the settings page; any value in range is honoured. */
@@ -48,10 +58,23 @@ export function clampStatementTimeout(value: unknown): number {
   return Math.min(MAX_STATEMENT_TIMEOUT_MS, Math.max(MIN_STATEMENT_TIMEOUT_MS, Math.round(value)))
 }
 
+/** The identifier leads, the model trails it: the name you match against a
+ *  query stays the one you read first. */
+export const DEFAULT_TABLE_NAME_DISPLAY: TableNameDisplay = 'table-then-model'
+
+/** Anything that is not one of the four modes is the default — storage is
+ *  user-editable, and a name is not worth a broken render. */
+export function parseTableNameDisplay(value: unknown): TableNameDisplay {
+  return TABLE_NAME_DISPLAYS.includes(value as TableNameDisplay)
+    ? (value as TableNameDisplay)
+    : DEFAULT_TABLE_NAME_DISPLAY
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   queryHud: false,
   editMode: false,
   statementTimeoutMs: DEFAULT_STATEMENT_TIMEOUT_MS,
+  tableNameDisplay: DEFAULT_TABLE_NAME_DISPLAY,
 }
 
 export const SETTINGS_KEY = 'db-explorer.settings'
@@ -90,6 +113,7 @@ export function readSettings(
     editMode:
       typeof raw.editMode === 'boolean' ? raw.editMode : DEFAULT_SETTINGS.editMode,
     statementTimeoutMs: clampStatementTimeout(raw.statementTimeoutMs),
+    tableNameDisplay: parseTableNameDisplay(raw.tableNameDisplay),
   }
 }
 

@@ -1,4 +1,5 @@
 import type { TableCatalog, TableInfo } from '#/lib/types'
+import { matchesTableName } from '#/lib/table-label'
 
 export interface CatalogGroup {
   name: string
@@ -147,13 +148,19 @@ function getPrefix(name: string): string {
   return parts.slice(0, -1).join('_')
 }
 
-export function filterGroups(groups: CatalogGroup[], query: string): CatalogGroup[] {
+export function filterGroups(
+  groups: CatalogGroup[],
+  query: string,
+  /** Table → Django model, so a search answers to the model name too. Omitted
+   *  where the caller has no map, which is the same as a map that knows nothing. */
+  models: Readonly<Record<string, string>> = {},
+): CatalogGroup[] {
   if (!query) return groups
   const q = query.toLowerCase()
   return groups
     .map((g) => ({
       ...g,
-      tables: g.tables.filter((t) => t.name.toLowerCase().includes(q)),
+      tables: g.tables.filter((t) => matchesTableName(t.name, models[t.name], q)),
     }))
     .filter((g) => g.tables.length > 0 || g.name.toLowerCase().includes(q))
 }

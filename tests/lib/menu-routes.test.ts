@@ -11,6 +11,8 @@ describe('menuHoldsRoute', () => {
     expect(menuHoldsRoute('/help')).toBe(true)
     expect(menuHoldsRoute('/help/filters')).toBe(true)
     expect(menuHoldsRoute('/settings')).toBe(true)
+    expect(menuHoldsRoute('/flow')).toBe(true)
+    expect(menuHoldsRoute('/flow/order-lifecycle')).toBe(true)
   })
 
   it('leaves the routes still in the bar alone', () => {
@@ -23,6 +25,7 @@ describe('menuHoldsRoute', () => {
   it('matches on a segment boundary, not a bare prefix', () => {
     expect(menuHoldsRoute('/d/app_db/queriesboard')).toBe(false)
     expect(menuHoldsRoute('/helpers')).toBe(false)
+    expect(menuHoldsRoute('/flowers')).toBe(false)
   })
 
   it('does not read a database route that names no database', () => {

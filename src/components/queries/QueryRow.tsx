@@ -115,8 +115,12 @@ export default function QueryRow({
               <button
                 type="button"
                 onClick={() => {
-                  stageConsoleSql(`EXPLAIN ${entry.query}`)
-                  navigate({ to: '/d/$database/console', params: { database } })
+                  const handoff = stageConsoleSql(`EXPLAIN ${entry.query}`)
+                  navigate({
+                    to: '/d/$database/console',
+                    params: { database },
+                    search: handoff ? { handoff } : {},
+                  })
                 }}
                 className="rounded border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--lagoon-deep)] hover:bg-[rgba(79,184,178,0.1)]"
                 title="Open the console with EXPLAIN in front of this statement. Its placeholders still need real values."

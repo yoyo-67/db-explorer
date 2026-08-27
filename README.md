@@ -35,6 +35,12 @@ functions), TypeScript, and Tailwind.
   transaction, so the connection can never write.
 - **Query HUD** — a badge in the navbar shows how many queries the last action
   fired, with per-query timings and session stats.
+- **Flow docs** (`/flow/$slug`) — a walk through the data, captured to a file and
+  rendered as a page: markdown prose, the queries with the rows they returned,
+  and links to the tables and rows they came from. Written by `scripts/flow.mjs`
+  as an investigation happens — the intended author is an agent that has just
+  been running queries. Captured, never live: every page says how old its rows
+  are and refuses to re-read them.
 - **Connection presets** with `${ENV_VAR}` substitution, so you never commit
   credentials.
 
@@ -149,6 +155,50 @@ group and description the catalog currently gives it — plus an `unsorted` list
 the ones no group names. That list is the worklist for curating the catalog after
 a migration, and it is what the `organize-table-catalog` skill works from.
 
+## Flow docs
+
+A flow doc is one investigation written down: `local/flows/<slug>.json`, rendered
+at `/flow/<slug>`. It exists because the alternative is chat scrollback — an
+agent traces how an order reaches billing, and everything it saw is monospace
+grids with no links, in a window nobody else can open.
+
+```bash
+npm run flow -- new order-lifecycle --title "How an order becomes an invoice" \
+  --question "Where does an order's money end up?" --database app --schema public
+
+npm run flow -- add-prose order-lifecycle --md "It starts in \`orders\`."
+npm run flow -- add-query order-lifecycle --sql-file /tmp/q.sql --result-file /tmp/rows.json \
+  --rows 981 --truncated
+npm run flow -- add-rows  order-lifecycle --table public.orders --pk id --ids 42,71
+npm run flow -- validate  order-lifecycle
+```
+
+Six kinds of block — `prose`, `note`, `query`, `table`, `rows`, `steps` — appended
+one command at a time, so the file grows in the order the investigation happened.
+Prose can point into the database without knowing route syntax:
+`[orders](table:public.orders)` and `[order 42](row:public.orders/42)` become
+links to the real pages when the doc names a database.
+
+`--result-file` takes an array of row objects (what an MCP query hands back), a
+`pg` result, or the `{ columns, rows }` the format asks for. `--rows N` and
+`--truncated` say how many rows there really were, so a five-row sample never
+reads as the whole answer.
+
+Two things a flow doc deliberately does not do: re-run anything (a query block
+offers *copy* and *open in console* — the console is the one place that runs SQL,
+inside a read-only transaction), and claim to be current (the header states the
+age of the newest capture, and says so out loud past a week).
+
+*Open in console* opens a **new tab**, so a reader keeps their place in the flow
+and can have several consoles open at once. The statement does not travel in the
+URL — the link carries a short ticket and the SQL waits in `localStorage` under
+it, read once (`src/lib/console-handoff.ts`).
+
+Docs live under `local/`, which this repo does not track: captured rows are real
+data. A loose file elsewhere in the repo can be opened with
+`/flow/x?file=notes/billing.json`, sandboxed to the repo and to `.json`. The
+`flow-doc` skill in `.claude/skills/` is the authoring guide for an agent.
+
 ## Scripts
 
 ```bash
@@ -159,6 +209,10 @@ npm run test     # run the Vitest suite
 # refresh one schema's inventory, and prune names the schema no longer has
 # out of its catalog
 npm run catalog:sync -- --preset "Devgrounds" --database mydb --schema public
+
+# write a flow doc as you investigate; `npm run flow` with no arguments lists
+# every subcommand
+npm run flow -- list
 ```
 
 `catalog:sync` defaults to the first remote preset in `local/presets.json`, that

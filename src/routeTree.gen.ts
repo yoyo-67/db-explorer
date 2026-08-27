@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HelpIndexRouteImport } from './routes/help/index'
+import { Route as FlowIndexRouteImport } from './routes/flow/index'
 import { Route as HelpTopicRouteImport } from './routes/help/$topic'
+import { Route as FlowSlugRouteImport } from './routes/flow/$slug'
 import { Route as DDatabaseIndexRouteImport } from './routes/d/$database/index'
 import { Route as DDatabaseQueriesRouteImport } from './routes/d/$database/queries'
 import { Route as DDatabaseConsoleRouteImport } from './routes/d/$database/console'
@@ -40,9 +42,19 @@ const HelpIndexRoute = HelpIndexRouteImport.update({
   path: '/help/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FlowIndexRoute = FlowIndexRouteImport.update({
+  id: '/flow/',
+  path: '/flow/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HelpTopicRoute = HelpTopicRouteImport.update({
   id: '/help/$topic',
   path: '/help/$topic',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FlowSlugRoute = FlowSlugRouteImport.update({
+  id: '/flow/$slug',
+  path: '/flow/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DDatabaseIndexRoute = DDatabaseIndexRouteImport.update({
@@ -110,7 +122,9 @@ const DDatabaseTSchemaTableRowIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/flow/$slug': typeof FlowSlugRoute
   '/help/$topic': typeof HelpTopicRoute
+  '/flow/': typeof FlowIndexRoute
   '/help/': typeof HelpIndexRoute
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
@@ -127,7 +141,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/flow/$slug': typeof FlowSlugRoute
   '/help/$topic': typeof HelpTopicRoute
+  '/flow': typeof FlowIndexRoute
   '/help': typeof HelpIndexRoute
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
@@ -145,7 +161,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
+  '/flow/$slug': typeof FlowSlugRoute
   '/help/$topic': typeof HelpTopicRoute
+  '/flow/': typeof FlowIndexRoute
   '/help/': typeof HelpIndexRoute
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
@@ -164,7 +182,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/settings'
+    | '/flow/$slug'
     | '/help/$topic'
+    | '/flow/'
     | '/help/'
     | '/d/$database/console'
     | '/d/$database/queries'
@@ -181,7 +201,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/settings'
+    | '/flow/$slug'
     | '/help/$topic'
+    | '/flow'
     | '/help'
     | '/d/$database/console'
     | '/d/$database/queries'
@@ -198,7 +220,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/settings'
+    | '/flow/$slug'
     | '/help/$topic'
+    | '/flow/'
     | '/help/'
     | '/d/$database/console'
     | '/d/$database/queries'
@@ -216,7 +240,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
+  FlowSlugRoute: typeof FlowSlugRoute
   HelpTopicRoute: typeof HelpTopicRoute
+  FlowIndexRoute: typeof FlowIndexRoute
   HelpIndexRoute: typeof HelpIndexRoute
   DDatabaseConsoleRoute: typeof DDatabaseConsoleRoute
   DDatabaseQueriesRoute: typeof DDatabaseQueriesRoute
@@ -254,11 +280,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelpIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/flow/': {
+      id: '/flow/'
+      path: '/flow'
+      fullPath: '/flow/'
+      preLoaderRoute: typeof FlowIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/help/$topic': {
       id: '/help/$topic'
       path: '/help/$topic'
       fullPath: '/help/$topic'
       preLoaderRoute: typeof HelpTopicRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/flow/$slug': {
+      id: '/flow/$slug'
+      path: '/flow/$slug'
+      fullPath: '/flow/$slug'
+      preLoaderRoute: typeof FlowSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/': {
@@ -344,7 +384,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
+  FlowSlugRoute: FlowSlugRoute,
   HelpTopicRoute: HelpTopicRoute,
+  FlowIndexRoute: FlowIndexRoute,
   HelpIndexRoute: HelpIndexRoute,
   DDatabaseConsoleRoute: DDatabaseConsoleRoute,
   DDatabaseQueriesRoute: DDatabaseQueriesRoute,

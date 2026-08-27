@@ -9,9 +9,11 @@ import {
   arrowHead,
   boundaryStubs,
   chordEnds,
+  highlightedTable,
   internalEdges,
   labelLadder,
   radialLayout,
+  ringNeighbours,
   stubPath,
 } from '#/lib/lens-layout'
 import { degreesOf } from '#/lib/schema-graph-metrics'
@@ -150,25 +152,22 @@ function GroupPage() {
     [lens.edges, memberNames, lens.groupOf],
   )
   /**
-   * Tables the hovered thing touches, ring-side — they stay lit while the rest
-   * fades, so one hover reads a whole neighbourhood.
-   *
-   * A boundary stub is hovered by its *target*, which is not on the ring, so the
-   * answer there is the Group members feeding it. Without that the stub lights
-   * its own lines while every table those lines start from goes dark.
+   * The table the ring reads around: what the pointer is on, or — with the
+   * pointer away — whatever the URL is focused on. A focus that dimmed nothing
+   * left the reader hunting one differently-coloured circle among fifty, so it
+   * now does what a hover does.
    */
-  const neighbours = useMemo(() => {
-    if (!hovered) return null
-    const set = new Set<string>([hovered])
-    for (const e of inside) {
-      if (e.fromTable === hovered) set.add(e.toTable)
-      if (e.toTable === hovered) set.add(e.fromTable)
-    }
-    for (const stub of stubs) {
-      if (stub.targetTable === hovered) for (const t of stub.sourceTables) set.add(t)
-    }
-    return set
-  }, [hovered, inside, stubs])
+  const highlighted = useMemo(
+    () =>
+      highlightedTable(hovered, search.focus, (t) =>
+        memberNames.has(t) || stubs.some((s) => s.targetTable === t),
+      ),
+    [hovered, search.focus, memberNames, stubs],
+  )
+  const neighbours = useMemo(
+    () => ringNeighbours(highlighted, inside, stubs),
+    [highlighted, inside, stubs],
+  )
 
   const inbound = useMemo(
     () =>
@@ -307,16 +306,16 @@ function GroupPage() {
                   const to = nodeByTable.get(e.toTable)
                   if (!from || !to || from === to) return null
                   const touched =
-                    !hovered || e.fromTable === hovered || e.toTable === hovered
+                    !highlighted || e.fromTable === highlighted || e.toTable === highlighted
                   const base = e.basis === 'declared' ? 0.75 : 0.45
-                  const lit = !!hovered && touched
-                  const opacity = hovered ? (touched ? 0.95 : 0.07) : base
-                  // Trimmed to the radius each end is *drawn* at: the hovered node
+                  const lit = !!highlighted && touched
+                  const opacity = highlighted ? (touched ? 0.95 : 0.07) : base
+                  // Trimmed to the radius each end is *drawn* at: the swollen node
                   // paints after the chords, so a chord trimmed to the resting
                   // radius would end — arrowhead and all — under its circle.
                   const ends = chordEnds(
-                    { ...from, radius: drawnRadius(from, hovered === from.table) },
-                    { ...to, radius: drawnRadius(to, hovered === to.table) },
+                    { ...from, radius: drawnRadius(from, highlighted === from.table) },
+                    { ...to, radius: drawnRadius(to, highlighted === to.table) },
                   )
                   return (
                     <g key={`${e.fromTable}.${e.fromColumn}`}>
@@ -366,7 +365,7 @@ function GroupPage() {
                       y={y}
                       anchorY={anchorY}
                       nodeByTable={nodeByTable}
-                      hovered={hovered}
+                      hovered={highlighted}
                       label={tableLabel(
                         stub.targetTable,
                         lens.nodeByName.get(stub.targetTable)?.model,
@@ -391,20 +390,22 @@ function GroupPage() {
                   )
                 })}
 
-                {/* Hovered node last so its swollen circle and label paint over
-                    the neighbours it overlaps. */}
+                {/* Highlighted node last so its swollen circle and label paint
+                    over the neighbours it overlaps. */}
                 {[...layout.nodes]
                   .sort(
                     (a, b) =>
-                      Number(a.table === hovered) - Number(b.table === hovered),
+                      Number(a.table === highlighted) - Number(b.table === highlighted),
                   )
                   .map((n) => (
                   <RingNode
                     key={n.table}
                     node={n}
                     focused={search.focus === n.table}
-                    hovered={hovered === n.table}
-                    related={!!neighbours && hovered !== n.table && neighbours.has(n.table)}
+                    hovered={highlighted === n.table}
+                    related={
+                      !!neighbours && highlighted !== n.table && neighbours.has(n.table)
+                    }
                     dimmed={!!neighbours && !neighbours.has(n.table)}
                     unresolved={lens.nodeByName.get(n.table)?.unresolvedRefColumns ?? 0}
                     kind={lens.nodeByName.get(n.table)?.kind ?? 'table'}

@@ -204,3 +204,34 @@ describe('groupTablesByCatalog with colliding group names', () => {
   })
 })
 
+
+describe('filterGroups, model names', () => {
+  const groups = [
+    {
+      name: 'Ortho & Slicing',
+      description: '',
+      order: 0,
+      tables: [
+        { name: 'data_orthopipeline', kind: 'table', rowCount: 0 },
+        { name: 'data_recordingbatch', kind: 'table', rowCount: 0 },
+      ],
+    },
+  ] as never
+  const models = { data_orthopipeline: 'SlicingPipeline' }
+
+  it('matches the model behind a flat table name', () => {
+    const [g] = filterGroups(groups, 'slicing', models)
+    expect(g.tables.map((t) => t.name)).toEqual(['data_orthopipeline'])
+  })
+
+  it('still matches the raw identifier', () => {
+    const [g] = filterGroups(groups, 'orthopipe', models)
+    expect(g.tables.map((t) => t.name)).toEqual(['data_orthopipeline'])
+  })
+
+  // Without a map there is no model to match; the group survives only because
+  // its own name carries the needle, and it survives with no tables under it.
+  it('matches no table when no map is passed', () => {
+    expect(filterGroups(groups, 'slicing')[0].tables).toEqual([])
+  })
+})

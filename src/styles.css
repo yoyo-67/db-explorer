@@ -26,6 +26,8 @@
   --link-bg-hover: rgba(255, 255, 255, 0.9);
   --hero-a: rgba(79, 184, 178, 0.36);
   --hero-b: rgba(47, 106, 74, 0.2);
+  /* Flat reading surface — see `body:has(.flow-reading)`. */
+  --reading-bg: #ffffff;
 
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
@@ -82,6 +84,7 @@
   --link-bg-hover: rgba(24, 44, 49, 0.8);
   --hero-a: rgba(96, 215, 207, 0.18);
   --hero-b: rgba(110, 200, 154, 0.12);
+  --reading-bg: #181d20;
 
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
@@ -203,6 +206,27 @@ body::after {
     linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+}
+
+/**
+ * A flow doc is a document, not a dashboard.
+ *
+ * The app's background — four stacked gradients, a glow layer and a grid — is
+ * right for a page you scan and wrong for one you read for ten minutes, where
+ * every one of those is a moving contrast reference behind a paragraph. A page
+ * carrying a flow paints one flat colour instead.
+ *
+ * Done with `:has()` rather than a class toggled in an effect so the first frame
+ * is already flat: a reader arriving at a doc should never see the gradients
+ * paint and then leave.
+ */
+body:has(.flow-reading) {
+  background: var(--reading-bg);
+}
+
+body:has(.flow-reading)::before,
+body:has(.flow-reading)::after {
+  display: none;
 }
 
 a {

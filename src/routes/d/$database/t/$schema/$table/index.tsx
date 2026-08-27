@@ -31,7 +31,9 @@ import type { Condition } from '#/lib/filter-model'
 import { lensTargetForTable } from '#/lib/lens-links'
 import { tableLabel } from '#/lib/table-label'
 import type { TableSort } from '#/lib/types'
+import { formatSidebarView, parseSidebarView } from '#/lib/table-creation'
 import TableName from '#/components/TableName'
+import LensBadge from '#/components/LensBadge'
 
 interface TableSearch {
   p?: number
@@ -43,6 +45,9 @@ interface TableSearch {
   insp?: InspectorTab
   /** The filter panel is open. */
   fp?: boolean
+  /** Which list the sidebar is showing — see `#/lib/table-creation`. Absent is
+   *  the catalog grouping. */
+  view?: string
   /** A hand-edited statement. Present means the builder no longer owns the
    *  query — the page runs this and nothing else. */
   sql?: string
@@ -64,7 +69,8 @@ export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
     const insp = parseInspectorTab(search.insp)
     const fp = search.fp === true || search.fp === 'true' ? true : undefined
     const sql = typeof search.sql === 'string' && search.sql.trim().length > 0 ? search.sql : undefined
-    return { p, exact, q: q?.length ? q : undefined, sort, insp, fp, sql }
+    const view = formatSidebarView(parseSidebarView(search.view))
+    return { p, exact, q: q?.length ? q : undefined, sort, insp, fp, sql, view }
   },
 })
 
@@ -79,6 +85,25 @@ function parseSort(s: string | undefined): TableSort | null {
 
 function formatSort(sort: TableSort | null): string | undefined {
   return sort ? `${sort.column}:${sort.direction}` : undefined
+}
+
+/**
+ * The group name in the header, off the same cached catalog as `ShowInLens`.
+ * Separate component only because the header and the toolbar are far apart on
+ * the page; both resolve the target the same way.
+ */
+function TableLensBadge({ schema, table }: { schema: string; table: string }) {
+  const database = useDatabaseParam()
+  const catalogQuery = useTableCatalog(database, schema)
+  const mapGroupsQuery = useMapGroups(database, schema)
+  return (
+    <LensBadge
+      database={database}
+      schema={schema}
+      table={table}
+      target={lensTargetForTable(table, catalogQuery.data, mapGroupsQuery.data)}
+    />
+  )
 }
 
 /**
@@ -329,6 +354,7 @@ function TablePage() {
           <span className="font-mono text-xs text-[var(--sea-ink-soft)]">
             {schema}.{table}
           </span>
+          <TableLensBadge schema={schema} table={table} />
           {tableInfo && (
             <span className="text-xs text-[var(--sea-ink-soft)]">
               {tableInfo.columns.length} cols

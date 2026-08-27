@@ -185,6 +185,51 @@ export function boundaryStubs(
   )
 }
 
+/**
+ * The one table the ring is currently reading around.
+ *
+ * A pointer wins over the URL while it is down: hover is the question being
+ * asked right now, and a focus left in the address bar should not out-shout it.
+ * When nothing is hovered, the focus takes over — a table you searched for or
+ * followed a boundary link to is the table you came here about, and marking it
+ * while every other node stays at full strength leaves the reader to find the
+ * one green circle in fifty. Focus only counts when the ring can actually place
+ * it: a stale `?focus=` from another Group highlights nothing.
+ */
+export function highlightedTable(
+  hovered: string | null | undefined,
+  focus: string | null | undefined,
+  known: (table: string) => boolean,
+): string | null {
+  if (hovered) return hovered
+  return focus && known(focus) ? focus : null
+}
+
+/**
+ * Tables the highlighted thing touches, ring-side — they stay lit while the rest
+ * fades, so one hover reads a whole neighbourhood.
+ *
+ * A boundary stub is highlighted by its *target*, which is not on the ring, so
+ * the answer there is the Group members feeding it. Without that the stub lights
+ * its own lines while every table those lines start from goes dark.
+ */
+export function ringNeighbours(
+  highlighted: string | null,
+  inside: readonly SchemaGraphEdge[],
+  stubs: readonly BoundaryStub[],
+): Set<string> | null {
+  if (!highlighted) return null
+  const set = new Set<string>([highlighted])
+  for (const e of inside) {
+    if (e.fromTable === highlighted) set.add(e.toTable)
+    if (e.toTable === highlighted) set.add(e.fromTable)
+  }
+  for (const stub of stubs) {
+    if (stub.targetTable === highlighted) for (const t of stub.sourceTables) set.add(t)
+  }
+  return set
+}
+
 /** Horizontal S-curve from a ring node out to a boundary stub box. */
 export function stubPath(
   from: { x: number; y: number },

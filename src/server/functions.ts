@@ -18,6 +18,7 @@ import { mergeSchemaGraph } from '#/lib/schema-graph'
 import type { CandidateEdge } from '#/lib/schema-graph'
 import { resolveSchemaFks } from '#/lib/schema-fks'
 import type { TableActivity } from '#/lib/table-activity'
+import type { TableCreationEntry } from '#/lib/table-creation'
 import {
   countSkipReason,
   mergeTableEdges,
@@ -146,6 +147,37 @@ export async function getTableActivity(schema: string): Promise<TableActivity> {
         : null,
     })),
   }
+}
+
+/**
+ * Creation order per table, read off `pg_class`.
+ *
+ * One catalog query, no heap access: the oid is the only creation signal
+ * Postgres keeps, and `#/lib/table-creation` says what it does and does not
+ * prove. `relkind` is narrowed to the two kinds the browser has a page for, so
+ * the ranking lists nothing nobody can open.
+ */
+export async function getTableCreationOrder(schema: string): Promise<TableCreationEntry[]> {
+  const result = await query(
+    `
+    SELECT
+      relation.relname AS table_name,
+      CASE relation.relkind WHEN 'v' THEN 'view' ELSE 'table' END AS kind,
+      relation.oid::bigint AS oid
+    FROM pg_class AS relation
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = $1
+      AND relation.relkind IN ('r', 'v', 'p')
+    ORDER BY relation.oid DESC
+  `,
+    [schema],
+  )
+
+  return result.rows.map((row) => ({
+    table: row.table_name as string,
+    kind: row.kind === 'view' ? 'view' : 'table',
+    oid: Number(row.oid),
+  }))
 }
 
 export async function getSchemas(): Promise<SchemaInfo[]> {
