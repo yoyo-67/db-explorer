@@ -21,9 +21,10 @@ const local: ConnectionPreset = {
 function setup(presets: ConnectionPreset[] = [local]) {
   const onSavePreset = vi.fn().mockResolvedValue(undefined)
   const onDeletePreset = vi.fn().mockResolvedValue(undefined)
+  const onConnect = vi.fn().mockResolvedValue(undefined)
   render(
     <ConnectionForm
-      onConnect={vi.fn().mockResolvedValue(undefined)}
+      onConnect={onConnect}
       isLoading={false}
       error={null}
       presets={presets}
@@ -31,7 +32,7 @@ function setup(presets: ConnectionPreset[] = [local]) {
       onDeletePreset={onDeletePreset}
     />,
   )
-  return { onSavePreset, onDeletePreset }
+  return { onSavePreset, onDeletePreset, onConnect }
 }
 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement
@@ -87,5 +88,93 @@ describe('ConnectionForm preset management', () => {
     fireEvent.click(button('Staging'))
 
     expect(field('Database').value).toBe('staging_db')
+  })
+})
+
+/**
+ * A preset is a connection you keep, so the form is also where you correct one.
+ * Editing a chip's fields used to silently detach it: the next save asked for a
+ * name, defaulted to `user@host`, and left the original untouched — which is how
+ * a presets file ends up holding two entries for the same server.
+ */
+describe('ConnectionForm preset editing', () => {
+  it('keeps the preset selected while its fields are edited', () => {
+    setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.change(field('Database'), { target: { value: 'example_scratch' } })
+
+    expect(screen.getByText(/unsaved changes/i)).toBeTruthy()
+  })
+
+  it('saves an edit back over the preset it came from', async () => {
+    const { onSavePreset } = setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.change(field('Database'), { target: { value: 'example_scratch' } })
+    fireEvent.click(button(/save changes/i))
+
+    await waitFor(() =>
+      expect(onSavePreset).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Local Postgres', database: 'example_scratch' }),
+      ),
+    )
+  })
+
+  it('puts the preset back as it was saved when the edit is reverted', () => {
+    setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.change(field('Database'), { target: { value: 'example_scratch' } })
+    fireEvent.click(button(/revert/i))
+
+    expect(field('Database').value).toBe('example_local')
+    expect(screen.queryByText(/unsaved changes/i)).toBeNull()
+  })
+
+  it('offers the edit as a new preset too, named for the connection', () => {
+    setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.change(field('Host'), { target: { value: 'staging.internal' } })
+    fireEvent.click(button(/save as new/i))
+
+    expect(field('Preset name').value).toBe('postgres@staging.internal')
+  })
+
+  it('renames a preset by saving it under the new name and forgetting the old', async () => {
+    const { onSavePreset, onDeletePreset } = setup()
+
+    fireEvent.click(button(/rename Local Postgres/i))
+    fireEvent.change(field('New name for Local Postgres'), { target: { value: 'Dev Postgres' } })
+    fireEvent.click(button(/^rename$/i))
+
+    await waitFor(() =>
+      expect(onSavePreset).toHaveBeenCalledWith(expect.objectContaining({ name: 'Dev Postgres' })),
+    )
+    expect(onDeletePreset).toHaveBeenCalledWith('Local Postgres')
+  })
+
+  it('connects an unchanged preset as that preset', async () => {
+    const { onConnect } = setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.click(button(/^connect$/i))
+
+    await waitFor(() =>
+      expect(onConnect).toHaveBeenCalledWith(expect.anything(), 'Local Postgres'),
+    )
+  })
+
+  // The session is labelled with the preset name, and an edited connection is
+  // not that preset until it is saved.
+  it('connects an edited preset as an ad-hoc connection', async () => {
+    const { onConnect } = setup()
+
+    fireEvent.click(button('Local Postgres'))
+    fireEvent.change(field('Database'), { target: { value: 'example_scratch' } })
+    fireEvent.click(button(/^connect$/i))
+
+    await waitFor(() => expect(onConnect).toHaveBeenCalledWith(expect.anything(), undefined))
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionSlug, metadataPath, slugify } from '#/lib/local-metadata-path'
+import { aliasDatabase, connectionSlug, metadataPath, slugify } from '#/lib/local-metadata-path'
 
 describe('slugify', () => {
   it('makes a path-safe folder name', () => {
@@ -79,5 +79,34 @@ describe('metadataPath', () => {
     expect(
       metadataPath({ connection: 'c', database: null, schema: 'public', fileName: 'f.json' }),
     ).toBeNull()
+  })
+})
+
+describe('aliasDatabase', () => {
+  const aliases = { buildots_local: 'buildots_buildboard_prod1_rds_db' }
+
+  it('answers with the database a copy stands in for', () => {
+    expect(aliasDatabase('buildots_local', aliases)).toBe('buildots_buildboard_prod1_rds_db')
+  })
+
+  it('leaves an unmapped database alone, so one alias does not move the rest', () => {
+    expect(aliasDatabase('celery_results', aliases)).toBe('celery_results')
+    expect(aliasDatabase('celery_results', undefined)).toBe('celery_results')
+  })
+
+  it('passes an unknown database through', () => {
+    expect(aliasDatabase(null, aliases)).toBeNull()
+    expect(aliasDatabase(undefined, aliases)).toBeUndefined()
+  })
+
+  it('sends an aliased database to the folder of the database it names', () => {
+    expect(
+      metadataPath({
+        connection: 'devgrounds',
+        database: aliasDatabase('buildots_local', aliases),
+        schema: 'public',
+        fileName: 'schema-map.json',
+      }),
+    ).toEqual(['devgrounds', 'buildots-buildboard-prod1-rds-db', 'public', 'schema-map.json'])
   })
 })

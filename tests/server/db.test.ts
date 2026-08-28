@@ -39,6 +39,11 @@ const {
   getStatementTimeout,
   StatementTimeoutError,
   withWriteTransaction,
+  closePoolFor,
+  poolFor,
+  setSessionDatabaseAliases,
+  renameSessionDatabase,
+  getLastConfig,
 } = await import('#/server/db')
 const { MAX_STATEMENT_TIMEOUT_MS, MIN_STATEMENT_TIMEOUT_MS, DEFAULT_STATEMENT_TIMEOUT_MS } =
   await import('#/lib/app-settings')
@@ -434,6 +439,108 @@ describe('db module', () => {
       await expect(
         withWriteTransaction((run) => run('UPDATE t SET a = 1')),
       ).rejects.toBeInstanceOf(StatementTimeoutError)
+    })
+  })
+
+  /**
+   * A database that has been renamed or dropped still has a pool open on the
+   * old name. Left in the map, the next request on that name hands out a pool
+   * whose connections point at a database that no longer exists — and while it
+   * is open, `DROP DATABASE` itself cannot run.
+   */
+  describe('closePoolFor', () => {
+    it('ends the pool for one database and leaves the others', async () => {
+      await createConnection(validConfig)
+      await poolFor('other_db')
+      mockEnd.mockClear()
+
+      await closePoolFor('other_db')
+
+      expect(mockEnd).toHaveBeenCalledTimes(1)
+    })
+
+    it('builds a fresh pool the next time that database is asked for', async () => {
+      await createConnection(validConfig)
+      const before = await poolFor('other_db')
+      await closePoolFor('other_db')
+
+      expect(await poolFor('other_db')).not.toBe(before)
+    })
+
+    it('does nothing for a database with no pool open', async () => {
+      await createConnection(validConfig)
+      mockEnd.mockClear()
+
+      await expect(closePoolFor('never_opened')).resolves.toBeUndefined()
+      expect(mockEnd).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * An alias only decides which folder under `local/` a database's metadata is
+   * read from, so it can change under a live session — but the session's own
+   * config is what every reader asks, and a change that only reached the file
+   * would go unseen until the next reconnect.
+   */
+  describe('setSessionDatabaseAliases', () => {
+    it('puts new aliases in front of the readers without reconnecting', async () => {
+      await createConnection(validConfig)
+      mockEnd.mockClear()
+
+      setSessionDatabaseAliases({ testdb: 'the_original' })
+
+      expect(getLastConfig()?.databaseAliases).toEqual({ testdb: 'the_original' })
+      expect(mockEnd).not.toHaveBeenCalled()
+    })
+
+    it('clears the map when nothing is aliased any more', async () => {
+      await createConnection({ ...validConfig, databaseAliases: { testdb: 'the_original' } })
+
+      setSessionDatabaseAliases({})
+
+      expect(getLastConfig()?.databaseAliases).toBeUndefined()
+    })
+
+    it('does nothing while nothing is connected', async () => {
+      await disconnect()
+      expect(() => setSessionDatabaseAliases({ a: 'b' })).not.toThrow()
+    })
+  })
+
+  /**
+   * Renaming the database the session connected with leaves the config naming
+   * something that no longer exists — and that name is what a reconnect, and
+   * every request that names no database of its own, falls back to.
+   */
+  describe('renameSessionDatabase', () => {
+    it('follows the rename into the session config', async () => {
+      await createConnection(validConfig)
+
+      renameSessionDatabase('testdb', 'testdb_old')
+
+      expect(getLastConfig()?.database).toBe('testdb_old')
+    })
+
+    it('leaves a session connected to another database alone', async () => {
+      await createConnection(validConfig)
+
+      renameSessionDatabase('something_else', 'renamed')
+
+      expect(getLastConfig()?.database).toBe('testdb')
+    })
+
+    it('follows the rename into the aliases, both key and target', async () => {
+      await createConnection({
+        ...validConfig,
+        databaseAliases: { copy: 'testdb', testdb: 'the_original' },
+      })
+
+      renameSessionDatabase('testdb', 'testdb_old')
+
+      expect(getLastConfig()?.databaseAliases).toEqual({
+        copy: 'testdb_old',
+        testdb_old: 'the_original',
+      })
     })
   })
 })

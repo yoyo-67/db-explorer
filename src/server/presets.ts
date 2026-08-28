@@ -99,3 +99,61 @@ export async function findPresetName(config: ConnectionConfig): Promise<string |
   )
   return match?.name ?? null
 }
+
+/**
+ * Point a database on this connection at the metadata of another one, or stop
+ * pointing it anywhere.
+ *
+ * The preset is found the way {@link findPresetName} finds it — on the server,
+ * not the database — then patched raw, so the `${VAR}` a password may be stays
+ * one. A connection that was never saved has nowhere to keep the alias, and is
+ * told so rather than silently having it dropped.
+ */
+export async function setDatabaseAlias(
+  config: ConnectionConfig,
+  database: string,
+  aliasFor: string | null,
+): Promise<void> {
+  const name = await findPresetName(config)
+  if (!name) throw new Error('This connection is not saved — save it as a preset to keep aliases.')
+
+  const presets = await readRawPresets()
+  const entry = presets.find((preset) => preset.name === name)
+  if (!entry) throw new Error(`Preset "${name}" is no longer in the file.`)
+
+  const aliases = { ...(entry.databaseAliases as Record<string, string> | undefined) }
+  if (aliasFor) aliases[database] = aliasFor
+  else delete aliases[database]
+
+  if (Object.keys(aliases).length > 0) entry.databaseAliases = aliases
+  else delete entry.databaseAliases
+
+  await writeRawPresets(presets)
+}
+
+/**
+ * Follow a database rename through the file.
+ *
+ * Three places name a database and all three move: the database a preset
+ * connects to, an alias key — the copy that was renamed — and an alias target —
+ * the original that was renamed. Nothing else is touched, and no file is not an
+ * error: the rename happened on the server either way.
+ */
+export async function renameDatabaseInPresets(from: string, to: string): Promise<void> {
+  const presets = await readRawPresets()
+  if (presets.length === 0) return
+
+  for (const entry of presets) {
+    if (entry.database === from) entry.database = to
+    const aliases = entry.databaseAliases as Record<string, string> | undefined
+    if (!aliases) continue
+    entry.databaseAliases = Object.fromEntries(
+      Object.entries(aliases).map(([database, aliasFor]) => [
+        database === from ? to : database,
+        aliasFor === from ? to : aliasFor,
+      ]),
+    )
+  }
+
+  await writeRawPresets(presets)
+}

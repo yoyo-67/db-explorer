@@ -28,7 +28,8 @@ import { getIndexUsage } from '#/server/index-usage'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
-import { readPresets, removePreset, upsertPreset } from '#/server/presets'
+import { readPresets, removePreset, setDatabaseAlias, upsertPreset } from '#/server/presets'
+import { dropDatabase, renameDatabase } from '#/server/database-admin'
 import { runWithDatabase } from '#/server/db-context'
 import type { RawCellRequest } from '#/server/functions'
 import type { RowEdit } from '#/lib/row-edit'
@@ -345,6 +346,74 @@ export const $deletePreset = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     await removePreset(data.name)
     return readPresets()
+  })
+
+/**
+ * Rename a database on the server, and everything named after it.
+ *
+ * Deliberately not `scoped`: this acts on the server, not inside a database, and
+ * the database it is about is the one being renamed — binding the request to it
+ * would open a pool on a name that is about to stop existing. The result says
+ * whether private metadata moved with it, which is what the caller reports.
+ */
+export const $renameDatabase = createServerFn({ method: 'POST' })
+  .inputValidator((data: { from: string; to: string }) => data)
+  .handler(async ({ data }) => {
+    const { metadataMoved } = await renameDatabase(data.from, data.to)
+    return { database: data.to, metadataMoved }
+  })
+
+/**
+ * Drop a database.
+ *
+ * Irreversible, and the client is expected to have confirmed it by name: the
+ * only guard here is the one in `#/server/database-admin` — templates, and a
+ * name it cannot quote. Private metadata under `local/` is left in place.
+ */
+export const $dropDatabase = createServerFn({ method: 'POST' })
+  .inputValidator((data: { database: string }) => data)
+  .handler(async ({ data }) => {
+    await dropDatabase(data.database)
+    return { dropped: data.database }
+  })
+
+/**
+ * What the panel that manages databases needs to know about the connection:
+ * which aliases are in force, and whether there is a preset to keep new ones in.
+ *
+ * Aliases live on the saved connection, so an ad-hoc session can be told why it
+ * cannot set one before it tries.
+ */
+export const $getDatabaseAliases = createServerFn({ method: 'GET' }).handler(async () => {
+  const { getLastConfig } = await import('#/server/db')
+  const { findPresetName } = await import('#/server/presets')
+  const config = getLastConfig()
+  if (!config) return { aliases: {}, savedAs: null as string | null }
+  return { aliases: config.databaseAliases ?? {}, savedAs: await findPresetName(config) }
+})
+
+/**
+ * Point one database at another's metadata, or stop pointing it anywhere.
+ *
+ * Written against the *saved* connection, which is where an alias has to live to
+ * survive a reconnect — an ad-hoc connection is told to save itself first.
+ */
+export const $setDatabaseAlias = createServerFn({ method: 'POST' })
+  .inputValidator((data: { database: string; aliasFor: string | null }) => data)
+  .handler(async ({ data }) => {
+    const { getLastConfig, setSessionDatabaseAliases } = await import('#/server/db')
+    const config = getLastConfig()
+    if (!config) throw new Error('Not connected.')
+    await setDatabaseAlias(config, data.database, data.aliasFor)
+
+    // The file is where the alias survives; the session is where it takes
+    // effect. Both, or the next page read still resolves the old folder.
+    const aliases = { ...config.databaseAliases }
+    if (data.aliasFor) aliases[data.database] = data.aliasFor
+    else delete aliases[data.database]
+    setSessionDatabaseAliases(aliases)
+
+    return { aliases }
   })
 
 export const $getPerfLog = createServerFn({ method: 'GET' })

@@ -23,6 +23,11 @@ export interface ConnectionConfig {
   /** Which folder under `local/` this connection's private metadata lives in.
    *  Optional — see `connectionSlug` in `#/lib/local-metadata-path`. */
   slug?: string
+  /** Databases on this connection that stand in for another one — a local
+   *  restore keyed to the database it was dumped from, so it reads that
+   *  database's metadata. Real name to real name, not to a folder name; see
+   *  `aliasDatabase` in `#/lib/local-metadata-path`. */
+  databaseAliases?: Record<string, string>
 }
 
 /** Where a connected session should land: the first table worth showing, or why

@@ -10,7 +10,8 @@
  *   local/<connection>/<database>/<schema>/table-catalog.json
  *   local/<connection>/<database>/<schema>/schema-map.json
  *
- * `<connection>` is the host — see {@link connectionSlug}.
+ * `<connection>` is the host — see {@link connectionSlug}. `<database>` is the
+ * live database, or the one it stands in for — see {@link aliasDatabase}.
  */
 
 /** Path-safe, lowercase, and stable — the folder name is read by people too. */
@@ -40,6 +41,28 @@ export function slugify(value: string): string {
  */
 export function connectionSlug(input: { slug?: string | null; host: string }): string {
   return slugify(input.slug?.trim() || input.host)
+}
+
+/**
+ * The database a database's metadata is written about.
+ *
+ * A restored copy carries its own name and none of the original's metadata: a
+ * dump of `buildots_buildboard_prod1_rds_db` opened locally as `buildots_local`
+ * looks like a database nobody has ever described. An alias on the connection —
+ * `{ buildots_local: 'buildots_buildboard_prod1_rds_db' }` — says the two are
+ * the same database, and the copy reads what was written about the original.
+ *
+ * The alias names a *database*, not a folder, so slugifying it still yields the
+ * folder and `cross-db-refs.json` — which matches on raw database names — starts
+ * matching too. Only the databases the map names move; everything else on the
+ * connection stays where it was.
+ */
+export function aliasDatabase<T extends string | null | undefined>(
+  database: T,
+  aliases?: Record<string, string> | null,
+): T | string {
+  if (!database || !aliases) return database
+  return aliases[database] ?? database
 }
 
 /**

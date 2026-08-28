@@ -55,6 +55,50 @@ function setLastConfig(config: ConnectionConfig | null) {
 }
 
 /**
+ * Change which databases stand in for another one, on the live session.
+ *
+ * An alias decides only which folder under `local/` a database's metadata is
+ * read from — no pool, no credential and no query depends on it — so it can
+ * change under a running session with nothing to reconnect. It has to be set
+ * here as well as in `presets.json`: every reader asks the session's config, and
+ * a change that reached only the file would go unseen until the next connect.
+ */
+export function setSessionDatabaseAliases(aliases: Record<string, string>): void {
+  const config = getLastConfig()
+  if (!config) return
+  const next = { ...config }
+  if (Object.keys(aliases).length > 0) next.databaseAliases = aliases
+  else delete next.databaseAliases
+  setLastConfig(next)
+}
+
+/**
+ * Follow a database rename into the live session.
+ *
+ * The config names the database the session connected with, and that name is
+ * what a reconnect and every request that names no database of its own fall
+ * back to — so a rename that skipped it would leave the session pointing at
+ * something gone. Aliases move too: a copy that stood in for the renamed
+ * database, and the renamed database standing in for something else.
+ */
+export function renameSessionDatabase(from: string, to: string): void {
+  const config = getLastConfig()
+  if (!config) return
+
+  const next = { ...config }
+  if (config.database === from) next.database = to
+  if (config.databaseAliases) {
+    next.databaseAliases = Object.fromEntries(
+      Object.entries(config.databaseAliases).map(([database, aliasFor]) => [
+        database === from ? to : database,
+        aliasFor === from ? to : aliasFor,
+      ]),
+    )
+  }
+  setLastConfig(next)
+}
+
+/**
  * The database this work is about: the one the request named, or the one the
  * session connected to. A request that names nothing gets the connection's own
  * database rather than an error — `/console` and the connect flow are about the
@@ -171,6 +215,22 @@ export async function createConnection(config: ConnectionConfig): Promise<void> 
     if (credentialsChanged) setLastConfig(previous ?? null)
     throw err
   }
+}
+
+/**
+ * Drop one database's pool.
+ *
+ * A database that has just been renamed or dropped still has a pool open on the
+ * old name: its connections point at something that is no longer there, and
+ * while they are open `DROP DATABASE` cannot run at all. Removed from the map
+ * first, so a request arriving mid-close builds a fresh pool rather than being
+ * handed the one being torn down.
+ */
+export async function closePoolFor(database: string): Promise<void> {
+  const open = pools().get(database)
+  if (!open) return
+  pools().delete(database)
+  await open.then(endPoolSafe).catch(() => {})
 }
 
 async function closeAllPools(): Promise<void> {

@@ -24,9 +24,25 @@ export function connectionSlug(preset) {
   return slugify(preset.slug?.trim() || preset.host)
 }
 
+/**
+ * The database a database's metadata is written about: the one a copy stands in
+ * for when `databaseAliases` names it, and itself otherwise. See
+ * `aliasDatabase` in `src/lib/local-metadata-path.ts` for why the alias is a
+ * database name rather than a folder name.
+ */
+export function aliasDatabase(preset, database) {
+  return preset.databaseAliases?.[database] ?? database
+}
+
 /** `local/<connection>/<database>/<schema>/<fileName>`, absolute. */
 export function metadataPath(preset, database, schema, fileName) {
-  return resolve('local', connectionSlug(preset), slugify(database), schema, fileName)
+  return resolve(
+    'local',
+    connectionSlug(preset),
+    slugify(aliasDatabase(preset, database)),
+    schema,
+    fileName,
+  )
 }
 
 /**

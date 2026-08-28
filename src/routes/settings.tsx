@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import DatabaseAdmin from '#/components/DatabaseAdmin'
 import { setSetting, useAppSettings } from '#/hooks/useAppSettings'
 import { STATEMENT_TIMEOUT_CHOICES } from '#/lib/app-settings'
 import type { TableNameDisplay } from '#/lib/table-label'
@@ -94,6 +95,17 @@ function SettingsPage() {
               onChange={(next) => setSetting('statementTimeoutMs', next)}
             />
           </Row>
+        </Section>
+
+        {/* Not a browser setting at all: these three change the server, and the
+            last of them cannot be undone. Filed here because each is reached for
+            once — the header carries what a session navigates with. */}
+        <Section
+          title="Databases on this server"
+          blurb="Rename a database, say which database's private metadata a restored copy should read, or drop one. A rename follows through: the metadata folder under local/ moves with it and presets.json catches up. A drop deletes the database and every row in it, and leaves the metadata folder behind."
+          accent
+        >
+          <DatabaseAdmin />
         </Section>
 
         {/* The one switch that lets the app write, so it is marked rather than

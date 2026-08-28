@@ -32,7 +32,6 @@ import { lensTargetForTable } from '#/lib/lens-links'
 import { tableLabel } from '#/lib/table-label'
 import type { TableSort } from '#/lib/types'
 import { formatSidebarView, parseSidebarView } from '#/lib/table-creation'
-import TableName from '#/components/TableName'
 import LensBadge from '#/components/LensBadge'
 
 interface TableSearch {
@@ -229,7 +228,6 @@ function TablePage() {
   })
 
   const tableInfo = introspectQuery.data?.tables.find((t) => t.name === table)
-  const otherTables = (introspectQuery.data?.tables ?? []).filter((t) => t.name !== table)
   const fks = introspectQuery.data?.fks ?? []
   const pageData = pageQuery.data
   const rawResult = rawQuery.data
@@ -486,24 +484,6 @@ function TablePage() {
           />
         </div>
 
-        {otherTables.length > 0 && (
-          <div className="pt-2 text-xs text-[var(--sea-ink-soft)]">
-            <span className="mr-2">Jump to:</span>
-            {otherTables.slice(0, 30).map((t) => (
-              <Link
-                key={t.name}
-                to="/d/$database/t/$schema/$table"
-                params={{ database, schema, table: t.name }}
-                className="mr-2 inline-block rounded-full border border-[var(--line)] px-2 py-0.5 hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
-              >
-                <TableName table={t.name} />
-              </Link>
-            ))}
-            {otherTables.length > 30 && (
-              <span className="opacity-60">+ {otherTables.length - 30} more</span>
-            )}
-          </div>
-        )}
       </div>
     </main>
   )

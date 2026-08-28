@@ -20,6 +20,7 @@ const scope: {
     database: string
     user: string
     slug?: string
+    databaseAliases?: Record<string, string>
   } | null
   /** The database the request named, which is what a page is about. */
   requestDatabase?: string
@@ -104,6 +105,39 @@ describe('local metadata lookup', () => {
     )
     scope.requestDatabase = 'archive_db'
     expect((await readTableCatalog('public'))?.groups[0].name).toBe('Archive')
+  })
+
+  // A local restore of a remote database has its own name and none of its
+  // metadata. The alias says the two are the same database, so the copy reads
+  // what was written about the original.
+  it('reads an aliased database under the database it stands in for', async () => {
+    write('devgrounds/buildots-buildboard-prod1-rds-db/public/table-catalog.json', {
+      groups: [{ name: 'Buildboard' }],
+      tables: {},
+    })
+    scope.config = {
+      host: '127.0.0.1',
+      port: 5432,
+      database: 'buildots_local',
+      user: 'postgres',
+      slug: 'devgrounds',
+      databaseAliases: { buildots_local: 'buildots_buildboard_prod1_rds_db' },
+    }
+    expect((await readTableCatalog('public'))?.groups[0].name).toBe('Buildboard')
+  })
+
+  it('leaves the databases the alias does not name where they were', async () => {
+    write('devgrounds/celery-results/public/schema-map.json', { tables: {} })
+    scope.config = {
+      host: '127.0.0.1',
+      port: 5432,
+      database: 'buildots_local',
+      user: 'postgres',
+      slug: 'devgrounds',
+      databaseAliases: { buildots_local: 'buildots_buildboard_prod1_rds_db' },
+    }
+    scope.requestDatabase = 'celery_results'
+    expect(await readSchemaMap('public')).not.toBeNull()
   })
 
   it('reads nothing while disconnected rather than throwing', async () => {
