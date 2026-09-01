@@ -1,7 +1,8 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouter } from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 import FuzzyText from '#/components/FuzzyText'
 import { useDatabaseParam } from '#/hooks/useDatabase'
+import { opensNewTab } from '#/lib/link-click'
 import { lensTargetForNode, searchLensTables } from '#/lib/lens-table-search'
 import type { EdgeBasis, SchemaGraphNode } from '#/lib/types'
 
@@ -26,6 +27,7 @@ export default function LensTableSearch({
 }) {
   const database = useDatabaseParam()
   const navigate = useNavigate()
+  const router = useRouter()
   const [query, setQuery] = useState('')
   /** Which hit Enter would open. Reset on every keystroke, because the list is. */
   const [active, setActive] = useState(0)
@@ -33,6 +35,22 @@ export default function LensTableSearch({
 
   const hits = useMemo(() => searchLensTables(tables, query), [tables, query])
   const open = hits.length > 0
+
+  /** Where a hit lands, as a URL — so each row can be a real link. */
+  function hrefFor(node: SchemaGraphNode): string {
+    const target = lensTargetForNode(node)
+    return target.kind === 'group'
+      ? router.buildLocation({
+          to: '/d/$database/lens/$schema/g/$group',
+          params: { database, schema, group: target.group },
+          search: { damp, basis, focus: node.name },
+        }).href
+      : router.buildLocation({
+          to: '/d/$database/lens/$schema/t/$table',
+          params: { database, schema, table: node.name },
+          search: { damp, basis },
+        }).href
+  }
 
   function go(node: SchemaGraphNode) {
     const target = lensTargetForNode(node)
@@ -99,27 +117,36 @@ export default function LensTableSearch({
           role="listbox"
         >
           {hits.map((hit, i) => (
-            /* Mouse-down, not click: the input's blur would otherwise tear the
-               list down before a click ever landed. */
-            <li
-              key={hit.node.name}
-              role="option"
-              aria-selected={i === active}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                go(hit.node)
-              }}
-              onMouseEnter={() => setActive(i)}
-              className={`flex cursor-pointer items-baseline gap-2 px-2 py-1 text-[11px] ${
-                i === active ? 'bg-[var(--chip-bg)]' : ''
-              }`}
-            >
-              <span className="min-w-0 flex-1 truncate font-mono text-[var(--sea-ink)]">
-                <FuzzyText text={hit.text} ranges={hit.ranges} />
-              </span>
-              <span className="shrink-0 rounded-full border border-[var(--chip-line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)]">
-                {hit.node.group}
-              </span>
+            <li key={hit.node.name} role="option" aria-selected={i === active}>
+              {/* A real link, so ctrl-click, middle-click and the context menu all
+                  behave. Mouse-down, not click, for the plain pick: the input's
+                  blur would otherwise tear the list down before a click ever
+                  landed. A modified mouse-down is left alone so the anchor's own
+                  click can open the tab — the list closes on the query, not on
+                  blur, so it survives the focus move. */}
+              <a
+                href={hrefFor(hit.node)}
+                onMouseDown={(e) => {
+                  if (opensNewTab(e)) return
+                  e.preventDefault()
+                  go(hit.node)
+                }}
+                onClick={(e) => {
+                  if (opensNewTab(e)) return
+                  e.preventDefault()
+                }}
+                onMouseEnter={() => setActive(i)}
+                className={`flex cursor-pointer items-baseline gap-2 px-2 py-1 text-[11px] no-underline ${
+                  i === active ? 'bg-[var(--chip-bg)]' : ''
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-[var(--sea-ink)]">
+                  <FuzzyText text={hit.text} ranges={hit.ranges} />
+                </span>
+                <span className="shrink-0 rounded-full border border-[var(--chip-line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)]">
+                  {hit.node.group}
+                </span>
+              </a>
             </li>
           ))}
         </ul>

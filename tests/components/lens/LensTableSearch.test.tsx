@@ -15,6 +15,26 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({ location: { pathname: '/d/shop_db/lens/public' } }),
+  // Each row is a real anchor, so it needs a real URL — enough of a stand-in to
+  // assert what the href is built from.
+  useRouter: () => ({
+    buildLocation: ({
+      to,
+      params,
+      search,
+    }: {
+      to: string
+      params: Record<string, string>
+      search: Record<string, string | undefined>
+    }) => ({
+      href: `${Object.entries(params).reduce(
+        (path, [k, v]) => path.replace(`$${k}`, v),
+        to,
+      )}?${new URLSearchParams(
+        Object.entries(search).filter(([, v]) => v !== undefined) as [string, string][],
+      ).toString()}`,
+    }),
+  }),
 }))
 
 function node(name: string, group: string, model: string | null = null): SchemaGraphNode {
@@ -66,7 +86,7 @@ describe('LensTableSearch', () => {
 
     // Mouse-down, because that is what the row opens on: a click would arrive
     // after the input's blur had already torn the list down.
-    fireEvent.mouseDown(screen.getByRole('option', { name: /data_projecttemplate/ }))
+    fireEvent.mouseDown(screen.getByRole('link', { name: /data_projecttemplate/ }))
 
     expect(navigate).toHaveBeenCalledWith({
       to: '/d/$database/lens/$schema/g/$group',
@@ -99,7 +119,7 @@ describe('LensTableSearch', () => {
   it('sends a table no Group claims to its own relations view', () => {
     const input = renderSearch()
     type(input, 'loose')
-    fireEvent.mouseDown(screen.getByRole('option', { name: /loose_table/ }))
+    fireEvent.mouseDown(screen.getByRole('link', { name: /loose_table/ }))
 
     expect(navigate).toHaveBeenCalledWith({
       to: '/d/$database/lens/$schema/t/$table',
@@ -114,6 +134,30 @@ describe('LensTableSearch', () => {
 
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(screen.getByText(/No table in public matches/)).toBeTruthy()
+  })
+
+  it('carries the row\'s own URL, so it can be opened in a new tab', () => {
+    const input = renderSearch()
+    type(input, 'projecttemplate')
+
+    const link = screen.getByRole('link', { name: /data_projecttemplate/ })
+    expect(link.getAttribute('href')).toBe(
+      '/d/shop_db/lens/public/g/Projects?basis=declared&focus=data_projecttemplate',
+    )
+  })
+
+  it('leaves a ctrl-click to the browser rather than navigating in place', () => {
+    const input = renderSearch()
+    type(input, 'projecttemplate')
+
+    const link = screen.getByRole('link', { name: /data_projecttemplate/ })
+    fireEvent.mouseDown(link, { ctrlKey: true })
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true })
+    link.dispatchEvent(click)
+
+    expect(navigate).not.toHaveBeenCalled()
+    // Not prevented: the anchor is left to open its own tab.
+    expect(click.defaultPrevented).toBe(false)
   })
 
   it('clears on Escape', () => {

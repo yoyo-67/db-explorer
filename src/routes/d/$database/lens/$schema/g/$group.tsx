@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useRouter } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useEffect, useMemo, useState } from 'react'
 import LensNav from '#/components/lens/LensNav'
@@ -16,6 +16,7 @@ import {
   ringNeighbours,
   stubPath,
 } from '#/lib/lens-layout'
+import { opensNewTab } from '#/lib/link-click'
 import { degreesOf } from '#/lib/schema-graph-metrics'
 import { tableLabel } from '#/lib/table-label'
 import type { BoundaryStub, LabelSlot, RadialNode } from '#/lib/lens-layout'
@@ -59,6 +60,11 @@ const MIN_HIT_RADIUS = 15
 const ARROW_SIZE = 7.5
 const ARROW_SIZE_LIT = 10
 
+/** Gap from the end of a label to the centre of its pin. */
+const PIN_OFFSET = 9
+/** Label width plus the pin and its disc — how far the hover bridge must reach. */
+const PIN_REACH = PIN_OFFSET + 15
+
 /** What a node is drawn at right now — hover swells it (BUILD-SPEC §4.2). */
 function drawnRadius(node: RadialNode, hovered: boolean): number {
   return hovered ? node.radius * HOVER_SCALE + HOVER_BONUS : node.radius
@@ -69,6 +75,7 @@ function GroupPage() {
   const { schema, group } = Route.useParams()
   const search = Route.useSearch()
   const navigate = useNavigate()
+  const router = useRouter()
   const { isChecking, isConnected } = useConnectionGuard()
   const [hovered, setHovered] = useState<string | null>(null)
 
@@ -168,6 +175,33 @@ function GroupPage() {
     () => ringNeighbours(highlighted, inside, stubs),
     [highlighted, inside, stubs],
   )
+
+  /**
+   * Real hrefs for the drawing. Every node and stub is a link, so it has to be an
+   * anchor with a URL in it — otherwise ctrl-click, middle-click and the context
+   * menu all die at an `onClick` that only knows how to navigate in place.
+   */
+  const tableHref = (table: string) =>
+    router.buildLocation({
+      to: '/d/$database/lens/$schema/t/$table',
+      params: { database, schema, table },
+      search: { damp: search.damp, basis: search.basis },
+    }).href
+  const groupFocusHref = (targetGroup: string, focus: string) =>
+    router.buildLocation({
+      to: '/d/$database/lens/$schema/g/$group',
+      params: { database, schema, group: targetGroup },
+      search: { ...search, focus },
+    }).href
+
+  /** Pinning is the hover made to stay: same highlight, parked in the URL. */
+  const togglePin = (table: string) =>
+    navigate({
+      to: '/d/$database/lens/$schema/g/$group',
+      params: { database, schema, group },
+      search: (prev) => ({ ...prev, focus: prev.focus === table ? undefined : table }),
+      replace: true,
+    })
 
   const inbound = useMemo(
     () =>
@@ -371,6 +405,11 @@ function GroupPage() {
                         lens.nodeByName.get(stub.targetTable)?.model,
                       )}
                       onHover={setHovered}
+                      href={
+                        stub.targetGroup && stub.targetGroup !== group
+                          ? groupFocusHref(stub.targetGroup, stub.targetTable)
+                          : tableHref(stub.targetTable)
+                      }
                       onOpen={() => {
                         if (stub.targetGroup && stub.targetGroup !== group) {
                           navigate({
@@ -413,6 +452,7 @@ function GroupPage() {
                     slot={labelSlots.get(n.table)}
                     viewWidth={width}
                     onHover={setHovered}
+                    href={tableHref(n.table)}
                     onOpen={() =>
                       navigate({
                         to: '/d/$database/lens/$schema/t/$table',
@@ -420,6 +460,7 @@ function GroupPage() {
                         search: { damp: search.damp, basis: search.basis },
                       })
                     }
+                    onTogglePin={() => togglePin(n.table)}
                   />
                 ))}
               </svg>
@@ -453,7 +494,9 @@ function RingNode({
   slot,
   viewWidth,
   onHover,
+  href,
   onOpen,
+  onTogglePin,
 }: {
   node: RadialNode
   focused: boolean
@@ -468,7 +511,10 @@ function RingNode({
   /** Drawing width — a restored label is clamped to stay inside it. */
   viewWidth: number
   onHover: (table: string | null) => void
+  /** The node's own URL, so a modified click can be the browser's business. */
+  href: string
   onOpen: () => void
+  onTogglePin: () => void
 }) {
   const r = drawnRadius(node, hovered)
   const anchor = slot?.anchor ?? node.labelAnchor
@@ -486,12 +532,19 @@ function RingNode({
       ? Math.max(columnX, textWidth + 4)
       : Math.min(columnX, viewWidth - textWidth - 4)
   return (
-    <g
-      onClick={onOpen}
+    <a
+      href={href}
+      onClick={(e) => {
+        // A click asking for a new tab is the browser's: leave the default alone.
+        if (opensNewTab(e)) return
+        e.preventDefault()
+        onOpen()
+      }}
       onMouseEnter={() => onHover(node.table)}
       onMouseLeave={() => onHover(null)}
       style={{
         cursor: 'pointer',
+        textDecoration: 'none',
         opacity: dimmed && !focused ? 0.22 : 1,
         transition: 'opacity 120ms ease',
       }}
@@ -574,6 +627,82 @@ function RingNode({
       >
         {shown}
       </text>
+      {(hovered || focused) && (
+        <>
+          {/* Hover bridge. The pin sits past the end of the label, so without a
+              filled span between them the pointer crosses bare canvas, the
+              anchor's mouseleave fires, and the pin it was travelling to
+              unmounts under it. */}
+          <rect
+            x={anchor === 'end' ? labelX - textWidth - 6 : labelX - 4}
+            y={labelY - 9}
+            width={textWidth + PIN_REACH}
+            height={19}
+            fill="transparent"
+            stroke="none"
+          />
+          <PinToggle
+            x={anchor === 'end' ? labelX + PIN_OFFSET : labelX + textWidth + PIN_OFFSET}
+            y={labelY + (hovered ? 4 : 3)}
+            pinned={focused}
+            table={node.table}
+            onToggle={onTogglePin}
+          />
+        </>
+      )}
+    </a>
+  )
+}
+
+/**
+ * The hover made permanent. A hover answers "what does this touch" for as long as
+ * the pointer stays, which is not long enough to then go read a chord — so the
+ * same mark can be parked on the node with one click. `?focus=` already existed
+ * for arrivals from the search and the boundary list; this is the way to set it
+ * from inside the ring, and the header chip is still the way to drop it.
+ */
+function PinToggle({
+  x,
+  y,
+  pinned,
+  table,
+  onToggle,
+}: {
+  x: number
+  y: number
+  pinned: boolean
+  table: string
+  onToggle: () => void
+}) {
+  return (
+    <g
+      onClick={(e) => {
+        // Never the anchor's click: pinning is not navigation.
+        e.preventDefault()
+        e.stopPropagation()
+        onToggle()
+      }}
+      style={{ cursor: 'pointer' }}
+      role="button"
+      aria-label={pinned ? `Unpin ${table}` : `Pin ${table}`}
+    >
+      <title>{pinned ? `Unpin ${table}` : `Keep ${table} marked on the ring`}</title>
+      {/* 10px glyph, so the target is a disc rather than the character. */}
+      <circle cx={x} cy={y - 3} r={9} fill="transparent" stroke="none" />
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        fontSize={11}
+        fill={pinned ? 'var(--palm)' : 'var(--sea-ink-soft)'}
+        stroke="var(--surface)"
+        strokeWidth={3}
+        paintOrder="stroke"
+        strokeLinejoin="round"
+        pointerEvents="none"
+      >
+        ⌖
+      </text>
     </g>
   )
 }
@@ -587,6 +716,7 @@ function StubGroup({
   hovered,
   label,
   onHover,
+  href,
   onOpen,
 }: {
   stub: BoundaryStub
@@ -597,6 +727,8 @@ function StubGroup({
   hovered: string | null
   label: string
   onHover: (table: string | null) => void
+  /** The box's own URL — same anchor deal as a ring node. */
+  href: string
   onOpen: () => void
 }) {
   // Symmetric with the ring: hovering a source lights the boxes it feeds, and
@@ -630,11 +762,16 @@ function StubGroup({
         fillOpacity={hovered ? (lit ? 0.95 : 0.06) : 0.4}
         style={{ transition: 'fill-opacity 120ms ease' }}
       />
-      <g
-        onClick={onOpen}
+      <a
+        href={href}
+        onClick={(e) => {
+          if (opensNewTab(e)) return
+          e.preventDefault()
+          onOpen()
+        }}
         onMouseEnter={() => onHover(stub.targetTable)}
         onMouseLeave={() => onHover(null)}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'pointer', textDecoration: 'none' }}
       >
         <title>{`${stub.count} edge${stub.count === 1 ? '' : 's'} to ${stub.targetTable}${
           stub.targetGroup ? ` (${stub.targetGroup})` : ''
@@ -658,7 +795,7 @@ function StubGroup({
         >
           {truncate(label, 30)} ({stub.count})
         </text>
-      </g>
+      </a>
     </g>
   )
 }
