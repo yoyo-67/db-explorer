@@ -6,7 +6,14 @@ import IndexList from '#/components/indexes/IndexList'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { $getIndexUsage, $getSchemas } from '#/server/api'
-import { buildIndexRows, filterRows, sortRows, type IndexFlag, type IndexSort } from '#/lib/indexes/ranking'
+import {
+  buildIndexRows,
+  filterRows,
+  sortRows,
+  tableChoices,
+  type IndexFlag,
+  type IndexSort,
+} from '#/lib/indexes/ranking'
 import { formatBytes } from '#/lib/pressure/bytes'
 import { formatRelativeTime } from '#/lib/inspect/format'
 
@@ -20,6 +27,8 @@ interface IndexSearch {
   find?: string
   order?: IndexSort
   only?: string
+  /** Show only the indexes on this table. Exact, unlike `find`. */
+  tbl?: string
 }
 
 /**
@@ -40,6 +49,7 @@ export const Route = createFileRoute('/d/$database/indexes/$schema')({
     find: typeof search.find === 'string' ? search.find : undefined,
     order: typeof search.order === 'string' ? (search.order as IndexSort) : undefined,
     only: typeof search.only === 'string' ? search.only : undefined,
+    tbl: typeof search.tbl === 'string' ? search.tbl : undefined,
   }),
   component: IndexesPage,
 })
@@ -73,6 +83,7 @@ function IndexesPage() {
   const criteria = {
     text: search.find ?? '',
     flags: (search.only ? search.only.split(',') : []) as IndexFlag[],
+    table: search.tbl ?? null,
   }
   const sort: IndexSort = search.order ?? 'scans-per-day'
 
@@ -81,6 +92,9 @@ function IndexesPage() {
     [usageQuery.data],
   )
   const visible = useMemo(() => sortRows(filterRows(rows, criteria), sort), [rows, criteria, sort])
+  // Built from every row, not the visible ones: a picker that lost its other
+  // options the moment you used it could not be used twice.
+  const tables = useMemo(() => tableChoices(rows), [rows])
 
   if (isChecking) {
     return (
@@ -161,6 +175,7 @@ function IndexesPage() {
         <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <IndexList
             rows={visible}
+            tables={tables}
             selectedKey={search.sel ?? null}
             onSelect={(key) => navigate({ search: (old) => ({ ...old, sel: key }) })}
             criteria={criteria}
@@ -170,6 +185,13 @@ function IndexesPage() {
                   ...old,
                   find: next.text === '' ? undefined : next.text,
                   only: next.flags.length === 0 ? undefined : next.flags.join(','),
+                  tbl: next.table ?? undefined,
+                  // A selection from another table would sit there unreachable
+                  // behind the new filter; drop it rather than strand it.
+                  sel:
+                    next.table !== null && old.sel && !old.sel.startsWith(`${next.table}.`)
+                      ? undefined
+                      : old.sel,
                 }),
               })
             }

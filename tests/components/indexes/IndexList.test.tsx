@@ -30,7 +30,8 @@ describe('IndexList', () => {
         rows={[row()]}
         selectedKey={null}
         onSelect={() => {}}
-        criteria={{ text: '', flags: [] }}
+        tables={[]}
+        criteria={{ text: '', flags: [], table: null }}
         onCriteriaChange={() => {}}
         sort="size"
         onSortChange={() => {}}
@@ -47,7 +48,8 @@ describe('IndexList', () => {
         rows={[row({ scansPerDay: null })]}
         selectedKey={null}
         onSelect={() => {}}
-        criteria={{ text: '', flags: [] }}
+        tables={[]}
+        criteria={{ text: '', flags: [], table: null }}
         onCriteriaChange={() => {}}
         sort="size"
         onSortChange={() => {}}
@@ -74,7 +76,8 @@ describe('IndexList', () => {
         ]}
         selectedKey={null}
         onSelect={() => {}}
-        criteria={{ text: '', flags: [] }}
+        tables={[]}
+        criteria={{ text: '', flags: [], table: null }}
         onCriteriaChange={() => {}}
         sort="size"
         onSortChange={() => {}}
@@ -90,7 +93,8 @@ describe('IndexList', () => {
         rows={[row()]}
         selectedKey={null}
         onSelect={onSelect}
-        criteria={{ text: '', flags: [] }}
+        tables={[]}
+        criteria={{ text: '', flags: [], table: null }}
         onCriteriaChange={() => {}}
         sort="size"
         onSortChange={() => {}}
@@ -106,7 +110,8 @@ describe('IndexList', () => {
         rows={[]}
         selectedKey={null}
         onSelect={() => {}}
-        criteria={{ text: 'nothing', flags: [] }}
+        tables={[]}
+        criteria={{ text: 'nothing', flags: [], table: null }}
         onCriteriaChange={() => {}}
         sort="size"
         onSortChange={() => {}}

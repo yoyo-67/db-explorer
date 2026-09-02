@@ -35,6 +35,15 @@ export interface AppSettings {
    * setting can never hide a table from the person looking for it.
    */
   tableNameDisplay: TableNameDisplay
+  /**
+   * Show the inspector's advanced tabs — today, the Physical one.
+   *
+   * A stance rather than a page property, so it lives here with the other
+   * per-browser knobs: most visits to a table are about its rows, and a reader
+   * who has never needed to think about alignment padding should not have to
+   * step past a tab about it. A link straight to an advanced tab still opens it.
+   */
+  advancedInspector: boolean
 }
 
 /** Offered in the settings page; any value in range is honoured. */
@@ -75,6 +84,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   editMode: false,
   statementTimeoutMs: DEFAULT_STATEMENT_TIMEOUT_MS,
   tableNameDisplay: DEFAULT_TABLE_NAME_DISPLAY,
+  advancedInspector: false,
 }
 
 export const SETTINGS_KEY = 'db-explorer.settings'
@@ -114,6 +124,10 @@ export function readSettings(
       typeof raw.editMode === 'boolean' ? raw.editMode : DEFAULT_SETTINGS.editMode,
     statementTimeoutMs: clampStatementTimeout(raw.statementTimeoutMs),
     tableNameDisplay: parseTableNameDisplay(raw.tableNameDisplay),
+    advancedInspector:
+      typeof raw.advancedInspector === 'boolean'
+        ? raw.advancedInspector
+        : DEFAULT_SETTINGS.advancedInspector,
   }
 }
 

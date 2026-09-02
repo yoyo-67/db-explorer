@@ -25,6 +25,10 @@ import {
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { getSchemaPressure } from '#/server/schema-pressure'
 import { getIndexUsage } from '#/server/index-usage'
+import { getTablePhysical } from '#/server/table-physical'
+import { getServerProfile } from '#/server/server-profile'
+import { getLiveActivity } from '#/server/live-activity'
+import { getSchemaAnatomy } from '#/server/schema-anatomy'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
@@ -561,3 +565,39 @@ export const $getFlow = createServerFn({ method: 'GET' })
     const { readFlowDoc } = await import('#/server/flows')
     return readFlowDoc(data)
   })
+
+/**
+ * One table's physical shape, for the inspector's Physical tab: the attribute
+ * list with everything that decides how wide a row is, where the bytes live, and
+ * the two freeze clocks. Three catalog reads, no table data.
+ */
+export const $getTablePhysical = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema: string; table: string }) => data)
+  .handler(scoped((data) => getTablePhysical(data.schema, data.table)))
+
+/**
+ * The server's own shape — changed settings, extensions, locale — read once per
+ * connection. Not database-scoped in spirit, but scoped in fact: `pg_settings`
+ * can be overridden per database, so the answer belongs to the one being read.
+ */
+export const $getServerProfile = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped) => data)
+  .handler(scoped(() => getServerProfile()))
+
+/**
+ * What the server is doing at this instant: backends, locks, replication slots,
+ * long transactions, vacuum progress. The only read in the app that is worthless
+ * a minute later, so nothing caches it.
+ */
+export const $getLiveActivity = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped) => data)
+  .handler(scoped(() => getLiveActivity()))
+
+/**
+ * The structural read behind the anatomy sections of the pressure page: row
+ * layouts, freeze clocks, cache counters, partitions, triggers, policies and the
+ * multi-column statistics nobody created.
+ */
+export const $getSchemaAnatomy = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string }) => data)
+  .handler(scoped((data) => getSchemaAnatomy(data.schema)))

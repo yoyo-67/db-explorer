@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildIndexRows, filterRows, sortRows } from '#/lib/indexes/ranking'
+import { buildIndexRows, filterRows, sortRows, tableChoices } from '#/lib/indexes/ranking'
 import type { IndexUsageEntry, SchemaIndexUsage } from '#/lib/types'
 
 function entry(overrides: Partial<IndexUsageEntry> = {}): IndexUsageEntry {
@@ -162,18 +162,18 @@ describe('filterRows', () => {
   )
 
   it('matches on index name, table name and column name', () => {
-    expect(filterRows(rows, { text: 'email', flags: [] }).map((row) => row.label)).toEqual([
+    expect(filterRows(rows, { text: 'email', flags: [], table: null }).map((row) => row.label)).toEqual([
       'users_email_key',
     ])
-    expect(filterRows(rows, { text: 'orders', flags: [] })).toHaveLength(1)
-    expect(filterRows(rows, { text: 'CUSTOMER', flags: [] })).toHaveLength(1)
+    expect(filterRows(rows, { text: 'orders', flags: [], table: null })).toHaveLength(1)
+    expect(filterRows(rows, { text: 'CUSTOMER', flags: [], table: null })).toHaveLength(1)
   })
 
   it('keeps a row only when it carries every requested flag', () => {
-    expect(filterRows(rows, { text: '', flags: ['unique'] }).map((row) => row.label)).toEqual([
+    expect(filterRows(rows, { text: '', flags: ['unique'], table: null }).map((row) => row.label)).toEqual([
       'users_email_key',
     ])
-    expect(filterRows(rows, { text: '', flags: ['unique', 'invalid'] })).toHaveLength(0)
+    expect(filterRows(rows, { text: '', flags: ['unique', 'invalid'], table: null })).toHaveLength(0)
   })
 })
 
@@ -216,5 +216,58 @@ describe('sortRows', () => {
       }),
     )
     expect(sortRows(withGhost, 'scans-per-day')[0].label).toBe('read_idx')
+  })
+})
+
+describe('filtering to one table', () => {
+  const rows = () =>
+    buildIndexRows(
+      usage({
+        indexes: [
+          entry({ table: 'orders', name: 'orders_customer_idx' }),
+          entry({ table: 'orders_archive', name: 'orders_archive_customer_idx' }),
+          entry({ table: 'payments', name: 'payments_order_idx' }),
+        ],
+        foreignKeys: [{ table: 'payments', constraint: 'fk', columns: ['order_id'] }],
+      }),
+    )
+
+  it('keeps only the named table — not every table whose name contains it', () => {
+    const filtered = filterRows(rows(), { text: '', flags: [], table: 'orders' })
+    expect(filtered.map((row) => row.table)).toEqual(['orders'])
+  })
+
+  it('is every table when no table is named', () => {
+    const filtered = filterRows(rows(), { text: '', flags: [], table: null })
+    expect(new Set(filtered.map((row) => row.table)).size).toBe(3)
+  })
+
+  it('narrows with the search box rather than replacing it', () => {
+    const filtered = filterRows(rows(), { text: 'nothing-matches', flags: [], table: 'orders' })
+    expect(filtered).toEqual([])
+  })
+})
+
+describe('tableChoices', () => {
+  it('counts every row a table contributes, unindexed foreign keys included', () => {
+    const choices = tableChoices(
+      buildIndexRows(
+        usage({
+          indexes: [
+            entry({ table: 'orders', name: 'a', bytes: 100 }),
+            entry({ table: 'orders', name: 'b', bytes: 200 }),
+          ],
+          foreignKeys: [{ table: 'payments', constraint: 'fk', columns: ['order_id'] }],
+        }),
+      ),
+    )
+    expect(choices).toEqual([
+      { table: 'orders', count: 2, bytes: 300 },
+      { table: 'payments', count: 1, bytes: 0 },
+    ])
+  })
+
+  it('offers nothing for a schema with no indexes at all', () => {
+    expect(tableChoices([])).toEqual([])
   })
 })

@@ -20,6 +20,7 @@ import { useDatabase } from '#/hooks/useDatabase'
 import TextScale from './TextScale'
 import ThemeToggle from './ThemeToggle'
 import QueryHud from './QueryHud/QueryHud'
+import ServerSheetButton from '#/components/server/ServerSheetButton'
 
 /**
  * The bar carries only what a session actually navigates between — Console and
@@ -44,6 +45,7 @@ export default function Header() {
             then which schema in that. */}
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <OptionalQueryHud />
+          <OptionalServerSheet />
           <ConnectionSwitcher />
           <DatabasePicker />
           <SchemaPicker />
@@ -62,6 +64,18 @@ function OptionalQueryHud() {
   const { queryHud } = useAppSettings()
   if (!queryHud) return null
   return <QueryHud />
+}
+
+/**
+ * The server panel needs a database to read `pg_settings` and `pg_stat_activity`
+ * through, and there is nothing to say before a connection exists — so the
+ * button appears with the rest of the connected chrome and not before.
+ */
+function OptionalServerSheet() {
+  const database = useDatabase()
+  const state = useConnectionState()
+  if (!database || state !== 'connected') return null
+  return <ServerSheetButton />
 }
 
 const WORDMARK = (

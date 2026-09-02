@@ -1,6 +1,12 @@
 import { Chip } from '#/components/pressure/PressureSection'
 import { formatBytes } from '#/lib/pressure/bytes'
-import type { IndexFlag, IndexListRow, IndexSort, RowCriteria } from '#/lib/indexes/ranking'
+import type {
+  IndexFlag,
+  IndexListRow,
+  IndexSort,
+  RowCriteria,
+  TableChoice,
+} from '#/lib/indexes/ranking'
 
 /**
  * Every index in the schema, and every foreign key that has none, in one list.
@@ -53,6 +59,7 @@ function formatRate(scansPerDay: number | null): { text: string; title: string }
 
 export default function IndexList({
   rows,
+  tables,
   selectedKey,
   onSelect,
   criteria,
@@ -61,6 +68,8 @@ export default function IndexList({
   onSortChange,
 }: {
   rows: IndexListRow[]
+  /** Every table with something on this page, counted — for the table picker. */
+  tables: TableChoice[]
   selectedKey: string | null
   onSelect: (key: string) => void
   criteria: RowCriteria
@@ -102,6 +111,38 @@ export default function IndexList({
               ))}
             </select>
           </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="flex min-w-0 flex-1 items-center gap-1 text-[10px] text-[var(--sea-ink-soft)]">
+            table
+            <select
+              value={criteria.table ?? ''}
+              onChange={(event) =>
+                onCriteriaChange({
+                  ...criteria,
+                  table: event.target.value === '' ? null : event.target.value,
+                })
+              }
+              aria-label="Show indexes on one table"
+              className="min-w-0 flex-1 rounded border border-[var(--line)] bg-transparent px-1 py-0.5 text-[11px] text-[var(--sea-ink)]"
+            >
+              <option value="">every table ({tables.length})</option>
+              {tables.map((choice) => (
+                <option key={choice.table} value={choice.table}>
+                  {choice.table} ({choice.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          {criteria.table && (
+            <button
+              type="button"
+              onClick={() => onCriteriaChange({ ...criteria, table: null })}
+              className="shrink-0 rounded border border-[var(--line)] px-1.5 py-0.5 text-[10px] text-[var(--sea-ink-soft)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
+            >
+              clear
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-1">
           {FLAGS.map((flag) => {
@@ -165,7 +206,28 @@ export default function IndexList({
                     )}
                   </span>
                   <span className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--sea-ink-soft)]">
-                    <span className="font-mono">{row.table}</span>
+                    {/* Narrowing to the table you are already looking at is the
+                        common move; make it one click rather than a trip to the
+                        picker. Rendered as a span with a click handler because
+                        this row is itself a button. */}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      title={`Show only indexes on ${row.table}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onCriteriaChange({ ...criteria, table: row.table })
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onCriteriaChange({ ...criteria, table: row.table })
+                      }}
+                      className="cursor-pointer font-mono underline decoration-dotted underline-offset-2 hover:text-[var(--lagoon-deep)]"
+                    >
+                      {row.table}
+                    </span>
                     <span className="font-mono">({row.columns.join(', ')})</span>
                     {row.pattern && row.pattern !== 'unknown' && (
                       <Chip>{PATTERN_LABEL[row.pattern]}</Chip>

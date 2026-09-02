@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import AnalyzeSection from '#/components/pressure/AnalyzeSection'
+import AnatomySections from '#/components/pressure/AnatomySections'
 import IndexSection from '#/components/pressure/IndexSection'
 import SequenceSection from '#/components/pressure/SequenceSection'
 import SizeSection from '#/components/pressure/SizeSection'
@@ -125,6 +126,12 @@ function PressurePage() {
             <VacuumSection pressure={pressure} />
             <AnalyzeSection pressure={pressure} />
             <SequenceSection pressure={pressure} />
+            <StructureDivider />
+            <AnatomySections
+              database={database}
+              schema={schema}
+              enabled={isConnected && !isSystem}
+            />
           </>
         )}
       </div>
@@ -204,5 +211,24 @@ function Tile({
         {note}
       </p>
     </a>
+  )
+}
+
+/**
+ * The page turns here, from wear to shape.
+ *
+ * Above: what this schema is doing to itself — indexes nobody reads, vacuum
+ * falling behind, a sequence running out. Below: how it is built, which is not a
+ * complaint about anything but is where several of the complaints come from.
+ */
+function StructureDivider() {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="island-kicker">Structure</span>
+      <span className="h-px flex-1 bg-[var(--line)]" />
+      <span className="text-[10px] text-[var(--sea-ink-soft)]">
+        how the schema is built, rather than how it is wearing
+      </span>
+    </div>
   )
 }

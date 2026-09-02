@@ -12,11 +12,16 @@ import type { EnumType, SequenceInfo } from '#/lib/types'
  * The two things a column's type alone will not tell you: which labels an enum
  * actually allows, and how much room its sequence has left.
  *
+ * Shown under the DDL rather than in a tab of its own. Both are properties of
+ * the table's definition — the same question the DDL answers — and a reader who
+ * has just read `status my_enum` is one scroll from the labels that type
+ * permits, instead of a tab away.
+ *
  * Enum labels are clickable when exactly one column uses the type — then the
  * label is unambiguous as a filter. Sequence numbers are read from
  * `pg_sequences`, which observes the counter without advancing it.
  */
-export default function TypesTab({
+export default function TypesDetail({
   schema,
   table,
   conditions,

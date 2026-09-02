@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import CopyButton from '#/components/CopyButton'
+import TypesDetail from '#/components/inspect/TypesDetail'
 import { $getTableDdl } from '#/server/api'
+import type { Condition } from '#/lib/filter-model'
 import type { DdlIndex, TableDdl } from '#/lib/types'
 
 /**
@@ -12,9 +14,21 @@ import type { DdlIndex, TableDdl } from '#/lib/types'
  * The statements are ordered to be replayable — constraints inside the
  * `CREATE TABLE`, then the indexes no constraint already created, then comments.
  * The full index list is shown separately so a constraint-backed index the SQL
- * deliberately omits is still visible.
+ * deliberately omits is still visible, and the detail a type name hides — enum
+ * labels, and how much room each sequence has left — follows underneath.
  */
-export default function DdlTab({ schema, table }: { schema: string; table: string }) {
+export default function DdlTab({
+  schema,
+  table,
+  conditions,
+  onToggleCondition,
+}: {
+  schema: string
+  table: string
+  /** The filter the rows below are under, so an enum label can show as pressed. */
+  conditions: Condition[]
+  onToggleCondition: (condition: Condition) => void
+}) {
   const database = useDatabaseParam()
   const ddlQuery = useQuery({
     queryKey: ['tableDdl', database, schema, table],
@@ -52,6 +66,12 @@ export default function DdlTab({ schema, table }: { schema: string; table: strin
 
       <IndexList indexes={ddl.indexes} />
       <MissingComments ddl={ddl} />
+      <TypesDetail
+        schema={schema}
+        table={table}
+        conditions={conditions}
+        onToggleCondition={onToggleCondition}
+      />
     </div>
   )
 }

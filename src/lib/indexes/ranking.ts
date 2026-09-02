@@ -51,6 +51,15 @@ export interface IndexListRow {
 export interface RowCriteria {
   text: string
   flags: IndexFlag[]
+  /**
+   * One table, or every table.
+   *
+   * Separate from `text` on purpose: typing a table name into the search box
+   * also matches indexes on other tables whose own name contains it, which on a
+   * schema where `data_element` and `data_elementstatus` both exist is the
+   * wrong list. This one is exact.
+   */
+  table: string | null
 }
 
 /** The audit's type, from ours. Its rules only read these fields. */
@@ -134,11 +143,37 @@ export function buildIndexRows(usage: SchemaIndexUsage): IndexListRow[] {
 export function filterRows(rows: IndexListRow[], criteria: RowCriteria): IndexListRow[] {
   const needle = criteria.text.trim().toLowerCase()
   return rows.filter((row) => {
+    if (criteria.table !== null && row.table !== criteria.table) return false
     if (criteria.flags.some((flag) => !row.flags.includes(flag))) return false
     if (needle === '') return true
     const haystack = [row.label, row.table, ...row.columns].join(' ').toLowerCase()
     return haystack.includes(needle)
   })
+}
+
+export interface TableChoice {
+  table: string
+  /** Rows this table contributes — indexes plus any unindexed foreign key. */
+  count: number
+  bytes: number
+}
+
+/**
+ * The tables the picker can offer, counted.
+ *
+ * Built from the rows rather than from the schema's table list, because a table
+ * with no index and no missing foreign key has nothing on this page to show —
+ * offering it would be offering an empty list.
+ */
+export function tableChoices(rows: IndexListRow[]): TableChoice[] {
+  const byTable = new Map<string, TableChoice>()
+  for (const row of rows) {
+    const entry = byTable.get(row.table) ?? { table: row.table, count: 0, bytes: 0 }
+    entry.count += 1
+    entry.bytes += row.bytes ?? 0
+    byTable.set(row.table, entry)
+  }
+  return [...byTable.values()].sort((a, b) => a.table.localeCompare(b.table))
 }
 
 /** A row with no number to sort by goes last, whichever direction is chosen: a

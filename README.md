@@ -15,16 +15,36 @@ functions), TypeScript, and Tailwind.
 - **Foreign-key navigation** — click a value to jump to the related row; lazy
   child counts. A row also lists its *outgoing* references and flags any that
   point at a row that isn't there.
-- **Table inspector** — three tabs above the rows, all read from the catalog so
-  they cost the same on a billion rows as on none. *Profile* shows every column's
+- **Table inspector** — tabs above the rows, all read from the catalog so they
+  cost the same on a billion rows as on none. *Profile* shows every column's
   nulls, distinct estimate and most common values from the last `ANALYZE` (and
   says how old that is); clicking a common value filters the rows below to it.
   *DDL* reconstructs the `CREATE TABLE` — real declared types, constraints,
-  indexes, comments — ready to copy. *Types* lists enum labels and, per sequence,
-  how much room is left measured against whichever ceiling binds first: a
-  `bigint` sequence on an `integer` column runs out at 2.1B, not 9.2E18. It also
-  flags a sequence sitting *below* its column's maximum, where the next insert
-  collides.
+  indexes, comments — and lists, underneath it, the detail a type name hides:
+  enum labels, and per sequence how much room is left measured against whichever
+  ceiling binds first (a `bigint` sequence on an `integer` column runs out at
+  2.1B, not 9.2E18), flagging a sequence sitting *below* its column's maximum,
+  where the next insert collides. *Physical* — behind the **Advanced** switch,
+  remembered per browser — draws one row to scale: every column's bytes in
+  `attnum` order with the alignment padding hatched, the packed order beside it
+  and what reordering would save; the split between heap, TOAST and indexes,
+  with a note where a column is being compressed twice; and the two clocks
+  running on the table, freeze age and visibility-map coverage.
+- **Schema pressure** also reports how the schema is *built*, under Structure:
+  the tables whose column order wastes the most, freeze ages approaching an
+  anti-wraparound vacuum, column sets a multicolumn index says travel together
+  but that have no extended statistics, triggers and row-level security
+  policies doing work no statement mentions, partition layout, and which tables
+  are being read from memory rather than from disk.
+- **Server panel** (`?server=profile`) — a sheet over any page, in two faces.
+  *Profile* is the server as a decision rather than a list: only the settings
+  that differ from what the binary ships with, each against its default and what
+  it changes, plus the planner knobs worth seeing even untouched, the extensions
+  installed, and a banner if a collation version has moved under the database.
+  *Now* is what the server is doing at this instant — who is blocked behind
+  whom, transactions old enough to hold back vacuum, replication slots retaining
+  WAL, vacuums and index builds in progress. Which face is open lives in the
+  URL, so a finding can be sent to someone.
 - **Schema lens** (`/lens/$schema`) — three views over one merged reference
   graph: a Group × Group matrix of how much the groups reference each other, one
   group drawn on its own with the edges that leave it stubbed at the boundary,
