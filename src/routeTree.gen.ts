@@ -9,37 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as HelpIndexRouteImport } from './routes/help/index'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as FlowIndexRouteImport } from './routes/flow/index'
-import { Route as HelpTopicRouteImport } from './routes/help/$topic'
 import { Route as FlowSlugRouteImport } from './routes/flow/$slug'
+import { Route as HelpIndexRouteImport } from './routes/help/index'
+import { Route as HelpTopicRouteImport } from './routes/help/$topic'
 import { Route as DDatabaseIndexRouteImport } from './routes/d/$database/index'
-import { Route as DDatabaseQueriesRouteImport } from './routes/d/$database/queries'
 import { Route as DDatabaseConsoleRouteImport } from './routes/d/$database/console'
-import { Route as DDatabasePressureSchemaRouteImport } from './routes/d/$database/pressure/$schema'
+import { Route as DDatabaseQueriesRouteImport } from './routes/d/$database/queries'
 import { Route as DDatabaseIndexesSchemaRouteImport } from './routes/d/$database/indexes/$schema'
+import { Route as DDatabasePressureSchemaRouteImport } from './routes/d/$database/pressure/$schema'
 import { Route as DDatabaseLensSchemaIndexRouteImport } from './routes/d/$database/lens/$schema/index'
 import { Route as DDatabaseLensSchemaOrphansRouteImport } from './routes/d/$database/lens/$schema/orphans'
-import { Route as DDatabaseTSchemaTableIndexRouteImport } from './routes/d/$database/t/$schema/$table/index'
-import { Route as DDatabaseLensSchemaTTableRouteImport } from './routes/d/$database/lens/$schema/t/$table'
 import { Route as DDatabaseLensSchemaGGroupRouteImport } from './routes/d/$database/lens/$schema/g/$group'
+import { Route as DDatabaseLensSchemaTTableRouteImport } from './routes/d/$database/lens/$schema/t/$table'
+import { Route as DDatabaseTSchemaTableIndexRouteImport } from './routes/d/$database/t/$schema/$table/index'
 import { Route as DDatabaseTSchemaTableRowIdRouteImport } from './routes/d/$database/t/$schema/$table/row/$id'
 
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HelpIndexRoute = HelpIndexRouteImport.update({
-  id: '/help/',
-  path: '/help/',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FlowIndexRoute = FlowIndexRouteImport.update({
@@ -47,14 +42,19 @@ const FlowIndexRoute = FlowIndexRouteImport.update({
   path: '/flow/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HelpTopicRoute = HelpTopicRouteImport.update({
-  id: '/help/$topic',
-  path: '/help/$topic',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const FlowSlugRoute = FlowSlugRouteImport.update({
   id: '/flow/$slug',
   path: '/flow/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpIndexRoute = HelpIndexRouteImport.update({
+  id: '/help/',
+  path: '/help/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpTopicRoute = HelpTopicRouteImport.update({
+  id: '/help/$topic',
+  path: '/help/$topic',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DDatabaseIndexRoute = DDatabaseIndexRouteImport.update({
@@ -62,24 +62,24 @@ const DDatabaseIndexRoute = DDatabaseIndexRouteImport.update({
   path: '/d/$database/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DDatabaseQueriesRoute = DDatabaseQueriesRouteImport.update({
-  id: '/d/$database/queries',
-  path: '/d/$database/queries',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DDatabaseConsoleRoute = DDatabaseConsoleRouteImport.update({
   id: '/d/$database/console',
   path: '/d/$database/console',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DDatabasePressureSchemaRoute = DDatabasePressureSchemaRouteImport.update({
-  id: '/d/$database/pressure/$schema',
-  path: '/d/$database/pressure/$schema',
+const DDatabaseQueriesRoute = DDatabaseQueriesRouteImport.update({
+  id: '/d/$database/queries',
+  path: '/d/$database/queries',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DDatabaseIndexesSchemaRoute = DDatabaseIndexesSchemaRouteImport.update({
   id: '/d/$database/indexes/$schema',
   path: '/d/$database/indexes/$schema',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DDatabasePressureSchemaRoute = DDatabasePressureSchemaRouteImport.update({
+  id: '/d/$database/pressure/$schema',
+  path: '/d/$database/pressure/$schema',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DDatabaseLensSchemaIndexRoute =
@@ -94,10 +94,10 @@ const DDatabaseLensSchemaOrphansRoute =
     path: '/d/$database/lens/$schema/orphans',
     getParentRoute: () => rootRouteImport,
   } as any)
-const DDatabaseTSchemaTableIndexRoute =
-  DDatabaseTSchemaTableIndexRouteImport.update({
-    id: '/d/$database/t/$schema/$table/',
-    path: '/d/$database/t/$schema/$table/',
+const DDatabaseLensSchemaGGroupRoute =
+  DDatabaseLensSchemaGGroupRouteImport.update({
+    id: '/d/$database/lens/$schema/g/$group',
+    path: '/d/$database/lens/$schema/g/$group',
     getParentRoute: () => rootRouteImport,
   } as any)
 const DDatabaseLensSchemaTTableRoute =
@@ -106,10 +106,10 @@ const DDatabaseLensSchemaTTableRoute =
     path: '/d/$database/lens/$schema/t/$table',
     getParentRoute: () => rootRouteImport,
   } as any)
-const DDatabaseLensSchemaGGroupRoute =
-  DDatabaseLensSchemaGGroupRouteImport.update({
-    id: '/d/$database/lens/$schema/g/$group',
-    path: '/d/$database/lens/$schema/g/$group',
+const DDatabaseTSchemaTableIndexRoute =
+  DDatabaseTSchemaTableIndexRouteImport.update({
+    id: '/d/$database/t/$schema/$table/',
+    path: '/d/$database/t/$schema/$table/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const DDatabaseTSchemaTableRowIdRoute =
@@ -259,13 +259,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -273,11 +266,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/help/': {
-      id: '/help/'
-      path: '/help'
-      fullPath: '/help/'
-      preLoaderRoute: typeof HelpIndexRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/flow/': {
@@ -287,18 +280,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FlowIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/help/$topic': {
-      id: '/help/$topic'
-      path: '/help/$topic'
-      fullPath: '/help/$topic'
-      preLoaderRoute: typeof HelpTopicRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/flow/$slug': {
       id: '/flow/$slug'
       path: '/flow/$slug'
       fullPath: '/flow/$slug'
       preLoaderRoute: typeof FlowSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help/': {
+      id: '/help/'
+      path: '/help'
+      fullPath: '/help/'
+      preLoaderRoute: typeof HelpIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help/$topic': {
+      id: '/help/$topic'
+      path: '/help/$topic'
+      fullPath: '/help/$topic'
+      preLoaderRoute: typeof HelpTopicRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/': {
@@ -308,13 +308,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/d/$database/queries': {
-      id: '/d/$database/queries'
-      path: '/d/$database/queries'
-      fullPath: '/d/$database/queries'
-      preLoaderRoute: typeof DDatabaseQueriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/d/$database/console': {
       id: '/d/$database/console'
       path: '/d/$database/console'
@@ -322,11 +315,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseConsoleRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/d/$database/pressure/$schema': {
-      id: '/d/$database/pressure/$schema'
-      path: '/d/$database/pressure/$schema'
-      fullPath: '/d/$database/pressure/$schema'
-      preLoaderRoute: typeof DDatabasePressureSchemaRouteImport
+    '/d/$database/queries': {
+      id: '/d/$database/queries'
+      path: '/d/$database/queries'
+      fullPath: '/d/$database/queries'
+      preLoaderRoute: typeof DDatabaseQueriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/indexes/$schema': {
@@ -334,6 +327,13 @@ declare module '@tanstack/react-router' {
       path: '/d/$database/indexes/$schema'
       fullPath: '/d/$database/indexes/$schema'
       preLoaderRoute: typeof DDatabaseIndexesSchemaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/d/$database/pressure/$schema': {
+      id: '/d/$database/pressure/$schema'
+      path: '/d/$database/pressure/$schema'
+      fullPath: '/d/$database/pressure/$schema'
+      preLoaderRoute: typeof DDatabasePressureSchemaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/lens/$schema/': {
@@ -350,11 +350,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseLensSchemaOrphansRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/d/$database/t/$schema/$table/': {
-      id: '/d/$database/t/$schema/$table/'
-      path: '/d/$database/t/$schema/$table'
-      fullPath: '/d/$database/t/$schema/$table/'
-      preLoaderRoute: typeof DDatabaseTSchemaTableIndexRouteImport
+    '/d/$database/lens/$schema/g/$group': {
+      id: '/d/$database/lens/$schema/g/$group'
+      path: '/d/$database/lens/$schema/g/$group'
+      fullPath: '/d/$database/lens/$schema/g/$group'
+      preLoaderRoute: typeof DDatabaseLensSchemaGGroupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/lens/$schema/t/$table': {
@@ -364,11 +364,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseLensSchemaTTableRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/d/$database/lens/$schema/g/$group': {
-      id: '/d/$database/lens/$schema/g/$group'
-      path: '/d/$database/lens/$schema/g/$group'
-      fullPath: '/d/$database/lens/$schema/g/$group'
-      preLoaderRoute: typeof DDatabaseLensSchemaGGroupRouteImport
+    '/d/$database/t/$schema/$table/': {
+      id: '/d/$database/t/$schema/$table/'
+      path: '/d/$database/t/$schema/$table'
+      fullPath: '/d/$database/t/$schema/$table/'
+      preLoaderRoute: typeof DDatabaseTSchemaTableIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/d/$database/t/$schema/$table/row/$id': {
