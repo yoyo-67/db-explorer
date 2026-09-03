@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import BusyVeil from '#/components/BusyVeil'
 import DataTable from '#/components/DataTable'
 import ExportButtons from '#/components/ExportButtons'
 import FilterPanel from '#/components/filters/FilterPanel'
@@ -341,6 +342,10 @@ function TablePage() {
       ? String(pageQuery.error)
       : null
   const hasRows = rawSql !== null ? rawResult?.ok === true : pageData !== undefined
+  // Rows on screen, a read in flight: they are the previous answer, not this
+  // one. Applying a filter is the case that needs saying out loud — the grid
+  // keeps the old page, so without this Apply looks like it did nothing.
+  const isReading = hasRows && (pageQuery.isFetching || rawQuery.isFetching)
 
   return (
     <main className="px-4 pb-8 pt-6">
@@ -432,9 +437,16 @@ function TablePage() {
         {/* The grid and the panel share one row: the panel is a sibling that
             shrinks to a rail, not an overlay, so the rows keep their width. */}
         <div className="flex items-start gap-0">
-          <div className="island-shell min-w-0 flex-1 overflow-visible rounded-xl">
+          <div
+            aria-busy={isReading}
+            className="island-shell relative min-w-0 flex-1 overflow-visible rounded-xl"
+          >
+            <BusyVeil busy={isReading} label="Reading rows…" />
             {hasRows ? (
               <DataTable
+                // Dimmed while the next answer is on its way, so stale rows are
+                // never mistaken for the ones just asked for.
+                dimmed={isReading}
                 columns={enrichedColumns}
                 rows={displayRows}
                 totalRows={rawSql !== null ? displayRows.length : totalRows}
@@ -470,6 +482,7 @@ function TablePage() {
             onDraftChange={setDraft}
             applied={applied}
             onApply={() => applyDraft(draft)}
+            isApplying={isReading}
             sort={sort}
             page={page}
             pageSize={PAGE_SIZE}

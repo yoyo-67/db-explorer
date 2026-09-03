@@ -2,6 +2,7 @@ import { classifyAccess, type AccessPattern } from '#/lib/indexes/shape'
 import { indexTrend } from '#/lib/indexes/trend'
 import { indexedWrites, writeTax } from '#/lib/indexes/write-tax'
 import { redundantIndexes, unindexedForeignKeys } from '#/lib/pressure/index-audit'
+import { matchesTableName, tableWithModel } from '#/lib/table-label'
 import type {
   ForeignKeyColumns,
   IndexEntry,
@@ -30,6 +31,46 @@ export type IndexFlag =
   | 'missing-fk'
 
 export type IndexSort = 'scans-per-day' | 'size' | 'tuples-per-scan' | 'write-tax' | 'name'
+
+export const INDEX_FLAGS = [
+  'invalid',
+  'never-scanned',
+  'redundant',
+  'unique',
+  'partial',
+  'non-btree',
+  'missing-fk',
+] as const satisfies readonly IndexFlag[]
+
+export const INDEX_SORTS = [
+  'scans-per-day',
+  'size',
+  'tuples-per-scan',
+  'write-tax',
+  'name',
+] as const satisfies readonly IndexSort[]
+
+/**
+ * The URL is typed by whoever holds the address bar, so what comes back out of
+ * it is a string and nothing more. Both readers drop what they do not
+ * recognise rather than passing it on: an unknown sort would silently mean
+ * "unsorted", and an unknown flag would filter every row away, which reads as
+ * an empty schema rather than as a bad link.
+ */
+export function parseIndexSort(value: string | undefined): IndexSort | undefined {
+  return INDEX_SORTS.find((sort) => sort === value)
+}
+
+/** Comma-separated flags from `?only=`, de-duplicated and in the order given. */
+export function parseIndexFlags(value: string | undefined): IndexFlag[] {
+  if (!value) return []
+  const seen = new Set<IndexFlag>()
+  for (const part of value.split(',')) {
+    const flag = INDEX_FLAGS.find((entry) => entry === part.trim())
+    if (flag) seen.add(flag)
+  }
+  return [...seen]
+}
 
 export interface IndexListRow {
   kind: 'index' | 'missing-fk'
@@ -140,13 +181,24 @@ export function buildIndexRows(usage: SchemaIndexUsage): IndexListRow[] {
   return [...indexRows, ...gapRows]
 }
 
-export function filterRows(rows: IndexListRow[], criteria: RowCriteria): IndexListRow[] {
+/**
+ * `models` is the table → Django model map the rest of the app prints names
+ * with. A search box that only knew the identifier would answer "no such index"
+ * to someone who typed the model name they read one row above.
+ */
+export function filterRows(
+  rows: IndexListRow[],
+  criteria: RowCriteria,
+  models: Readonly<Record<string, string>> = {},
+): IndexListRow[] {
   const needle = criteria.text.trim().toLowerCase()
   return rows.filter((row) => {
     if (criteria.table !== null && row.table !== criteria.table) return false
     if (criteria.flags.some((flag) => !row.flags.includes(flag))) return false
     if (needle === '') return true
-    const haystack = [row.label, row.table, ...row.columns].join(' ').toLowerCase()
+    const haystack = [row.label, tableWithModel(row.table, models[row.table]), ...row.columns]
+      .join(' ')
+      .toLowerCase()
     return haystack.includes(needle)
   })
 }
@@ -174,6 +226,22 @@ export function tableChoices(rows: IndexListRow[]): TableChoice[] {
     byTable.set(row.table, entry)
   }
   return [...byTable.values()].sort((a, b) => a.table.localeCompare(b.table))
+}
+
+/**
+ * The choices a typed query leaves, in the order they were offered.
+ *
+ * Both names are matched whatever the reader chose to display, which is
+ * `matchesTableName`'s rule rather than a second one written here. Ranking is
+ * deliberately absent: the list is alphabetical and short once narrowed, and a
+ * picker whose rows reorder as you type is harder to hit than one that shrinks.
+ */
+export function searchTableChoices(
+  choices: readonly TableChoice[],
+  query: string,
+  models: Readonly<Record<string, string>> = {},
+): TableChoice[] {
+  return choices.filter((choice) => matchesTableName(choice.table, models[choice.table], query))
 }
 
 /** A row with no number to sort by goes last, whichever direction is chosen: a

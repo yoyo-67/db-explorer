@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { useDatabaseParam } from '#/hooks/useDatabase'
-import CopyButton from '#/components/CopyButton'
 import ByteRuler, { ByteRulerLegend } from '#/components/physical/ByteRuler'
 import Gauge from '#/components/widgets/Gauge'
 import SplitBar from '#/components/widgets/SplitBar'
@@ -211,12 +210,9 @@ function WhereTheBytesAre({ physical }: { physical: TablePhysical }) {
             <span className="font-mono font-medium">{column.name}</span> — {note.text}
           </p>
           {note.ddl && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <code className="rounded bg-[rgba(0,0,0,0.05)] px-1.5 py-0.5 font-mono text-[10px] dark:bg-[rgba(255,255,255,0.06)]">
-                {note.ddl}
-              </code>
-              <CopyButton text={note.ddl} label="Copy" />
-            </div>
+            <code className="mt-1.5 block rounded bg-[rgba(0,0,0,0.05)] px-1.5 py-0.5 font-mono text-[10px] dark:bg-[rgba(255,255,255,0.06)]">
+              {note.ddl}
+            </code>
           )}
         </div>
       ))}

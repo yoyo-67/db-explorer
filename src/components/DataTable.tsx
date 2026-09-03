@@ -38,6 +38,8 @@ interface DataTableProps {
   editable?: boolean
   /** What `schema.table` is. A view has no rows of its own to update. */
   tableKind?: 'table' | 'view'
+  /** These rows answer the previous question, and a newer one is in flight. */
+  dimmed?: boolean
 }
 
 export default function DataTable({
@@ -54,6 +56,7 @@ export default function DataTable({
   onFilterColumn,
   editable = false,
   tableKind = 'table',
+  dimmed = false,
 }: DataTableProps) {
   const handleSort = (colName: string) => {
     if (!onSortChange) return
@@ -72,7 +75,11 @@ export default function DataTable({
   }
 
   return (
-    <div>
+    // Faded rather than hidden or replaced by a skeleton: the previous rows are
+    // still the best answer on hand, and losing them on every Apply would make
+    // the grid flicker through empty on the way to a filter that changed two
+    // rows.
+    <div className={`transition-opacity duration-150 ${dimmed ? 'opacity-50' : ''}`}>
       <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-[var(--sea-ink-soft)]">
         <span>
           {rows.length} of {totalRows.toLocaleString()} rows

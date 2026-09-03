@@ -144,11 +144,29 @@ describe('unindexedForeignKeys', () => {
     ).toEqual([fk])
   })
 
-  it('does not accept a partial or expression index as cover for a cascade', () => {
+  it('does not accept a partial index as cover for a cascade', () => {
     expect(unindexedForeignKeys([fk], [index({ isPartial: true })])).toEqual([fk])
+  })
+
+  it('does not accept an index the expression leads', () => {
     expect(
       unindexedForeignKeys([fk], [index({ keyColumns: ['(expr)'], hasExpression: true })]),
     ).toEqual([fk])
+    expect(
+      unindexedForeignKeys(
+        [fk],
+        [index({ keyColumns: ['(expr)', 'user_id'], hasExpression: true })],
+      ),
+    ).toEqual([fk])
+  })
+
+  it('accepts an index whose expression sits past the columns the key needs', () => {
+    expect(
+      unindexedForeignKeys(
+        [fk],
+        [index({ keyColumns: ['user_id', '(expr)'], hasExpression: true, isUnique: true })],
+      ),
+    ).toEqual([])
   })
 
   it('accepts a unique index as cover — it still answers the lookup', () => {

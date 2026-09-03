@@ -9,11 +9,13 @@ import { $getIndexUsage, $getSchemas } from '#/server/api'
 import {
   buildIndexRows,
   filterRows,
+  parseIndexFlags,
+  parseIndexSort,
   sortRows,
   tableChoices,
-  type IndexFlag,
   type IndexSort,
 } from '#/lib/indexes/ranking'
+import { useModelNames } from '#/hooks/useModelNames'
 import { formatBytes } from '#/lib/pressure/bytes'
 import { formatRelativeTime } from '#/lib/inspect/format'
 
@@ -44,13 +46,21 @@ export const Route = createFileRoute('/d/$database/indexes/$schema')({
   // `flags`: search keys are global to the router's types, and `q` is already a
   // string[] on the table route. Reusing a name with a different type breaks
   // every `navigate({ search })` on the route that had it first.
-  validateSearch: (search: Record<string, unknown>): IndexSearch => ({
-    sel: typeof search.sel === 'string' ? search.sel : undefined,
-    find: typeof search.find === 'string' ? search.find : undefined,
-    order: typeof search.order === 'string' ? (search.order as IndexSort) : undefined,
-    only: typeof search.only === 'string' ? search.only : undefined,
-    tbl: typeof search.tbl === 'string' ? search.tbl : undefined,
-  }),
+  //
+  // `order` and `only` name things this page knows — a sort and a set of flags —
+  // so they are read through the parsers that own those names rather than cast
+  // to them. A hand-edited `?only=` would otherwise match no row and print an
+  // empty schema, and a hand-edited `?order=` would silently mean "unsorted".
+  validateSearch: (search: Record<string, unknown>): IndexSearch => {
+    const flags = parseIndexFlags(typeof search.only === 'string' ? search.only : undefined)
+    return {
+      sel: typeof search.sel === 'string' ? search.sel : undefined,
+      find: typeof search.find === 'string' ? search.find : undefined,
+      order: parseIndexSort(typeof search.order === 'string' ? search.order : undefined),
+      only: flags.length === 0 ? undefined : flags.join(','),
+      tbl: typeof search.tbl === 'string' ? search.tbl : undefined,
+    }
+  },
   component: IndexesPage,
 })
 
@@ -60,6 +70,8 @@ function IndexesPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const { isChecking, isConnected } = useConnectionGuard()
+  // The two names a table has, so the search box answers to either of them.
+  const models = useModelNames()
 
   // Whether Postgres keeps this schema to itself is the server's answer, not a
   // name this page recognises.
@@ -80,18 +92,26 @@ function IndexesPage() {
     staleTime: 60_000,
   })
 
-  const criteria = {
-    text: search.find ?? '',
-    flags: (search.only ? search.only.split(',') : []) as IndexFlag[],
-    table: search.tbl ?? null,
-  }
+  // Memoised because it feeds the filter's memo: rebuilt every render, it would
+  // make that memo a no-op.
+  const criteria = useMemo(
+    () => ({
+      text: search.find ?? '',
+      flags: parseIndexFlags(search.only),
+      table: search.tbl ?? null,
+    }),
+    [search.find, search.only, search.tbl],
+  )
   const sort: IndexSort = search.order ?? 'scans-per-day'
 
   const rows = useMemo(
     () => (usageQuery.data ? buildIndexRows(usageQuery.data) : []),
     [usageQuery.data],
   )
-  const visible = useMemo(() => sortRows(filterRows(rows, criteria), sort), [rows, criteria, sort])
+  const visible = useMemo(
+    () => sortRows(filterRows(rows, criteria, models), sort),
+    [rows, criteria, models, sort],
+  )
   // Built from every row, not the visible ones: a picker that lost its other
   // options the moment you used it could not be used twice.
   const tables = useMemo(() => tableChoices(rows), [rows])

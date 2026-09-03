@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildIndexRows, filterRows, sortRows, tableChoices } from '#/lib/indexes/ranking'
+import {
+  buildIndexRows,
+  filterRows,
+  parseIndexFlags,
+  parseIndexSort,
+  searchTableChoices,
+  sortRows,
+  tableChoices,
+  type TableChoice,
+} from '#/lib/indexes/ranking'
 import type { IndexUsageEntry, SchemaIndexUsage } from '#/lib/types'
 
 function entry(overrides: Partial<IndexUsageEntry> = {}): IndexUsageEntry {
@@ -269,5 +278,76 @@ describe('tableChoices', () => {
 
   it('offers nothing for a schema with no indexes at all', () => {
     expect(tableChoices([])).toEqual([])
+  })
+})
+
+describe('searching by the other name', () => {
+  const rows = () =>
+    buildIndexRows(
+      usage({
+        indexes: [
+          entry({ table: 'data_recordingpipeline', name: 'rp_created_idx' }),
+          entry({ table: 'orders', name: 'orders_customer_idx' }),
+        ],
+      }),
+    )
+  const models = { data_recordingpipeline: 'VideoPositioningPipeline' }
+
+  it('matches the model behind the table, not only the identifier', () => {
+    const filtered = filterRows(rows(), { text: 'VideoPositioning', flags: [], table: null }, models)
+    expect(filtered.map((row) => row.table)).toEqual(['data_recordingpipeline'])
+  })
+
+  it('still matches the identifier when a model is known', () => {
+    const filtered = filterRows(rows(), { text: 'recordingpipe', flags: [], table: null }, models)
+    expect(filtered.map((row) => row.table)).toEqual(['data_recordingpipeline'])
+  })
+
+  it('is unchanged when no models are known', () => {
+    expect(filterRows(rows(), { text: 'VideoPositioning', flags: [], table: null })).toEqual([])
+  })
+})
+
+describe('searchTableChoices', () => {
+  const choices: TableChoice[] = [
+    { table: 'data_recordingpipeline', count: 3, bytes: 300 },
+    { table: 'orders', count: 1, bytes: 100 },
+  ]
+  const models = { data_recordingpipeline: 'VideoPositioningPipeline' }
+
+  it('hands back every choice, in order, for an empty query', () => {
+    expect(searchTableChoices(choices, '  ', models)).toEqual(choices)
+  })
+
+  it('matches either name, whichever one is on screen', () => {
+    expect(searchTableChoices(choices, 'videopositioning', models).map((c) => c.table)).toEqual([
+      'data_recordingpipeline',
+    ])
+    expect(searchTableChoices(choices, 'RECORDING', models).map((c) => c.table)).toEqual([
+      'data_recordingpipeline',
+    ])
+  })
+
+  it('is empty when nothing matches', () => {
+    expect(searchTableChoices(choices, 'zzz', models)).toEqual([])
+  })
+})
+
+describe('reading the URL', () => {
+  it('keeps a sort it knows and drops one it does not', () => {
+    expect(parseIndexSort('size')).toBe('size')
+    expect(parseIndexSort('; drop table')).toBeUndefined()
+    expect(parseIndexSort(undefined)).toBeUndefined()
+  })
+
+  it('keeps the flags it knows and drops the rest', () => {
+    expect(parseIndexFlags('unique,invalid')).toEqual(['unique', 'invalid'])
+    expect(parseIndexFlags('unique,made-up')).toEqual(['unique'])
+    expect(parseIndexFlags('')).toEqual([])
+    expect(parseIndexFlags(undefined)).toEqual([])
+  })
+
+  it('drops a repeated flag, so a hand-edited URL cannot grow the list', () => {
+    expect(parseIndexFlags('unique,unique')).toEqual(['unique'])
   })
 })

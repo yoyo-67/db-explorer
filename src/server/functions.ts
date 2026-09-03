@@ -9,6 +9,7 @@ import {
 import {
   buildCountQuery,
   buildMatchQuery,
+  type TableQueryArgs,
   buildTableQuery,
   compileConditions,
 } from '#/server/filter-sql'
@@ -689,7 +690,11 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
 
   const approx = await fetchApproxRowCount(schema, table)
   const hasFilter = whereBody.length > 0
-  const wantExact = req.exactCount === true || hasFilter || approx < EXACT_COUNT_THRESHOLD
+  // A filter does not buy an exact count. `COUNT(*)` behind a WHERE is a scan of
+  // every row whatever the filter matches, so on a 14M-row table it turns an
+  // instant page of 50 rows into minutes of waiting for a number in the pager —
+  // the same trade the unfiltered page already refuses above the threshold.
+  const wantExact = req.exactCount === true || approx < EXACT_COUNT_THRESHOLD
   let count = approx
   let isCountApproximate = true
   if (wantExact) {
@@ -697,6 +702,11 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
     const countResult = await query(countQuery)
     count = Number(countResult.rows[0]?.c ?? 0)
     isCountApproximate = false
+  } else if (hasFilter) {
+    // The table's own estimate describes a different set of rows than the one on
+    // screen, so ask the planner what the filter matches. Its answer is the same
+    // number the filter panel already showed before Apply was pressed.
+    count = await estimateMatchingRows({ schema, table, conditions, columnTypes }, approx)
   }
 
   const totalPages = Math.max(1, Math.ceil(count / pageSize))
@@ -984,6 +994,32 @@ function collectSeqScans(node: Record<string, unknown>, into: string[]): void {
  * from the unpaged query ({@link buildMatchQuery}) — planning the `LIMIT`ed one
  * would answer "how many rows on this page", which is always the page size.
  */
+/**
+ * The planner's own row estimate for what a filter matches, falling back to the
+ * table's estimate when the planner will not answer in time.
+ *
+ * Bounded by the same timeout as the filter panel's plan: this runs inside a
+ * page load, and a slow `EXPLAIN` would cost exactly what counting was avoiding.
+ */
+async function estimateMatchingRows(args: TableQueryArgs, fallback: number): Promise<number> {
+  try {
+    const root = await explainPlanRoot(buildMatchQuery(args))
+    const rows = root?.['Plan Rows']
+    return typeof rows === 'number' ? Math.round(rows) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** The root node of `EXPLAIN (FORMAT JSON) <sql>`, or null when there is none. */
+async function explainPlanRoot(sql: string): Promise<Record<string, unknown> | null> {
+  const result = await queryWithTimeout(`EXPLAIN (FORMAT JSON) ${sql}`, PLAN_TIMEOUT_MS)
+  const explained = (result.rows[0] as { 'QUERY PLAN'?: unknown })?.['QUERY PLAN']
+  return Array.isArray(explained)
+    ? ((explained[0] as { Plan?: Record<string, unknown> })?.Plan ?? null)
+    : null
+}
+
 export async function planTableQuery(req: PlanRequest): Promise<QueryPlan> {
   const schema = req.schema || DEFAULT_SCHEMA
   const { table } = req
@@ -1008,14 +1044,7 @@ export async function planTableQuery(req: PlanRequest): Promise<QueryPlan> {
   const matchQuery = buildMatchQuery({ schema, table, conditions, columnTypes })
 
   try {
-    const result = await queryWithTimeout(
-      `EXPLAIN (FORMAT JSON) ${matchQuery}`,
-      PLAN_TIMEOUT_MS,
-    )
-    const explained = (result.rows[0] as { 'QUERY PLAN'?: unknown })?.['QUERY PLAN']
-    const root = Array.isArray(explained)
-      ? ((explained[0] as { Plan?: Record<string, unknown> })?.Plan ?? null)
-      : null
+    const root = await explainPlanRoot(matchQuery)
     if (!root) return { sql, estRows: null, seqScans: [], totalCost: null }
     const seqScans: string[] = []
     collectSeqScans(root, seqScans)

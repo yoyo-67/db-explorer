@@ -74,8 +74,12 @@ export function redundantIndexes(indexes: IndexEntry[]): RedundantIndex[] {
  * automatically and the referencing side never — so these are the keys where a
  * join or a parent delete scans the whole child table.
  *
- * Partial and expression indexes do not count as cover: a cascade has to find
- * every child row, not the subset a `WHERE` clause kept.
+ * A partial index does not count as cover: a cascade has to find every child
+ * row, not the subset a `WHERE` clause kept. An expression *position* does not
+ * count either, but an index is only disqualified when the expression falls
+ * inside the prefix the key needs — a unique on `(project_id, lower(name))`
+ * still answers a lookup by `project_id`, and Django writes exactly that shape
+ * whenever a model asks for case-insensitive uniqueness within a parent.
  */
 export function unindexedForeignKeys(
   foreignKeys: ForeignKeyColumns[],
@@ -86,7 +90,6 @@ export function unindexedForeignKeys(
       (index) =>
         index.table === fk.table &&
         !index.isPartial &&
-        !index.hasExpression &&
         isLeadingPrefix(fk.columns, index.keyColumns),
     )
     return !covered

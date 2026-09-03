@@ -1,4 +1,6 @@
 import { Chip } from '#/components/pressure/PressureSection'
+import TableName, { useTableNameText } from '#/components/TableName'
+import TablePicker from '#/components/indexes/TablePicker'
 import { formatBytes } from '#/lib/pressure/bytes'
 import type {
   IndexFlag,
@@ -77,6 +79,7 @@ export default function IndexList({
   sort: IndexSort
   onSortChange: (sort: IndexSort) => void
 }) {
+  const nameText = useTableNameText()
   const toggleFlag = (flag: IndexFlag) => {
     const flags = criteria.flags.includes(flag)
       ? criteria.flags.filter((entry) => entry !== flag)
@@ -92,7 +95,7 @@ export default function IndexList({
             type="search"
             value={criteria.text}
             onChange={(event) => onCriteriaChange({ ...criteria, text: event.target.value })}
-            placeholder="index, table or column"
+            placeholder="index, table, model or column"
             aria-label="Filter indexes"
             className="min-w-0 flex-1 rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs text-[var(--sea-ink)]"
           />
@@ -113,36 +116,11 @@ export default function IndexList({
           </label>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex min-w-0 flex-1 items-center gap-1 text-[10px] text-[var(--sea-ink-soft)]">
-            table
-            <select
-              value={criteria.table ?? ''}
-              onChange={(event) =>
-                onCriteriaChange({
-                  ...criteria,
-                  table: event.target.value === '' ? null : event.target.value,
-                })
-              }
-              aria-label="Show indexes on one table"
-              className="min-w-0 flex-1 rounded border border-[var(--line)] bg-transparent px-1 py-0.5 text-[11px] text-[var(--sea-ink)]"
-            >
-              <option value="">every table ({tables.length})</option>
-              {tables.map((choice) => (
-                <option key={choice.table} value={choice.table}>
-                  {choice.table} ({choice.count})
-                </option>
-              ))}
-            </select>
-          </label>
-          {criteria.table && (
-            <button
-              type="button"
-              onClick={() => onCriteriaChange({ ...criteria, table: null })}
-              className="shrink-0 rounded border border-[var(--line)] px-1.5 py-0.5 text-[10px] text-[var(--sea-ink-soft)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
-            >
-              clear
-            </button>
-          )}
+          <TablePicker
+            tables={tables}
+            selected={criteria.table}
+            onSelect={(table) => onCriteriaChange({ ...criteria, table })}
+          />
         </div>
         <div className="flex flex-wrap gap-1">
           {FLAGS.map((flag) => {
@@ -213,7 +191,7 @@ export default function IndexList({
                     <span
                       role="button"
                       tabIndex={0}
-                      title={`Show only indexes on ${row.table}`}
+                      title={`Show only indexes on ${nameText(row.table)}`}
                       onClick={(event) => {
                         event.stopPropagation()
                         onCriteriaChange({ ...criteria, table: row.table })
@@ -226,7 +204,7 @@ export default function IndexList({
                       }}
                       className="cursor-pointer font-mono underline decoration-dotted underline-offset-2 hover:text-[var(--lagoon-deep)]"
                     >
-                      {row.table}
+                      <TableName table={row.table} />
                     </span>
                     <span className="font-mono">({row.columns.join(', ')})</span>
                     {row.pattern && row.pattern !== 'unknown' && (

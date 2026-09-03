@@ -46,6 +46,7 @@ export default function FilterPanel({
   onDraftChange,
   applied,
   onApply,
+  isApplying = false,
   sort,
   page,
   pageSize,
@@ -67,6 +68,10 @@ export default function FilterPanel({
   /** What the page is filtered by right now, so Apply knows if it has work. */
   applied: Condition[]
   onApply: () => void
+  /** The applied filter is being read right now, so the rows on screen are the
+   *  previous ones. Without this the panel would say "Showing these rows" of
+   *  rows it has not got yet. */
+  isApplying?: boolean
   sort: TableSort | null
   page: number
   pageSize: number
@@ -228,7 +233,11 @@ export default function FilterPanel({
             Apply
           </button>
           <span className="text-[10px] text-[var(--sea-ink-soft)]">
-            {dirty ? 'Changes not applied yet' : 'Showing these rows'}
+            {dirty
+              ? 'Changes not applied yet'
+              : isApplying
+                ? 'Reading rows…'
+                : 'Showing these rows'}
           </span>
         </div>
       )}

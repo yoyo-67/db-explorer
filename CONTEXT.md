@@ -42,7 +42,7 @@ Per-column free-form input, parsed by prefix:
 - everything else — `ILIKE %v%` fallback (works for JSONB / text casts)
 
 **Filtered count** ("≈ vs exact"):
-For tables with `n_live_tup < 100k`, run real `SELECT count(*)` for current filter. Above threshold, show approximate `n_live_tup` with on-demand "Exact" button.
+For tables with `n_live_tup < 100k`, run real `SELECT count(*)` for current filter. Above threshold, show an approximation with on-demand "Exact" button — the planner's `Plan Rows` for the filtered statement when there is a filter, `n_live_tup` when there is not. A filter never forces the exact count: `count(*)` behind a `WHERE` scans every row whatever it matches, which on a 14M-row table costs minutes for a number in the pager.
 
 **Lens**:
 A read-only architectural view of the current **Schema** at `/lens/$schema`, answering how the schema is *shaped* rather than what is in it. Three pictures over one graph — Group × Group matrix, one **Group** expanded, and the tables nothing references — each clicking through into the table browser. A plugin, not a second app.

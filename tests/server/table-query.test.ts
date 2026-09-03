@@ -110,11 +110,13 @@ describe('getTablePage SQL builder', () => {
     expect(countSql).toMatch(/SELECT COUNT\(\*\)/)
   })
 
-  it('compiles the filter into a WHERE clause and forces exact count', async () => {
+  it('estimates a filtered count on a big table rather than counting it', async () => {
     mockColumns(['id', 'email'])
     mockQuery.mockResolvedValueOnce({ rows: [] })
-    mockApprox(EXACT_COUNT_THRESHOLD * 10) // big — would be approx without filter
-    mockQuery.mockResolvedValueOnce({ rows: [{ c: '7' }] })
+    mockApprox(EXACT_COUNT_THRESHOLD * 10)
+    mockQueryWithTimeout.mockResolvedValueOnce({
+      rows: [{ 'QUERY PLAN': [{ Plan: { 'Plan Rows': 3_107_993 } }] }],
+    })
 
     const page = await getTablePage({
       schema: 'public',
@@ -124,8 +126,64 @@ describe('getTablePage SQL builder', () => {
 
     const dataSql = mockQuery.mock.calls[1][0] as string
     expect(dataSql).toContain(`WHERE email ILIKE '%alice%'`)
-    expect(page.isCountApproximate).toBe(false)
+    // A real COUNT(*) behind the filter is a seq scan over every row: on a table
+    // this size it is minutes of waiting for a number nobody asked for.
+    expect(mockQuery.mock.calls.every((call) => !/SELECT COUNT\(\*\)/.test(call[0] as string))).toBe(true)
+    const planSql = mockQueryWithTimeout.mock.calls[0][0] as string
+    expect(planSql).toMatch(/^EXPLAIN \(FORMAT JSON\) SELECT \*/)
+    expect(planSql).toContain(`WHERE email ILIKE '%alice%'`)
+    expect(page.count).toBe(3_107_993)
+    expect(page.isCountApproximate).toBe(true)
+  })
+
+  it('falls back to the table estimate when the planner will not say', async () => {
+    mockColumns(['id', 'email'])
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    mockApprox(EXACT_COUNT_THRESHOLD * 10)
+    mockQueryWithTimeout.mockRejectedValueOnce(new StatementTimeoutError(3_000))
+
+    const page = await getTablePage({
+      schema: 'public',
+      table: 'users',
+      conditions: [{ id: '1', column: 'email', op: 'contains', values: ['alice'] }],
+    })
+
+    expect(page.count).toBe(EXACT_COUNT_THRESHOLD * 10)
+    expect(page.isCountApproximate).toBe(true)
+  })
+
+  it('counts a filtered small table for real, where the scan is cheap', async () => {
+    mockColumns(['id', 'email'])
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    mockApprox(500)
+    mockQuery.mockResolvedValueOnce({ rows: [{ c: '7' }] })
+
+    const page = await getTablePage({
+      schema: 'public',
+      table: 'users',
+      conditions: [{ id: '1', column: 'email', op: 'contains', values: ['alice'] }],
+    })
+
     expect(page.count).toBe(7)
+    expect(page.isCountApproximate).toBe(false)
+    expect(mockQueryWithTimeout).not.toHaveBeenCalled()
+  })
+
+  it('counts a filtered big table for real when the reader asks for it', async () => {
+    mockColumns(['id', 'email'])
+    mockQuery.mockResolvedValueOnce({ rows: [] })
+    mockApprox(EXACT_COUNT_THRESHOLD * 10)
+    mockQuery.mockResolvedValueOnce({ rows: [{ c: '7' }] })
+
+    const page = await getTablePage({
+      schema: 'public',
+      table: 'users',
+      exactCount: true,
+      conditions: [{ id: '1', column: 'email', op: 'contains', values: ['alice'] }],
+    })
+
+    expect(page.count).toBe(7)
+    expect(page.isCountApproximate).toBe(false)
   })
 
   it('drops filters whose column is not in the table', async () => {
