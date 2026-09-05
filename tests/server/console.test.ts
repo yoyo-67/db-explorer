@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 interface FakeClient {
   statements: string[]
   released: boolean
+  destroyed: boolean
   query: ReturnType<typeof vi.fn>
   release: () => void
 }
@@ -15,13 +16,15 @@ function makeClient(): FakeClient {
   const client: FakeClient = {
     statements: [],
     released: false,
+    destroyed: false,
     query: vi.fn(async (arg: string | { text: string; values?: unknown[] }) => {
       const text = typeof arg === 'string' ? arg : arg.text
       client.statements.push(text)
       return answer(text)
     }),
-    release: () => {
+    release: (destroy?: boolean) => {
       client.released = true
+      client.destroyed = destroy === true
     },
   }
   clients.push(client)
@@ -215,6 +218,34 @@ describe('write mode', () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(opened.statements).toContain('ROLLBACK')
     expect(consoleTransaction()).toBeNull()
+  })
+
+  // A connection that failed to unwind is not fit to hand to the next query:
+  // it may still be inside the transaction, and whoever picks it up next would
+  // inherit it.
+  it('destroys the client when the rollback itself fails', async () => {
+    setWriteModeAllowed(true)
+    await runConsoleQuery({ sql: 'DELETE FROM orders', write: true })
+    const opened = last()
+    answer = (sql) => {
+      if (sql === 'ROLLBACK') throw new Error('connection terminated')
+      return { rows: [], fields: [], rowCount: 0 }
+    }
+    const result = await rollbackConsoleTransaction()
+    expect(result.ok).toBe(false)
+    expect(opened.destroyed).toBe(true)
+    // Still forgotten either way — a client that cannot unwind is not a
+    // transaction anybody can go on using.
+    expect(consoleTransaction()).toBeNull()
+  })
+
+  it('returns the client to the pool intact when the rollback succeeds', async () => {
+    setWriteModeAllowed(true)
+    await runConsoleQuery({ sql: 'DELETE FROM orders', write: true })
+    const opened = last()
+    await rollbackConsoleTransaction()
+    expect(opened.released).toBe(true)
+    expect(opened.destroyed).toBe(false)
   })
 
   it('has nothing to commit when no transaction is open', async () => {

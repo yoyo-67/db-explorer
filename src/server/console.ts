@@ -78,6 +78,23 @@ function armIdleRollback(): void {
   open.timer.unref?.()
 }
 
+/**
+ * End the open transaction, one way or the other.
+ *
+ * Commit and rollback are the same function with one word different, so the two
+ * cannot drift apart — the bookkeeping around them is identical and only the
+ * statement differs.
+ *
+ * `open` is cleared before the await rather than after: a second click, or the
+ * idle timer firing while this is in flight, then finds nothing to end instead
+ * of issuing a second statement on a client that has already gone back to the
+ * pool.
+ *
+ * A client whose COMMIT or ROLLBACK *failed* is destroyed rather than released.
+ * Releasing it would return a connection that may still be inside a transaction
+ * to the pool, where the next unrelated query would inherit it — which is a far
+ * worse failure than the one that got us here.
+ */
 async function endTransaction(how: 'COMMIT' | 'ROLLBACK'): Promise<{ ok: boolean; error?: string }> {
   const current = open
   if (!current) return { ok: false, error: 'No open transaction' }
@@ -85,11 +102,11 @@ async function endTransaction(how: 'COMMIT' | 'ROLLBACK'): Promise<{ ok: boolean
   clearTimeout(current.timer)
   try {
     await current.client.query(how)
+    current.client.release()
     return { ok: true }
   } catch (err) {
+    current.client.release(true)
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
-  } finally {
-    current.client.release()
   }
 }
 
