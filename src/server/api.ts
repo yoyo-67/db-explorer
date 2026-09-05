@@ -283,12 +283,22 @@ export const $updateRow = createServerFn({ method: 'POST' })
  */
 export const $runConsoleQuery = createServerFn({ method: 'POST' })
   .inputValidator(
-    (data: Scoped & { sql: string; params?: string[]; write?: boolean }) => data,
+    (data: Scoped & {
+      sql: string
+      params?: string[]
+      write?: boolean
+      explain?: 'plan' | 'analyze'
+    }) => data,
   )
   .handler(
     scoped(async (data) => {
       const { runConsoleQuery } = await import('#/server/console')
-      return runConsoleQuery({ sql: data.sql, params: data.params, write: data.write })
+      return runConsoleQuery({
+        sql: data.sql,
+        params: data.params,
+        write: data.write,
+        explain: data.explain,
+      })
     }),
   )
 

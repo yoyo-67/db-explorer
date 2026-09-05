@@ -344,6 +344,12 @@ export type ConsoleResult =
       command?: string
       /** A write transaction is waiting to be committed or abandoned. */
       transaction?: 'open'
+      /**
+       * The `EXPLAIN (FORMAT JSON)` output, when the run was an explain rather
+       * than a query. Raw: shaping it into a tree is the browser's job, and the
+       * server has no reason to hold an opinion about how it is drawn.
+       */
+      plan?: JsonValue
     }
   | { ok: false; error: string; failure?: QueryFailure; transaction?: 'open' }
 

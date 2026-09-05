@@ -11,6 +11,8 @@ import { schemaCompletion, showFailure } from '#/components/console/extensions'
 import QueryLibrary, { SaveQueryButton } from '#/components/console/QueryLibrary'
 import TransactionBar from '#/components/console/TransactionBar'
 import ParamsBar from '#/components/console/ParamsBar'
+import PlanTree from '#/components/console/PlanTree'
+import { parsePlan } from '#/lib/console/plan'
 import {
   type HistoryEntry,
   type SavedQuery,
@@ -129,13 +131,19 @@ function ConsolePage() {
   const missing = needed.filter((n) => !(params[n] ?? '').length)
 
   const runMutation = useMutation({
-    mutationFn: (input: { sql: string; offset: number; write: boolean }) =>
+    mutationFn: (input: {
+      sql: string
+      offset: number
+      write: boolean
+      explain?: 'plan' | 'analyze'
+    }) =>
       $runConsoleQuery({
         data: {
           database,
           sql: input.sql,
           params: placeholders(input.sql).map((n) => params[n] ?? ''),
           write: input.write,
+          explain: input.explain,
         },
       }).then((result) => ({ result, offset: input.offset })),
     onSuccess: ({ result, offset }, input) => {
@@ -165,7 +173,10 @@ function ConsolePage() {
   })
 
   const execute = useCallback(
-    (what: { text: string; offset: number } | null) => {
+    (
+      what: { text: string; offset: number } | null,
+      explain?: 'plan' | 'analyze',
+    ) => {
       if (!what || !what.text.trim() || runMutation.isPending) return
       // Write mode being on is not a reason to open a write transaction for a
       // SELECT: a commit prompt after every read is one people learn to click
@@ -173,7 +184,10 @@ function ConsolePage() {
       runMutation.mutate({
         sql: what.text,
         offset: what.offset,
-        write: writeMode && isWriteStatement(what.text),
+        // A plan runs nothing, so it never needs the write path. An analyze
+        // does, because it runs exactly what it is explaining.
+        write: writeMode && isWriteStatement(what.text) && explain !== 'plan',
+        explain,
       })
     },
     [runMutation, writeMode],
@@ -226,6 +240,10 @@ function ConsolePage() {
   valuesRef.current = fetchValues
 
   const result = run?.result
+  const plan = useMemo(
+    () => (result?.ok && result.plan ? parsePlan(result.plan) : null),
+    [result],
+  )
 
   // The result's cells become links the same way a table page's do — see
   // `linkResultColumns`. Done here rather than on the server because the
@@ -295,10 +313,7 @@ function ConsolePage() {
     }
   }
 
-  const explain = () => {
-    if (!target) return
-    execute({ text: `EXPLAIN ${target.text}`, offset: target.offset })
-  }
+
 
   return (
     <main className="px-4 pb-8 pt-6">
@@ -366,11 +381,21 @@ function ConsolePage() {
             </button>
             <button
               type="button"
-              onClick={explain}
+              onClick={() => execute(target, 'plan')}
               disabled={runMutation.isPending || !target?.text.trim()}
+              title="Ask the planner. Nothing is run."
               className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--sea-ink)] transition hover:border-[var(--lagoon)] disabled:opacity-50"
             >
               Explain
+            </button>
+            <button
+              type="button"
+              onClick={() => execute(target, 'analyze')}
+              disabled={runMutation.isPending || !target?.text.trim() || missing.length > 0}
+              title="Run it and measure it. Estimates are what an unexpected plan got wrong, so this is the one that answers why."
+              className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--sea-ink)] transition hover:border-[var(--lagoon)] disabled:opacity-50"
+            >
+              Analyze
             </button>
             <button
               type="button"
@@ -430,7 +455,9 @@ function ConsolePage() {
             </div>
           )}
 
-          {result?.ok && (
+          {plan && <PlanTree plan={plan} />}
+
+          {result?.ok && !result.plan && (
             <div className="island-shell overflow-visible rounded-xl">
               <DataTable
                 columns={linkedColumns}

@@ -353,3 +353,67 @@ describe('tracing a result column back to its table', () => {
     expect(result.columns[0].source).toBeUndefined()
   })
 })
+
+describe('explaining', () => {
+  const planRow = {
+    rows: [{ 'QUERY PLAN': [{ Plan: { 'Node Type': 'Seq Scan', 'Total Cost': 10 } }] }],
+    fields: [{ name: 'QUERY PLAN' }],
+    rowCount: 1,
+  }
+
+  it('asks the planner without running the statement', async () => {
+    answer = () => planRow
+    const result = await runConsoleQuery({ sql: 'SELECT 1', explain: 'plan' })
+    const sent = last().statements.find((s) => s.startsWith('EXPLAIN'))
+    expect(sent).toBe('EXPLAIN (VERBOSE, COSTS, FORMAT JSON) SELECT 1')
+    if (!result.ok) throw new Error('expected a result')
+    expect(result.plan).toEqual([{ Plan: { 'Node Type': 'Seq Scan', 'Total Cost': 10 } }])
+  })
+
+  it('hands the plan over as a plan, not as a one-cell grid', async () => {
+    answer = () => planRow
+    const result = await runConsoleQuery({ sql: 'SELECT 1', explain: 'plan' })
+    if (!result.ok) throw new Error('expected a result')
+    expect(result.rows).toEqual([])
+    expect(result.columns).toEqual([])
+  })
+
+  it('runs the statement when asked to analyze it', async () => {
+    answer = () => planRow
+    await runConsoleQuery({ sql: 'SELECT 1', explain: 'analyze' })
+    const sent = last().statements.find((s) => s.startsWith('EXPLAIN'))
+    expect(sent).toContain('ANALYZE')
+    expect(sent).toContain('BUFFERS')
+  })
+
+  // EXPLAIN ANALYZE of a DELETE deletes. The read-only transaction would refuse
+  // it anyway; refusing here means the message names the setting.
+  it('refuses to analyze a write while write mode is off', async () => {
+    const result = await runConsoleQuery({ sql: 'DELETE FROM orders', explain: 'analyze' })
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected a refusal')
+    expect(result.error).toContain('write mode')
+    expect(clients).toHaveLength(0)
+  })
+
+  it('will analyze a write once write mode is on, inside the transaction', async () => {
+    setWriteModeAllowed(true)
+    answer = () => planRow
+    const result = await runConsoleQuery({
+      sql: 'DELETE FROM orders',
+      explain: 'analyze',
+      write: true,
+    })
+    expect(last().statements[0]).toBe('BEGIN READ WRITE')
+    if (!result.ok) throw new Error('expected a result')
+    // Still open, so the delete it just performed can be thrown away.
+    expect(result.transaction).toBe('open')
+  })
+
+  it('plans a write without running it, write mode or not', async () => {
+    answer = () => planRow
+    const result = await runConsoleQuery({ sql: 'DELETE FROM orders', explain: 'plan' })
+    expect(result.ok).toBe(true)
+    expect(last().statements[0]).toBe('BEGIN READ ONLY')
+  })
+})

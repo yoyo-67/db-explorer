@@ -3,6 +3,7 @@ import { sanitizeRows } from '#/server/json-row'
 import { appendPerfEntry } from '#/server/perf-log'
 import { getPresetName } from '#/server/db'
 import { currentDatabase } from '#/server/db-context'
+import { isWriteStatement } from '#/lib/console/statements'
 import type { ColumnInfo, ConsoleResult, QueryFailure } from '#/lib/types'
 
 /**
@@ -39,6 +40,15 @@ export interface ConsoleRunInput {
   params?: string[]
   /** Ask for the write path. Refused unless {@link setWriteModeAllowed}. */
   write?: boolean
+  /**
+   * Explain the statement instead of answering it.
+   *
+   * `plan` costs nothing — the planner is asked and the statement never runs.
+   * `analyze` runs it, which is the whole point (estimates are what an
+   * unexpected plan got wrong) and also the reason it is gated: an
+   * `EXPLAIN ANALYZE DELETE` deletes.
+   */
+  explain?: 'plan' | 'analyze'
 }
 
 interface OpenTransaction {
@@ -117,6 +127,22 @@ export function commitConsoleTransaction(): Promise<{ ok: boolean; error?: strin
 
 export function rollbackConsoleTransaction(): Promise<{ ok: boolean; error?: string }> {
   return endTransaction('ROLLBACK')
+}
+
+/**
+ * The statement, wrapped in the EXPLAIN it was asked for.
+ *
+ * `VERBOSE` names the columns each node produces and `BUFFERS` says what came
+ * from cache — both are free next to the plan itself, and both answer the
+ * question people ask second.
+ */
+function explainWrapped(sql: string, mode: ConsoleRunInput['explain']): string {
+  if (!mode) return sql
+  const options =
+    mode === 'analyze'
+      ? 'ANALYZE, BUFFERS, VERBOSE, COSTS, FORMAT JSON'
+      : 'VERBOSE, COSTS, FORMAT JSON'
+  return `EXPLAIN (${options}) ${sql}`
 }
 
 /**
@@ -221,6 +247,22 @@ function toResult(result: pg.QueryResult, startedAt: number, transactionOpen: bo
       ...(relation && column ? { source: { ...relation, column } } : {}),
     }
   })
+  // `EXPLAIN (FORMAT JSON)` comes back as one row holding one column called
+  // `QUERY PLAN`. Handed over as the plan rather than as a row, because a
+  // one-cell grid containing a nested document is not a readable plan.
+  const explained = (result.rows?.[0] as Record<string, unknown> | undefined)?.['QUERY PLAN']
+  if (fields.length === 1 && fields[0].name === 'QUERY PLAN' && Array.isArray(explained)) {
+    return {
+      ok: true,
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      plan: explained as never,
+      durationMs: Date.now() - startedAt,
+      ...(transactionOpen ? { transaction: 'open' as const } : {}),
+    }
+  }
+
   const all = sanitizeRows((result.rows ?? []) as Record<string, unknown>[])
   // A statement that changes rows returns none, and `rowCount` is then how many
   // it touched — the only number worth showing for an UPDATE.
@@ -252,8 +294,23 @@ function toResult(result: pg.QueryResult, startedAt: number, transactionOpen: bo
  * - Everything else: `BEGIN READ ONLY` on its own client, then `ROLLBACK`.
  */
 export async function runConsoleQuery(input: ConsoleRunInput): Promise<ConsoleResult> {
-  const sql = input.sql.trim()
-  if (!sql) return { ok: false, error: 'Empty query' }
+  const raw = input.sql.trim()
+  if (!raw) return { ok: false, error: 'Empty query' }
+
+  // ANALYZE executes what it explains, so explaining a write is a write. The
+  // read-only transaction would refuse it anyway; saying so here means the
+  // answer names the setting rather than quoting Postgres at somebody who
+  // pressed a button called Explain.
+  if (input.explain === 'analyze' && isWriteStatement(raw) && !writeAllowed) {
+    return {
+      ok: false,
+      error:
+        'EXPLAIN ANALYZE runs the statement, and this one writes. Turn on write mode to explain it — it will run inside a transaction you can roll back.',
+    }
+  }
+
+  const sql = explainWrapped(raw, input.explain)
+
   if (input.write && !writeAllowed && !open) {
     return {
       ok: false,
