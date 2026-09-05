@@ -738,6 +738,10 @@ export const DISTINCT_VALUE_LIMIT = 1_000
  *  slow column used to be no list at all. */
 export const DISTINCT_VALUES_TIMEOUT_MS = 30_000
 
+/** A search runs on every keystroke, so it gets the tighter budget: an answer
+ *  that outlives the typing is worse than no answer. */
+export const COLUMN_SEARCH_TIMEOUT_MS = 5_000
+
 /**
  * The distinct values of one column, for its set filter.
  *
@@ -829,7 +833,20 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
   )
   const columnTypes = Object.fromEntries(columns.map((c) => [c.name, c.dataType]))
   const whereBody = compileConditions(otherConditions, columnTypes, schema)
-  const whereClause = whereBody ? `WHERE ${whereBody}` : ''
+
+  // A search is `ILIKE %text%`, with the pattern's own metacharacters escaped:
+  // somebody typing `_` means an underscore, not "any character".
+  const search = req.search?.trim()
+  const searchBody = search
+    ? format(
+        '%I::text ILIKE %L ESCAPE %L',
+        column,
+        `%${search.replace(/([\\%_])/g, '\\$1')}%`,
+        '\\',
+      )
+    : ''
+  const conditions = [whereBody, searchBody].filter(Boolean)
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   // `::text` so every type comes back as a string the filter DSL can round-trip
   // — an unknown literal is coerced back to the column's own type on the way in.
@@ -843,7 +860,10 @@ export async function getColumnValues(req: ColumnValuesRequest): Promise<ColumnV
   )
 
   try {
-    const result = await queryWithTimeout(sql, DISTINCT_VALUES_TIMEOUT_MS)
+    const result = await queryWithTimeout(
+      sql,
+      search ? COLUMN_SEARCH_TIMEOUT_MS : DISTINCT_VALUES_TIMEOUT_MS,
+    )
     const rows = result.rows as { value: string | null }[]
     const truncated = rows.length > DISTINCT_VALUE_LIMIT
     return {

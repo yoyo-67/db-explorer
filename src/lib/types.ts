@@ -41,6 +41,17 @@ export interface ColumnInfo {
   dataType: string
   isNullable: boolean
   /**
+   * The table column this one came out of, when the database said so.
+   *
+   * Only console results carry it. A query's output column has a name of its
+   * own — an alias, an expression, `?column?` — and none of those can be looked
+   * up in a schema. Postgres does know, though: every field in a result carries
+   * the OID of the relation it was read from, unless it was computed. Resolving
+   * that is what lets a result of an arbitrary join link its foreign keys the
+   * way a table page does.
+   */
+  source?: { schema: string; table: string; column: string }
+  /**
    * The database computes this column — a `GENERATED ... STORED` expression or
    * an identity. Carried because an editor has to know which fields it must not
    * offer: a client value for one of these is rejected by Postgres, and finding
@@ -222,6 +233,16 @@ export interface ColumnValuesRequest {
   column: string
   /** The panel's other conditions; ones on the named column are ignored. */
   conditions?: Condition[]
+  /**
+   * Narrow to values containing this text.
+   *
+   * Without it the answer is the first {@link DISTINCT_VALUE_LIMIT} values in
+   * sort order, which for anything with real cardinality — an email column, a
+   * name — is an alphabetical prefix of the data and never contains what
+   * somebody is typing. Searching has to happen in the database, because the
+   * values that would match are exactly the ones the cap left behind.
+   */
+  search?: string
 }
 
 /** The distinct values of one column, as far as the cap and the time budget got. */

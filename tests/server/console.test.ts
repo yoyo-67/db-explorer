@@ -39,6 +39,11 @@ vi.mock('#/server/db', () => ({
 vi.mock('#/server/perf-log', () => ({
   appendPerfEntry: async () => {},
 }))
+vi.mock('#/server/db-context', () => ({
+  currentDatabase: () => currentDb,
+}))
+
+let currentDb = 'shop_db'
 
 const {
   commitConsoleTransaction,
@@ -251,5 +256,100 @@ describe('write mode', () => {
   it('has nothing to commit when no transaction is open', async () => {
     const result = await commitConsoleTransaction()
     expect(result.ok).toBe(false)
+  })
+})
+
+/**
+ * A result column's name is whatever the query called it, so linking its cells
+ * has to start from what the database says it read — the relation OID and the
+ * attribute number every field carries.
+ */
+describe('tracing a result column back to its table', () => {
+  it('names the table and column a field was read from', async () => {
+    answer = (sql) => {
+      if (sql.startsWith('SELECT a.attrelid')) {
+        return {
+          rows: [
+            { oid: 16400, attnum: 2, column: 'customer_id', table: 'orders', schema: 'public' },
+          ],
+          fields: [],
+          rowCount: 1,
+        }
+      }
+      return {
+        rows: [{ who: 1 }],
+        fields: [{ name: 'who', tableID: 16400, columnID: 2 }],
+        rowCount: 1,
+      }
+    }
+    const result = await runConsoleQuery({ sql: 'SELECT o.customer_id AS who FROM orders o' })
+    if (!result.ok) throw new Error('expected a result')
+    expect(result.columns[0]).toMatchObject({
+      name: 'who',
+      source: { schema: 'public', table: 'orders', column: 'customer_id' },
+    })
+  })
+
+  it('leaves a computed column untraced rather than guessing', async () => {
+    answer = () => ({
+      rows: [{ count: 3 }],
+      fields: [{ name: 'count', tableID: 0, columnID: 0 }],
+      rowCount: 1,
+    })
+    const result = await runConsoleQuery({ sql: 'SELECT count(*) FROM orders' })
+    if (!result.ok) throw new Error('expected a result')
+    expect(result.columns[0].source).toBeUndefined()
+  })
+
+  it('asks the catalog nothing when every field is computed', async () => {
+    answer = () => ({ rows: [{ n: 1 }], fields: [{ name: 'n' }], rowCount: 1 })
+    await runConsoleQuery({ sql: 'SELECT 1 AS n' })
+    expect(last().statements.some((s) => s.startsWith('SELECT a.attrelid'))).toBe(false)
+  })
+
+  // An OID means nothing without a database: the same number names a different
+  // table in the next one along, and this server serves several at once.
+  it('does not answer one database with another database’s OID', async () => {
+    answer = (sql) => {
+      if (sql.startsWith('SELECT a.attrelid')) {
+        return {
+          rows: [
+            { oid: 16400, attnum: 1, column: 'id', table: 'orders', schema: 'public' },
+          ],
+          fields: [],
+          rowCount: 1,
+        }
+      }
+      return { rows: [], fields: [{ name: 'id', tableID: 16400, columnID: 1 }], rowCount: 0 }
+    }
+    await runConsoleQuery({ sql: 'SELECT id FROM orders' })
+
+    currentDb = 'other_db'
+    answer = () => ({
+      rows: [],
+      fields: [{ name: 'id', tableID: 16400, columnID: 1 }],
+      rowCount: 0,
+    })
+    const result = await runConsoleQuery({ sql: 'SELECT id FROM whatever' })
+    if (!result.ok) throw new Error('expected a result')
+    // The lookup was attempted afresh and answered nothing, so the column is
+    // untraced rather than labelled with the other database's table.
+    expect(result.columns[0].source).toBeUndefined()
+    currentDb = 'shop_db'
+  })
+
+  it('still returns the rows when the catalog lookup fails', async () => {
+    answer = (sql) => {
+      if (sql.startsWith('SELECT a.attrelid')) throw new Error('permission denied')
+      return {
+        rows: [{ id: 1 }],
+        fields: [{ name: 'id', tableID: 99999, columnID: 1 }],
+        rowCount: 1,
+      }
+    }
+    const result = await runConsoleQuery({ sql: 'SELECT id FROM orders' })
+    if (!result.ok) throw new Error('expected a result')
+    expect(result.rows).toEqual([{ id: 1 }])
+    expect(result.columns[0].source).toBeUndefined()
   })
 })

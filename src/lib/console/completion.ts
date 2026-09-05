@@ -215,6 +215,157 @@ function columnCandidates(table: TableInfo, query: string): Candidate[] {
 }
 
 /**
+ * The column whose values are being typed, when that is what is happening.
+ *
+ * `WHERE status = ` is the position where this application can offer something
+ * almost no SQL client can: the values actually in the column. It already knows
+ * how to ask — the filter panel's `$getColumnValues` — and the console already
+ * knows which table an alias refers to. This function is the missing third
+ * thing: recognising the position at all.
+ *
+ * Everything here is textual and synchronous. The fetch belongs to the caller,
+ * because whether a list of live values is worth a round trip is a question
+ * about the UI and not about the SQL.
+ */
+export interface ValueTarget {
+  table: string
+  column: string
+  /** The cursor is already between quotes, so an inserted value must not add more. */
+  quoted: boolean
+  /** The column is textual: an unquoted value would be a syntax error. */
+  needsQuotes: boolean
+  /** Where the typed value starts — inside the quote, when there is one. */
+  from: number
+}
+
+/** Operators with a literal on their right. `in` is here because `IN (` is the
+ *  same position repeated, and a value list is where it matters most. */
+const COMPARISONS = ['<=', '>=', '<>', '!=', '=', '<', '>']
+const COMPARISON_WORDS = new Set(['like', 'ilike', 'in', 'is'])
+
+/** Types whose literals are written bare. Everything else takes quotes — being
+ *  wrong in that direction produces a quoted number, which Postgres coerces,
+ *  rather than a bare word, which it rejects. */
+function isBareType(dataType: string): boolean {
+  return /^(small|big)?int|^numeric|^decimal|^real|^double|^float|^money|^bool/i.test(dataType)
+}
+
+/**
+ * Whether the cursor sits inside a string, and where that string's body began.
+ *
+ * Unlike {@link insideLiteral}, this reports the position rather than just the
+ * fact — completing a value the person has already opened a quote for is the
+ * common case, not an edge case, so "inside a string" cannot simply mean "do
+ * not complete".
+ */
+function openString(sql: string, cursor: number): { quoteAt: number; bodyAt: number } | null {
+  let i = 0
+  while (i < cursor) {
+    const skipped = skipLiteral(sql, i)
+    if (skipped > i) {
+      const isString = sql[i] === "'" || ((sql[i] === 'E' || sql[i] === 'e') && sql[i + 1] === "'")
+      if (skipped >= cursor && isString) {
+        return { quoteAt: i, bodyAt: sql.indexOf("'", i) + 1 }
+      }
+      if (skipped >= cursor) return null
+      i = skipped
+    } else i++
+  }
+  return null
+}
+
+/** Step back over whitespace and comments to the last real character. */
+function previousReal(sql: string, i: number): number {
+  let at = i - 1
+  while (at >= 0 && /\s/.test(sql[at])) at--
+  return at
+}
+
+/** Read an identifier ending at `end` (inclusive), walking backwards. */
+function identBefore(sql: string, end: number): { name: string; start: number } | null {
+  let at = end
+  while (at >= 0 && /[A-Za-z0-9_$]/.test(sql[at])) at--
+  const start = at + 1
+  if (start > end) return null
+  return { name: sql.slice(start, end + 1), start }
+}
+
+export function valueTargetAt(
+  schema: ConsoleSchema,
+  sql: string,
+  cursor: number,
+): ValueTarget | null {
+  const inString = openString(sql, cursor)
+  const valueStart = inString ? inString.quoteAt : wordStart(sql, cursor)
+
+  // Walk back over any list already begun: `IN (\'a\', \'b\'` is the same
+  // position as `IN (`, and someone typing the third value wants the same list.
+  let at = previousReal(sql, valueStart)
+  while (at >= 0 && (sql[at] === ',' || sql[at] === "'")) {
+    if (sql[at] === "'") {
+      // Step over a complete literal in the list, backwards.
+      let j = at - 1
+      while (j >= 0 && sql[j] !== "'") j--
+      if (j < 0) return null
+      at = previousReal(sql, j)
+    } else at = previousReal(sql, at)
+  }
+  if (at >= 0 && sql[at] === '(') at = previousReal(sql, at)
+  if (at < 0) return null
+
+  // The operator: either a word (LIKE, IN) or a symbol run.
+  let operatorStart: number
+  const word = identBefore(sql, at)
+  if (word && COMPARISON_WORDS.has(word.name.toLowerCase())) {
+    operatorStart = word.start
+  } else {
+    const twoChar = sql.slice(Math.max(0, at - 1), at + 1)
+    const oneChar = sql[at]
+    if (COMPARISONS.includes(twoChar)) operatorStart = at - 1
+    else if (COMPARISONS.includes(oneChar)) operatorStart = at
+    else return null
+  }
+
+  // The column on the operator\'s left, optionally qualified.
+  const columnEnd = previousReal(sql, operatorStart)
+  if (columnEnd < 0) return null
+  const columnRef = identBefore(sql, columnEnd)
+  if (!columnRef) return null
+
+  const refs = tableRefs(statementAt(sql, cursor)?.text ?? sql)
+  let table: TableInfo | null = null
+  if (sql[columnRef.start - 1] === '.') {
+    const qualifier = identBefore(sql, columnRef.start - 2)
+    if (!qualifier) return null
+    table = tableFor(schema, refs, qualifier.name)
+  } else {
+    // A bare column belongs to whichever table in the query has it. Ambiguity
+    // is resolved by taking the first, which is the same rule Postgres would
+    // reject and the person would then qualify.
+    for (const ref of refs) {
+      const candidate = schema.tables.find(
+        (t) => t.name.toLowerCase() === ref.table.toLowerCase(),
+      )
+      if (candidate?.columns.some((c) => c.name === columnRef.name)) {
+        table = candidate
+        break
+      }
+    }
+  }
+
+  const column = table?.columns.find((c) => c.name === columnRef.name)
+  if (!table || !column) return null
+
+  return {
+    table: table.name,
+    column: column.name,
+    quoted: Boolean(inString),
+    needsQuotes: !isBareType(column.dataType),
+    from: inString ? inString.bodyAt : valueStart,
+  }
+}
+
+/**
  * What to offer at a cursor, or null when the answer is nothing at all.
  *
  * Reads only the statement the cursor is in: the tables of the query above are

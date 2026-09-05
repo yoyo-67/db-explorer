@@ -2,6 +2,7 @@ import type pg from 'pg'
 import { sanitizeRows } from '#/server/json-row'
 import { appendPerfEntry } from '#/server/perf-log'
 import { getPresetName } from '#/server/db'
+import { currentDatabase } from '#/server/db-context'
 import type { ColumnInfo, ConsoleResult, QueryFailure } from '#/lib/types'
 
 /**
@@ -138,13 +139,88 @@ function describeFailure(err: unknown): QueryFailure {
   }
 }
 
+/**
+ * OID → the relation it names.
+ *
+ * Relation OIDs are stable while a database is, and a console session runs the
+ * same handful of tables over and over, so the catalog lookup below happens
+ * once per table rather than once per query.
+ *
+ * Keyed by database, because an OID means nothing without one: the same number
+ * names a different table in the next database along, and this server serves
+ * several at once. A cache shared across them would answer confidently and
+ * wrongly, which is worse than not caching at all.
+ */
+const relationNames = new Map<string, { schema: string; table: string }>()
+/** `<db>:<oid>:<attnum>` → column name, same reasoning. */
+const columnNames = new Map<string, string>()
+
+/** The cache prefix for the database this request is about. */
+function cacheScope(): string {
+  return currentDatabase() ?? '-'
+}
+
+/**
+ * Ask the catalog what the result's fields were read from.
+ *
+ * `tableID` is 0 for anything computed — an expression, a literal, an aggregate
+ * — and those are skipped, because there is no schema column behind them to
+ * name. One query for everything not already known, then nothing.
+ */
+async function resolveSources(
+  client: pg.PoolClient,
+  fields: Array<{ tableID?: number; columnID?: number }>,
+): Promise<void> {
+  const scope = cacheScope()
+  const wanted = fields.filter(
+    (f) => f.tableID && f.columnID && !columnNames.has(`${scope}:${f.tableID}:${f.columnID}`),
+  )
+  if (wanted.length === 0) return
+  const oids = [...new Set(wanted.map((f) => f.tableID as number))]
+  try {
+    const rows = await client.query(
+      `SELECT a.attrelid::int AS oid, a.attnum::int AS attnum, a.attname::text AS column,
+              c.relname::text AS table, n.nspname::text AS schema
+         FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE a.attrelid = ANY($1::oid[]) AND a.attnum > 0 AND NOT a.attisdropped`,
+      [oids],
+    )
+    for (const row of rows.rows as Array<{
+      oid: number
+      attnum: number
+      column: string
+      table: string
+      schema: string
+    }>) {
+      relationNames.set(`${scope}:${row.oid}`, { schema: row.schema, table: row.table })
+      columnNames.set(`${scope}:${row.oid}:${row.attnum}`, row.column)
+    }
+  } catch {
+    // A result whose columns cannot be traced is still a result. Losing the
+    // links is not a reason to lose the rows.
+  }
+}
+
 function toResult(result: pg.QueryResult, startedAt: number, transactionOpen: boolean): ConsoleResult {
-  const fields = (result.fields ?? []) as Array<{ name: string }>
-  const columns: ColumnInfo[] = fields.map((f) => ({
-    name: f.name,
-    dataType: '',
-    isNullable: true,
-  }))
+  const fields = (result.fields ?? []) as Array<{
+    name: string
+    tableID?: number
+    columnID?: number
+  }>
+  const scope = cacheScope()
+  const columns: ColumnInfo[] = fields.map((f) => {
+    const relation = f.tableID ? relationNames.get(`${scope}:${f.tableID}`) : undefined
+    const column =
+      f.tableID && f.columnID ? columnNames.get(`${scope}:${f.tableID}:${f.columnID}`) : undefined
+    return {
+      name: f.name,
+      dataType: '',
+      isNullable: true,
+      ...(relation && column ? { source: { ...relation, column } } : {}),
+    }
+  })
   const all = sanitizeRows((result.rows ?? []) as Record<string, unknown>[])
   // A statement that changes rows returns none, and `rowCount` is then how many
   // it touched — the only number worth showing for an UPDATE.
@@ -218,6 +294,7 @@ export async function runConsoleQuery(input: ConsoleRunInput): Promise<ConsoleRe
   try {
     await client.query('BEGIN READ ONLY')
     const result = await execute(client, sql, params, startedAt)
+    await resolveSources(client, (result.fields ?? []) as never[])
     await client.query('ROLLBACK')
     return toResult(result, startedAt, false)
   } catch (err) {
@@ -249,6 +326,7 @@ async function runInOpen(
 ): Promise<ConsoleResult> {
   try {
     const result = await execute(transaction.client, sql, params, startedAt)
+    await resolveSources(transaction.client, (result.fields ?? []) as never[])
     transaction.statements++
     armIdleRollback()
     return toResult(result, startedAt, true)

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
@@ -20,6 +20,7 @@ import {
   saveQuery,
 } from '#/lib/console/history'
 import { isWriteStatement, placeholders, statementAt } from '#/lib/console/statements'
+import { linkResultColumns } from '#/lib/console/result-links'
 import { takeConsoleSql } from '#/lib/console-handoff'
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
@@ -28,6 +29,7 @@ import { useDatabaseParam } from '#/hooks/useDatabase'
 import {
   $commitConsole,
   $consoleTransaction,
+  $getColumnValues,
   $rollbackConsole,
   $runConsoleQuery,
 } from '#/server/api'
@@ -82,6 +84,7 @@ function ConsolePage() {
   const schema = schemaName ?? (schemas.includes('public') ? 'public' : schemas[0])
   const consoleSchema = useConsoleSchema(database, schema)
 
+  const queryClient = useQueryClient()
   const view = useRef<EditorView | null>(null)
   // The completion source reads this rather than closing over the schema, so
   // introspection landing does not rebuild the editor and take the cursor.
@@ -182,9 +185,72 @@ function ConsolePage() {
   const latest = useRef({ execute, sql, target })
   latest.current = { execute, sql, target }
 
+  /**
+   * The distinct values of one column, for the `WHERE status = ` position.
+   *
+   * Through the query cache rather than a bare call: opening the same list
+   * twice in a session should not scan the column twice, and the filter panel
+   * asks on this exact key — so a column already browsed there answers here
+   * instantly.
+   */
+  const fetchValues = useCallback(
+    (table: string, column: string, search: string) =>
+      queryClient.fetchQuery({
+        // The search is part of the key. Without it every keystroke would be
+        // answered by the first page of values, which is the one page that
+        // cannot contain what is being typed.
+        queryKey: [
+          'columnValues',
+          database,
+          schemaRef.current?.schema,
+          table,
+          column,
+          search,
+        ],
+        queryFn: () =>
+          $getColumnValues({
+            data: {
+              database,
+              schema: schemaRef.current?.schema ?? 'public',
+              table,
+              column,
+              search,
+            },
+          }),
+        staleTime: 5 * 60_000,
+      }),
+    [database, queryClient],
+  )
+
+  const valuesRef = useRef(fetchValues)
+  valuesRef.current = fetchValues
+
+  const result = run?.result
+
+  // The result's cells become links the same way a table page's do — see
+  // `linkResultColumns`. Done here rather than on the server because the
+  // foreign keys are already in the browser for completion, and the server
+  // should not have to fetch a schema to answer a query.
+  //
+  // Above the connection guards below, with every other hook: a hook that only
+  // runs once the connection is up is a hook React counts differently on the
+  // render before and the render after.
+  const linkedColumns = useMemo(
+    () =>
+      result?.ok && consoleSchema
+        ? linkResultColumns(result.columns, consoleSchema.fks, consoleSchema.tables)
+        : result?.ok
+          ? result.columns
+          : [],
+    [result, consoleSchema],
+  )
+
   const extensions = useMemo(
     () => [
-      schemaCompletion(() => schemaRef.current),
+      schemaCompletion(
+        () => schemaRef.current,
+        (table, column, search) => valuesRef.current(table, column, search),
+      ),
       // Precedence above the default keymap, or Mod-Enter is swallowed by the
       // newline-and-indent binding before it gets here.
       Prec.high(
@@ -233,8 +299,6 @@ function ConsolePage() {
     if (!target) return
     execute({ text: `EXPLAIN ${target.text}`, offset: target.offset })
   }
-
-  const result = run?.result
 
   return (
     <main className="px-4 pb-8 pt-6">
@@ -369,9 +433,10 @@ function ConsolePage() {
           {result?.ok && (
             <div className="island-shell overflow-visible rounded-xl">
               <DataTable
-                columns={result.columns}
+                columns={linkedColumns}
                 rows={result.rows}
                 totalRows={result.rowCount}
+                schema={schema}
                 prettyJson
               />
             </div>

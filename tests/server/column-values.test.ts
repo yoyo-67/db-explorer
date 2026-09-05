@@ -138,3 +138,82 @@ describe('getColumnValues', () => {
     ).rejects.toThrow(/nope/)
   })
 })
+
+/**
+ * Without a search the answer is the first N values in sort order, which for a
+ * column with real cardinality is an alphabetical prefix of the data — and the
+ * value somebody is typing is, by definition, one the cap left behind.
+ */
+describe('getColumnValues — search', () => {
+  const values = (rows: string[]) => ({ rows: rows.map((value) => ({ value })) })
+
+  it('narrows in the database rather than after the cap', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ column_name: 'email', data_type: 'text', is_nullable: 'YES' }],
+    })
+    mockQueryWithTimeout.mockResolvedValueOnce(values(['yohai@example.com']))
+
+    const result = await getColumnValues({
+      schema: 'public',
+      table: 'users_customuser',
+      column: 'email',
+      search: 'yohai',
+    })
+
+    const [sql] = mockQueryWithTimeout.mock.calls[0]
+    expect(sql).toContain('ILIKE')
+    expect(sql).toContain("'%yohai%'")
+    expect(result.values).toEqual(['yohai@example.com'])
+  })
+
+  it('treats a search metacharacter as the character it looks like', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ column_name: 'email', data_type: 'text', is_nullable: 'YES' }],
+    })
+    mockQueryWithTimeout.mockResolvedValueOnce(values([]))
+
+    await getColumnValues({
+      schema: 'public',
+      table: 'users_customuser',
+      column: 'email',
+      search: 'a_b%c',
+    })
+
+    const [sql] = mockQueryWithTimeout.mock.calls[0]
+    expect(sql).toContain('ESCAPE')
+    // Escaped, so `_` matches an underscore instead of any character.
+    expect(sql).toMatch(/a\\\\_b\\\\%c/)
+  })
+
+  it('gives a search the tighter budget, because it runs on every keystroke', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ column_name: 'email', data_type: 'text', is_nullable: 'YES' }],
+    })
+    mockQueryWithTimeout.mockResolvedValueOnce(values([]))
+
+    await getColumnValues({
+      schema: 'public',
+      table: 'users_customuser',
+      column: 'email',
+      search: 'yohai',
+    })
+    expect(mockQueryWithTimeout.mock.calls[0][1]).toBe(5_000)
+  })
+
+  it('asks for everything when there is nothing to search for', async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ column_name: 'email', data_type: 'text', is_nullable: 'YES' }],
+    })
+    mockQueryWithTimeout.mockResolvedValueOnce(values(['a@b.com']))
+
+    await getColumnValues({
+      schema: 'public',
+      table: 'users_customuser',
+      column: 'email',
+      search: '   ',
+    })
+    const [sql, timeout] = mockQueryWithTimeout.mock.calls[0]
+    expect(sql).not.toContain('ILIKE')
+    expect(timeout).toBe(30_000)
+  })
+})

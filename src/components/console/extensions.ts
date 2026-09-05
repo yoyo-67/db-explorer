@@ -2,7 +2,7 @@ import { autocompletion, type CompletionContext, type CompletionResult } from '@
 import { setDiagnostics, type Diagnostic } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
-import { completeAt, type ConsoleSchema } from '#/lib/console/completion'
+import { completeAt, valueTargetAt, type ConsoleSchema } from '#/lib/console/completion'
 import type { QueryFailure } from '#/lib/types'
 
 /**
@@ -18,11 +18,76 @@ import type { QueryFailure } from '#/lib/types'
  * asynchronously and the extension list has to stay referentially stable —
  * rebuilding the editor when introspection lands would take the cursor with it.
  */
-export function schemaCompletion(getSchema: () => ConsoleSchema | null): Extension {
-  const source = (context: CompletionContext): CompletionResult | null => {
+export interface ColumnValues {
+  values: (string | null)[]
+  truncated: boolean
+  timedOut: boolean
+}
+
+/**
+ * How long typing has to stop before a value search is sent.
+ *
+ * The search runs a `DISTINCT ... ILIKE` over a column, which is not free.
+ * Without this, typing `yohai` would send five of them and throw four away.
+ */
+const SEARCH_DEBOUNCE_MS = 180
+
+/** Wait, unless the editor has already moved on. */
+function settle(context: CompletionContext, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(!context.aborted), ms)
+  })
+}
+
+export function schemaCompletion(
+  getSchema: () => ConsoleSchema | null,
+  fetchValues?: (
+    table: string,
+    column: string,
+    search: string,
+  ) => Promise<ColumnValues>,
+): Extension {
+  const source = async (
+    context: CompletionContext,
+  ): Promise<CompletionResult | null> => {
     const schema = getSchema()
     if (!schema) return null
     const sql = context.state.doc.toString()
+
+    // `WHERE status = ` — the one position where the answer is the data itself
+    // rather than the schema. Tried first, because the generic branch below
+    // would happily offer column names there and they would all be wrong.
+    const value = valueTargetAt(schema, sql, context.pos)
+    if (value && fetchValues) {
+      // What has been typed so far is the search: the first page of a column's
+      // distinct values is an alphabetical prefix of the data, so anything
+      // being looked for is precisely what that page left out.
+      const typed = sql.slice(value.from, context.pos)
+      if (typed && !(await settle(context, SEARCH_DEBOUNCE_MS))) return null
+      const found = await fetchValues(value.table, value.column, typed).catch(() => null)
+      if (context.aborted) return null
+      // A scan that timed out read nothing. An empty list would say "this column
+      // has no values", which is a different and false statement.
+      if (!found || found.timedOut || found.values.length === 0) return null
+      return {
+        from: value.from,
+        // The database did the filtering, with a rule CodeMirror does not know
+        // — a substring match, not a fuzzy one. Re-filtering here would quietly
+        // drop rows the server deliberately returned.
+        filter: false,
+        options: found.values.map((entry) => ({
+          label: entry === null ? 'NULL' : entry,
+          apply:
+            entry === null
+              ? 'NULL'
+              : value.quoted || !value.needsQuotes
+                ? entry
+                : `'${entry.replace(/'/g, "''")}'`,
+          type: 'text',
+        })),
+      }
+    }
+
     const result = completeAt(schema, sql, context.pos)
     if (!result || result.options.length === 0) return null
     // Nothing typed and nothing asked for: an editor that opens a list on every
