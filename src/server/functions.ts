@@ -40,7 +40,6 @@ import type {
   QueryPlan,
   ColumnValuesRequest,
   ConnectionConfig,
-  ConsoleResult,
   DatabaseInfo,
   EntryTarget,
   ForeignKey,
@@ -1150,89 +1149,6 @@ function sampleSql(schema: string, table: string, attempt: SampleAttempt): strin
 
 const CHILD_PAGE_SIZE = 25
 const FALLBACK_PK = 'id'
-
-const CONSOLE_ROW_CAP = 500
-
-/**
- * Execute user-supplied SQL inside an explicit `BEGIN READ ONLY`
- * transaction on a dedicated pool client, then ROLLBACK. The wrapping
- * transaction is what makes the read-only guarantee real:
- *
- * - Session-level `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`
- *   (set in db.ts) is only the *default* for new transactions; user SQL
- *   can still escape with `SET TRANSACTION READ WRITE`.
- * - Inside an already-open `BEGIN READ ONLY`, Postgres rejects any
- *   subsequent attempt to switch to READ WRITE mid-transaction.
- * - Passing the user SQL via the extended-query protocol (text + empty
- *   `values` array) makes node-postgres reject multi-statement input,
- *   so a single user query cannot smuggle a second statement.
- */
-export async function runReadOnlyQuery(sql: string): Promise<ConsoleResult> {
-  const trimmed = sql.trim()
-  if (!trimmed) {
-    return { ok: false, error: 'Empty query' }
-  }
-  const { getConnection } = await import('#/server/db')
-  const pool = await getConnection()
-  if (!pool) return { ok: false, error: 'Not connected to database' }
-
-  const client = await pool.connect()
-  const started = Date.now()
-  try {
-    await client.query('BEGIN READ ONLY')
-    const userStarted = Date.now()
-    let result
-    try {
-      result = await client.query({ text: trimmed, values: [] })
-      void appendPerfEntry({
-        ts: userStarted,
-        preset: getPresetName() ?? 'console',
-        sql: `[console] ${trimmed}`,
-        ms: Date.now() - userStarted,
-        ok: true,
-        rowCount: result.rowCount ?? undefined,
-      })
-    } catch (innerErr) {
-      void appendPerfEntry({
-        ts: userStarted,
-        preset: getPresetName() ?? 'console',
-        sql: `[console] ${trimmed}`,
-        ms: Date.now() - userStarted,
-        ok: false,
-        error: innerErr instanceof Error ? innerErr.message : String(innerErr),
-      })
-      throw innerErr
-    }
-    await client.query('ROLLBACK')
-    const fields = (result.fields ?? []) as Array<{ name: string; dataTypeID?: number }>
-    const columns: ColumnInfo[] = fields.map((f) => ({
-      name: f.name,
-      dataType: '',
-      isNullable: true,
-    }))
-    const allRows = sanitizeRows(result.rows as Record<string, unknown>[])
-    const rows = allRows.slice(0, CONSOLE_ROW_CAP)
-    return {
-      ok: true,
-      columns,
-      rows,
-      rowCount: allRows.length,
-      durationMs: Date.now() - started,
-    }
-  } catch (err) {
-    try {
-      await client.query('ROLLBACK')
-    } catch {
-      /* ignore — already failed */
-    }
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    }
-  } finally {
-    client.release()
-  }
-}
 
 export async function getRowChildren(args: {
   schema?: string

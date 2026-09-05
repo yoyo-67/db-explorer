@@ -50,6 +50,21 @@ export interface AppSettings {
    * step past a tab about it. A link straight to an advanced tab still opens it.
    */
   advancedInspector: boolean
+  /**
+   * Let the console run statements that change data.
+   *
+   * The heaviest stance in this file, and the only one the server has to be
+   * told about: the read-only guarantee is enforced in Postgres — a session
+   * characteristic, an explicit `BEGIN READ ONLY`, and the extended protocol's
+   * refusal of multi-statement input — so a browser preference on its own could
+   * not lift it and should not pretend to.
+   *
+   * Off by default, and turning it on still does not make a write durable: the
+   * console leaves the transaction open and someone has to commit it. This is a
+   * decision about the connection you are pointed at, which is why it lives
+   * beside {@link AppSettings.editMode} rather than arriving in a URL.
+   */
+  writeMode: boolean
 }
 
 /** Offered in the settings page; any value in range is honoured. */
@@ -87,6 +102,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   statementTimeoutMs: DEFAULT_STATEMENT_TIMEOUT_MS,
   tableNameDisplay: DEFAULT_TABLE_NAME_DISPLAY,
   advancedInspector: false,
+  writeMode: false,
 }
 
 export const SETTINGS_KEY = 'db-explorer.settings'
@@ -130,6 +146,8 @@ export function readSettings(
       typeof raw.advancedInspector === 'boolean'
         ? raw.advancedInspector
         : DEFAULT_SETTINGS.advancedInspector,
+    writeMode:
+      typeof raw.writeMode === 'boolean' ? raw.writeMode : DEFAULT_SETTINGS.writeMode,
   }
 }
 

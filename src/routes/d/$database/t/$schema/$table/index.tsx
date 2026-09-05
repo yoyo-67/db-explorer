@@ -15,7 +15,7 @@ import {
   $getMapModels,
   $getTablePage,
   $introspect,
-  $runReadOnlyQuery,
+  $runConsoleQuery,
 } from '#/server/api'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useMapGroups, useTableCatalog } from '#/hooks/useSchemaMetadata'
@@ -219,11 +219,12 @@ function TablePage() {
     placeholderData: keepPreviousData,
   })
 
-  // Raw mode: the statement in the URL is run as written. Read-only session, so
-  // the worst it can be is slow.
+  // Raw mode: the statement in the URL is run as written, and never with the
+  // write flag — a statement that arrived in a URL is the last one that should
+  // be able to change a row, whatever the console setting says.
   const rawQuery = useQuery({
     queryKey: ['rawTableQuery', database, rawSql],
-    queryFn: () => $runReadOnlyQuery({ data: { database, sql: rawSql! } }),
+    queryFn: () => $runConsoleQuery({ data: { database, sql: rawSql! } }),
     enabled: isConnected && rawSql !== null,
     staleTime: 30_000,
   })

@@ -20,9 +20,11 @@ vi.mock('#/server/db', () => ({
 vi.mock('#/server/perf-log', () => ({
   appendPerfEntry: vi.fn(),
   readPerfLog: vi.fn(async () => []),
+  getPresetName: () => null,
 }))
 
-const { runReadOnlyQuery, getRowChildren } = await import('#/server/functions')
+const { runConsoleQuery } = await import('#/server/console')
+const { getRowChildren } = await import('#/server/functions')
 
 beforeEach(() => {
   clientQuery.mockReset()
@@ -31,7 +33,7 @@ beforeEach(() => {
   mockQuery.mockReset()
 })
 
-describe('runReadOnlyQuery — read-only enforcement', () => {
+describe('runConsoleQuery — read-only enforcement', () => {
   it('wraps user SQL in BEGIN READ ONLY ... ROLLBACK on a dedicated client', async () => {
     clientQuery.mockResolvedValueOnce({}) // BEGIN READ ONLY
     clientQuery.mockResolvedValueOnce({
@@ -40,7 +42,7 @@ describe('runReadOnlyQuery — read-only enforcement', () => {
     })
     clientQuery.mockResolvedValueOnce({}) // ROLLBACK
 
-    const result = await runReadOnlyQuery('SELECT 1 AS a')
+    const result = await runConsoleQuery({ sql: 'SELECT 1 AS a' })
     expect(result.ok).toBe(true)
 
     // first call: BEGIN READ ONLY
@@ -62,7 +64,7 @@ describe('runReadOnlyQuery — read-only enforcement', () => {
     clientQuery.mockRejectedValueOnce(new Error('cannot insert multiple commands into a prepared statement'))
     clientQuery.mockResolvedValueOnce({}) // ROLLBACK on catch
 
-    const result = await runReadOnlyQuery('SELECT 1; DELETE FROM users')
+    const result = await runConsoleQuery({ sql: 'SELECT 1; DELETE FROM users' })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error).toContain('multiple commands')
@@ -80,7 +82,7 @@ describe('runReadOnlyQuery — read-only enforcement', () => {
     clientQuery.mockRejectedValueOnce(new Error('division by zero'))
     clientQuery.mockResolvedValueOnce({}) // ROLLBACK in catch
 
-    const result = await runReadOnlyQuery('SELECT 1/0')
+    const result = await runConsoleQuery({ sql: 'SELECT 1/0' })
     expect(result.ok).toBe(false)
     expect(clientQuery.mock.calls.map((c) => c[0])).toEqual([
       'BEGIN READ ONLY',
@@ -91,7 +93,7 @@ describe('runReadOnlyQuery — read-only enforcement', () => {
   })
 
   it('rejects empty input without opening a transaction', async () => {
-    const result = await runReadOnlyQuery('   ')
+    const result = await runConsoleQuery({ sql: '   ' })
     expect(result.ok).toBe(false)
     expect(poolConnect).not.toHaveBeenCalled()
   })
@@ -105,7 +107,7 @@ describe('runReadOnlyQuery — read-only enforcement', () => {
     })
     clientQuery.mockResolvedValueOnce({})
 
-    const result = await runReadOnlyQuery('SELECT generate_series(0, 999) AS n')
+    const result = await runConsoleQuery({ sql: 'SELECT generate_series(0, 999) AS n' })
     if (!result.ok) throw new Error('expected ok')
     expect(result.rows).toHaveLength(500)
     expect(result.rowCount).toBe(1000)

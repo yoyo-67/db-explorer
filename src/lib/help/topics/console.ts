@@ -6,13 +6,13 @@ export const consoleTopic: HelpTopic = {
   title: 'Console',
   question: 'What stops the console from writing to my database?',
   answer:
-    'The console runs SQL you typed, against production, on purpose — so the read-only guarantee has to be real rather than a promise about what the app sends. It comes from three things stacked: the statement runs inside an explicit read-only transaction, that transaction is rolled back whatever happens, and the statement is sent through the protocol path that refuses to carry more than one statement at a time.',
+    'The console runs SQL you typed, against production, on purpose — so the read-only guarantee has to be real rather than a promise about what the app sends. It comes from three things stacked: the statement runs inside an explicit read-only transaction, that transaction is rolled back whatever happens, and the statement is sent through the protocol path that refuses to carry more than one statement at a time. Write mode does not remove any of the three; it adds a fourth layer that has to be switched on, and even then nothing becomes durable until you commit it.',
   route: '/console',
   previewCaption:
     'Your statement, wrapped. Hover a clause to see what each line is defending against.',
   source: {
-    file: 'src/server/functions.ts',
-    line: 570,
+    file: 'src/server/console.ts',
+    line: 205,
     anchor: "await client.query('BEGIN READ ONLY')",
   },
   prerequisite: null,
@@ -47,6 +47,11 @@ export const consoleTopic: HelpTopic = {
     },
   ],
   terms: [
+    {
+      term: 'write mode',
+      meaning:
+        'A setting, off by default, that lets the console open BEGIN READ WRITE instead. The server refuses a write until the browser holding the setting has told it otherwise, and the transaction is left open for you to commit or abandon — a write is never a side effect of pressing Run.',
+    },
     {
       term: 'READ ONLY transaction',
       meaning:

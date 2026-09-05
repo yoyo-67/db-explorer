@@ -293,15 +293,38 @@ export interface TablePage {
   totalPages: number
 }
 
+/**
+ * A `pg` error's structured fields, kept rather than flattened to a string.
+ *
+ * `position` is a 1-based character offset into the statement Postgres was
+ * given, which is what lets the console underline the token that is wrong
+ * instead of printing a red box under the whole editor. `hint` is frequently
+ * the answer outright.
+ */
+export interface QueryFailure {
+  message: string
+  position?: number
+  hint?: string
+  detail?: string
+  code?: string
+}
+
 export type ConsoleResult =
   | {
       ok: true
       columns: ColumnInfo[]
       rows: Record<string, JsonValue>[]
+      /** Rows returned, or rows affected for a statement that returns none. */
       rowCount: number
       durationMs: number
+      /** More rows matched than were shipped — the grid is showing a prefix. */
+      truncated?: boolean
+      /** `SELECT`, `UPDATE`, … — the only way to say what a rowless run did. */
+      command?: string
+      /** A write transaction is waiting to be committed or abandoned. */
+      transaction?: 'open'
     }
-  | { ok: false; error: string }
+  | { ok: false; error: string; failure?: QueryFailure; transaction?: 'open' }
 
 export interface TableCatalogGroup {
   name: string

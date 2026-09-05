@@ -14,7 +14,8 @@ vi.stubGlobal('window', {
   },
 })
 
-const { clearHistory, pushHistory, readHistory } = await import('#/lib/console-history')
+const { clearHistory, deleteSaved, pushHistory, readHistory, readSaved, saveQuery } =
+  await import('#/lib/console/history')
 
 beforeEach(() => {
   store.clear()
@@ -47,9 +48,12 @@ describe('console-history', () => {
     expect(h.map((e) => e.sql)).toEqual(['SELECT 1', 'SELECT 2', 'SELECT 1'])
   })
 
-  it('caps history at 20 entries', () => {
-    for (let i = 0; i < 30; i++) pushHistory(`SELECT ${i}`)
-    expect(readHistory()).toHaveLength(20)
+  it('caps history at 50 entries', () => {
+    for (let i = 0; i < 60; i++) pushHistory(`SELECT ${i}`)
+    const kept = readHistory()
+    expect(kept).toHaveLength(50)
+    // The newest survive, so the cap forgets the oldest rather than the last.
+    expect(kept[0].sql).toBe('SELECT 59')
   })
 
   it('skips empty / whitespace-only queries', () => {
@@ -69,5 +73,39 @@ describe('console-history', () => {
   it('returns [] for malformed JSON in storage', () => {
     store.set('console:history', '{not json')
     expect(readHistory()).toEqual([])
+  })
+})
+
+describe('saved queries', () => {
+
+  it('keeps a query under a name', () => {
+    const saved = saveQuery('monthly revenue', 'SELECT 1')
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toMatchObject({ name: 'monthly revenue', sql: 'SELECT 1' })
+    expect(readSaved()[0].sql).toBe('SELECT 1')
+  })
+
+  it('replaces rather than duplicates when a name is reused', () => {
+    saveQuery('revenue', 'SELECT 1')
+    const saved = saveQuery('revenue', 'SELECT 2')
+    expect(saved).toHaveLength(1)
+    expect(saved[0].sql).toBe('SELECT 2')
+  })
+
+  it('refuses a query with no name and a name with no query', () => {
+    expect(saveQuery('  ', 'SELECT 1')).toHaveLength(0)
+    expect(saveQuery('empty', '   ')).toHaveLength(0)
+  })
+
+  it('deletes by id, leaving the rest', () => {
+    saveQuery('a', 'SELECT 1')
+    const saved = saveQuery('b', 'SELECT 2')
+    const left = deleteSaved(saved.find((q) => q.name === 'a')!.id)
+    expect(left.map((q) => q.name)).toEqual(['b'])
+  })
+
+  it('reads nothing out of storage somebody hand-edited', () => {
+    store.set('console:saved', '{"not":"an array"}')
+    expect(readSaved()).toEqual([])
   })
 })

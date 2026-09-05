@@ -1,17 +1,36 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMutation } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { EditorView } from '@codemirror/view'
+import { Prec } from '@codemirror/state'
+import { keymap } from '@codemirror/view'
+import { format } from 'sql-formatter'
 import DataTable from '#/components/DataTable'
+import SqlEditor from '#/components/console/SqlEditor'
+import { schemaCompletion, showFailure } from '#/components/console/extensions'
+import QueryLibrary, { SaveQueryButton } from '#/components/console/QueryLibrary'
+import TransactionBar from '#/components/console/TransactionBar'
+import ParamsBar from '#/components/console/ParamsBar'
 import {
   type HistoryEntry,
-  clearHistory,
+  type SavedQuery,
   pushHistory,
   readHistory,
-} from '#/lib/console-history'
+  readSaved,
+  saveQuery,
+} from '#/lib/console/history'
+import { isWriteStatement, placeholders, statementAt } from '#/lib/console/statements'
 import { takeConsoleSql } from '#/lib/console-handoff'
+import { useAppSettings } from '#/hooks/useAppSettings'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
-import { $runReadOnlyQuery } from '#/server/api'
+import { useConsoleSchema, useSchemaList } from '#/hooks/useConsoleSchema'
+import { useDatabaseParam } from '#/hooks/useDatabase'
+import {
+  $commitConsole,
+  $consoleTransaction,
+  $rollbackConsole,
+  $runConsoleQuery,
+} from '#/server/api'
 import type { ConsoleResult } from '#/lib/types'
 
 export const Route = createFileRoute('/d/$database/console')({
@@ -26,30 +45,171 @@ export const Route = createFileRoute('/d/$database/console')({
   component: ConsolePage,
 })
 
+/** What the last run was, so the page can say which statement an error is about. */
+interface RunState {
+  result: ConsoleResult
+  /** Where in the buffer the statement that produced it began. */
+  offset: number
+}
+
 function ConsolePage() {
   const database = useDatabaseParam()
   const { isChecking, isConnected } = useConnectionGuard()
   const { handoff } = Route.useSearch()
+  const { writeMode } = useAppSettings()
+
   // The statement this console was opened with, taken once (see
-  // `console-handoff`). Prefilled, never auto-run: it may still carry the
-  // normalizer's `$1` placeholders, so it is a draft to edit rather than one to
-  // execute.
+  // `console-handoff`). Prefilled and never auto-run: a query that arrived from
+  // somewhere else is a draft, not an instruction. Any `$1` placeholders the
+  // normalizer left in it are filled in below rather than edited out.
   const [sql, setSql] = useState(() => takeConsoleSql(handoff) ?? 'SELECT 1')
-  const [result, setResult] = useState<ConsoleResult | null>(null)
+  const [cursor, setCursor] = useState(0)
+  const [selection, setSelection] = useState<{ from: number; to: number } | null>(null)
+  const [run, setRun] = useState<RunState | null>(null)
+  const [params, setParams] = useState<Record<number, string>>({})
   const [history, setHistory] = useState<HistoryEntry[]>([])
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // The open write transaction, counted here rather than asked for: the server
+  // owns whether one exists, but how long it has been open and how much has
+  // gone into it is what the person looking at the bar needs, and both are
+  // known from the runs this page has made.
+  const [transaction, setTransaction] = useState<{ startedAt: number; statements: number } | null>(
+    null,
+  )
+  const [saved, setSaved] = useState<SavedQuery[]>([])
+
+  const schemas = useSchemaList(database)
+  const [schemaName, setSchemaName] = useState<string | null>(null)
+  const schema = schemaName ?? (schemas.includes('public') ? 'public' : schemas[0])
+  const consoleSchema = useConsoleSchema(database, schema)
+
+  const view = useRef<EditorView | null>(null)
+  // The completion source reads this rather than closing over the schema, so
+  // introspection landing does not rebuild the editor and take the cursor.
+  const schemaRef = useRef(consoleSchema)
+  schemaRef.current = consoleSchema
 
   useEffect(() => {
     setHistory(readHistory())
+    setSaved(readSaved())
   }, [])
 
+  // A transaction outlives the page that opened it, so a reload has to ask
+  // rather than assume: the alternative is a server holding a client that no
+  // screen admits to, and an uncommitted write nobody can reach to commit.
+  useEffect(() => {
+    let live = true
+    void $consoleTransaction({ data: { database } }).then((state) => {
+      if (live && state) setTransaction(state)
+    })
+    return () => {
+      live = false
+    }
+  }, [database])
+
+  /**
+   * What ⌘↵ runs: the selection if there is one, otherwise the statement the
+   * cursor is in — never the whole buffer. Keeping a scratch query below the
+   * one you are working on should not mean commenting it out.
+   */
+  const target = useMemo(() => {
+    if (selection) {
+      return { text: sql.slice(selection.from, selection.to), offset: selection.from }
+    }
+    const statement = statementAt(sql, cursor)
+    return statement ? { text: statement.text, offset: statement.from } : null
+  }, [sql, cursor, selection])
+
+  const needed = useMemo(() => (target ? placeholders(target.text) : []), [target])
+  // A write with the setting off will be refused by Postgres, not by this page.
+  // Saying so before Run is pressed is kinder than letting the transaction do it.
+  const blocked = !writeMode && !!target && isWriteStatement(target.text)
+  const missing = needed.filter((n) => !(params[n] ?? '').length)
+
   const runMutation = useMutation({
-    mutationFn: (input: string) => $runReadOnlyQuery({ data: { database, sql: input } }),
-    onSuccess: (data, input) => {
-      setResult(data)
-      if (data.ok) setHistory(pushHistory(input))
+    mutationFn: (input: { sql: string; offset: number; write: boolean }) =>
+      $runConsoleQuery({
+        data: {
+          database,
+          sql: input.sql,
+          params: placeholders(input.sql).map((n) => params[n] ?? ''),
+          write: input.write,
+        },
+      }).then((result) => ({ result, offset: input.offset })),
+    onSuccess: ({ result, offset }, input) => {
+      setRun({ result, offset })
+      if (result.ok && !result.transaction) setHistory(pushHistory(input.sql))
+      setTransaction((current) => {
+        if (result.transaction !== 'open') return null
+        return current
+          ? { ...current, statements: current.statements + 1 }
+          : { startedAt: Date.now(), statements: 1 }
+      })
+      if (view.current) {
+        showFailure(view.current, result.ok ? null : (result.failure ?? null), offset)
+      }
     },
   })
+
+  const transactionMutation = useMutation({
+    mutationFn: (how: 'commit' | 'rollback') =>
+      how === 'commit'
+        ? $commitConsole({ data: { database } })
+        : $rollbackConsole({ data: { database } }),
+    onSuccess: () => {
+      setRun(null)
+      setTransaction(null)
+    },
+  })
+
+  const execute = useCallback(
+    (what: { text: string; offset: number } | null) => {
+      if (!what || !what.text.trim() || runMutation.isPending) return
+      // Write mode being on is not a reason to open a write transaction for a
+      // SELECT: a commit prompt after every read is one people learn to click
+      // through, which is the habit this whole design exists to prevent.
+      runMutation.mutate({
+        sql: what.text,
+        offset: what.offset,
+        write: writeMode && isWriteStatement(what.text),
+      })
+    },
+    [runMutation, writeMode],
+  )
+
+  // Held in a ref so the keymap below never has to be rebuilt — a new extension
+  // list tears the editor down, and doing that on every keystroke would make
+  // the editor unusable.
+  const latest = useRef({ execute, sql, target })
+  latest.current = { execute, sql, target }
+
+  const extensions = useMemo(
+    () => [
+      schemaCompletion(() => schemaRef.current),
+      // Precedence above the default keymap, or Mod-Enter is swallowed by the
+      // newline-and-indent binding before it gets here.
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Mod-Enter',
+            preventDefault: true,
+            run: () => {
+              latest.current.execute(latest.current.target)
+              return true
+            },
+          },
+          {
+            key: 'Shift-Mod-Enter',
+            preventDefault: true,
+            run: () => {
+              latest.current.execute({ text: latest.current.sql, offset: 0 })
+              return true
+            },
+          },
+        ]),
+      ),
+    ],
+    [],
+  )
 
   if (isChecking) {
     return (
@@ -60,74 +220,153 @@ function ConsolePage() {
   }
   if (!isConnected) return null
 
-  const run = () => {
-    const trimmed = sql.trim()
-    if (!trimmed || runMutation.isPending) return
-    runMutation.mutate(trimmed)
-  }
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault()
-      run()
+  const prettify = () => {
+    try {
+      setSql(format(sql, { language: 'postgresql', keywordCase: 'upper' }))
+    } catch {
+      // A statement too broken to parse is one somebody is still typing; the
+      // formatter refusing it is not an error worth interrupting them with.
     }
   }
 
-  const loadFromHistory = (entry: HistoryEntry) => {
-    setSql(entry.sql)
-    textareaRef.current?.focus()
+  const explain = () => {
+    if (!target) return
+    execute({ text: `EXPLAIN ${target.text}`, offset: target.offset })
   }
+
+  const result = run?.result
 
   return (
     <main className="px-4 pb-8 pt-6">
-      <div className="grid grid-cols-[1fr_220px] gap-4">
-        <section className="space-y-3">
-          <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[1fr_240px] gap-4">
+        <section className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-lg font-semibold text-[var(--sea-ink)]">SQL console</h1>
-            <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]">
-              READ ONLY
-            </span>
+            {writeMode ? (
+              <span className="rounded-full bg-[rgba(240,180,60,0.24)] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[rgb(150,88,20)]">
+                WRITE
+              </span>
+            ) : (
+              <span className="rounded-full bg-[rgba(79,184,178,0.14)] px-2 py-0.5 text-[10px] font-medium text-[var(--lagoon-deep)]">
+                READ ONLY
+              </span>
+            )}
             <span className="text-xs text-[var(--sea-ink-soft)]">
-              Pool session is `READ ONLY`; write attempts are rejected by Postgres.
+              {writeMode
+                ? 'Statements run in a transaction you have to commit.'
+                : 'Pool session is `READ ONLY`; write attempts are rejected by Postgres.'}
             </span>
+            {schemas.length > 1 && (
+              <label className="ml-auto flex items-center gap-1.5 text-[11px] text-[var(--sea-ink-soft)]">
+                Completing against
+                <select
+                  value={schema ?? ''}
+                  onChange={(e) => setSchemaName(e.target.value)}
+                  className="rounded border border-[var(--line)] bg-[var(--surface-strong)] px-1.5 py-0.5 text-[11px] text-[var(--sea-ink)]"
+                >
+                  {schemas.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
-          <textarea
-            ref={textareaRef}
+
+          <SqlEditor
             value={sql}
-            onChange={(e) => setSql(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={8}
-            spellCheck={false}
-            placeholder="SELECT * FROM users LIMIT 10"
-            className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-3 py-2 font-mono text-[13px] text-[var(--sea-ink)] outline-none focus:border-[var(--lagoon)] focus:ring-2 focus:ring-[var(--lagoon)]/20"
+            onChange={setSql}
+            onSelectionChange={(at, range) => {
+              setCursor(at)
+              setSelection(range)
+            }}
+            extensions={extensions}
+            editorRef={view}
           />
-          <div className="flex items-center gap-3">
+
+          <ParamsBar numbers={needed} values={params} onChange={setParams} />
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={run}
-              disabled={runMutation.isPending || !sql.trim()}
+              onClick={() => execute(target)}
+              disabled={runMutation.isPending || !target?.text.trim() || missing.length > 0}
               className="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-4 py-1.5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:bg-[rgba(79,184,178,0.24)] disabled:opacity-50"
             >
-              {runMutation.isPending ? 'Running...' : 'Run'}
+              {runMutation.isPending
+                ? 'Running...'
+                : selection
+                  ? 'Run selection'
+                  : 'Run statement'}
             </button>
+            <button
+              type="button"
+              onClick={explain}
+              disabled={runMutation.isPending || !target?.text.trim()}
+              className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--sea-ink)] transition hover:border-[var(--lagoon)] disabled:opacity-50"
+            >
+              Explain
+            </button>
+            <button
+              type="button"
+              onClick={prettify}
+              className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--sea-ink)] transition hover:border-[var(--lagoon)]"
+            >
+              Format
+            </button>
+            <SaveQueryButton
+              onSave={(name) => setSaved(saveQuery(name, target?.text ?? sql))}
+            />
             <span className="text-[11px] text-[var(--sea-ink-soft)]">
-              ⌘/Ctrl + Enter
+              ⌘↵ statement · ⇧⌘↵ everything
             </span>
-            {result && result.ok && (
+            {missing.length > 0 && (
+              <span className="text-[11px] text-[rgb(150,88,20)]">
+                Fill in ${missing.join(', $')} to run
+              </span>
+            )}
+            {blocked && missing.length === 0 && (
+              <span className="text-[11px] text-[rgb(150,88,20)]">
+                This statement writes. The connection is read-only until write mode
+                is on in Settings.
+              </span>
+            )}
+            {result?.ok && (
               <span className="ml-auto text-xs text-[var(--sea-ink-soft)]">
-                {result.rowCount.toLocaleString()} row{result.rowCount === 1 ? '' : 's'} ·{' '}
-                {result.durationMs} ms
+                {result.command && result.rows.length === 0
+                  ? `${result.command} · ${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'} affected`
+                  : `${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'}`}
+                {result.truncated && ' · showing first 500'} · {result.durationMs} ms
               </span>
             )}
           </div>
 
+          {transaction && (
+            <TransactionBar
+              startedAt={transaction.startedAt}
+              statements={transaction.statements}
+              busy={transactionMutation.isPending}
+              onCommit={() => transactionMutation.mutate('commit')}
+              onRollback={() => transactionMutation.mutate('rollback')}
+            />
+          )}
+
           {result && !result.ok && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-mono text-[12px] text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-              {result.error}
+            <div className="space-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-mono text-[12px] text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+              <p>{result.error}</p>
+              {result.failure?.hint && (
+                <p className="text-red-600 dark:text-red-400">
+                  Hint: {result.failure.hint}
+                </p>
+              )}
+              {result.failure?.detail && (
+                <p className="text-red-600 dark:text-red-400">{result.failure.detail}</p>
+              )}
             </div>
           )}
 
-          {result && result.ok && (
+          {result?.ok && (
             <div className="island-shell overflow-visible rounded-xl">
               <DataTable
                 columns={result.columns}
@@ -139,42 +378,13 @@ function ConsolePage() {
           )}
         </section>
 
-        <aside className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--sea-ink-soft)]">
-              History
-            </h2>
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setHistory(clearHistory())}
-                className="ml-auto text-[10px] text-[var(--sea-ink-soft)] hover:text-[var(--lagoon-deep)]"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          {history.length === 0 ? (
-            <p className="text-[11px] text-[var(--sea-ink-soft)]">
-              Successful queries appear here.
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {history.map((entry, i) => (
-                <li key={`${entry.at}-${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => loadFromHistory(entry)}
-                    className="block w-full truncate rounded border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-left font-mono text-[11px] text-[var(--sea-ink)] hover:border-[var(--lagoon)] hover:text-[var(--lagoon-deep)]"
-                    title={entry.sql}
-                  >
-                    {entry.sql.replace(/\s+/g, ' ').slice(0, 80)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
+        <QueryLibrary
+          history={history}
+          saved={saved}
+          onPick={setSql}
+          onHistoryChange={setHistory}
+          onSavedChange={setSaved}
+        />
       </div>
     </main>
   )

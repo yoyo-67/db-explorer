@@ -20,7 +20,6 @@ import {
   introspect,
   listDatabases,
   resolveEntryTarget,
-  runReadOnlyQuery,
 } from '#/server/functions'
 import { getTableDdl, getTableProfile, getTableTypes } from '#/server/table-inspect'
 import { getSchemaPressure } from '#/server/schema-pressure'
@@ -275,9 +274,60 @@ export const $updateRow = createServerFn({ method: 'POST' })
     }),
   )
 
-export const $runReadOnlyQuery = createServerFn({ method: 'POST' })
-  .inputValidator((data: Scoped & { sql: string }) => data)
-  .handler(scoped((data) => runReadOnlyQuery(data.sql)))
+/**
+ * Run one console statement.
+ *
+ * `write` is a request, not a permission: the server refuses it unless the
+ * mirrored `writeMode` setting says otherwise, because a page cannot enforce
+ * anything about a database.
+ */
+export const $runConsoleQuery = createServerFn({ method: 'POST' })
+  .inputValidator(
+    (data: Scoped & { sql: string; params?: string[]; write?: boolean }) => data,
+  )
+  .handler(
+    scoped(async (data) => {
+      const { runConsoleQuery } = await import('#/server/console')
+      return runConsoleQuery({ sql: data.sql, params: data.params, write: data.write })
+    }),
+  )
+
+/** Make the open write transaction durable. */
+export const $commitConsole = createServerFn({ method: 'POST' })
+  .inputValidator((data: Scoped) => data)
+  .handler(
+    scoped(async () => {
+      const { commitConsoleTransaction } = await import('#/server/console')
+      return commitConsoleTransaction()
+    }),
+  )
+
+/**
+ * Whether a write transaction is still open, and how long it has been.
+ *
+ * Read on mount, because the transaction outlives the page that opened it: a
+ * reload would otherwise leave the server holding a pool client that no screen
+ * in the app admits to. The idle timeout would eventually collect it; a person
+ * wondering where their uncommitted DELETE went would not.
+ */
+export const $consoleTransaction = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped) => data)
+  .handler(
+    scoped(async () => {
+      const { consoleTransaction } = await import('#/server/console')
+      return consoleTransaction()
+    }),
+  )
+
+/** Throw the open write transaction away. */
+export const $rollbackConsole = createServerFn({ method: 'POST' })
+  .inputValidator((data: Scoped) => data)
+  .handler(
+    scoped(async () => {
+      const { rollbackConsoleTransaction } = await import('#/server/console')
+      return rollbackConsoleTransaction()
+    }),
+  )
 
 export const $getRowChildren = createServerFn({ method: 'GET' })
   .inputValidator(
@@ -430,17 +480,27 @@ export const $getPerfLog = createServerFn({ method: 'GET' })
 
 /**
  * Hand the server the settings it is the only one able to act on: whether
- * queries are logged, and the `statement_timeout` they run under. The server
- * cannot read `localStorage`, so the client tells it — on load and on every
- * change, from one place in the root route.
+ * queries are logged, the `statement_timeout` they run under, and whether the
+ * console may write. The server cannot read `localStorage`, so the client tells
+ * it — on load and on every change, from one place in the root route.
  */
 export const $setServerSettings = createServerFn({ method: 'POST' })
-  .inputValidator((data: { perfLog: boolean; statementTimeoutMs: number }) => data)
+  .inputValidator(
+    (data: { perfLog: boolean; statementTimeoutMs: number; writeMode: boolean }) => data,
+  )
   .handler(async ({ data }) => {
     const { setStatementTimeout, getStatementTimeout } = await import('#/server/db')
+    const { setWriteModeAllowed } = await import('#/server/console')
     setPerfLogging(data.perfLog === true)
     setStatementTimeout(data.statementTimeoutMs)
-    return { perfLog: data.perfLog === true, statementTimeoutMs: getStatementTimeout() }
+    // The one setting the server can refuse a request over, so it is set here
+    // and nowhere else — the console asks, this decides.
+    setWriteModeAllowed(data.writeMode === true)
+    return {
+      perfLog: data.perfLog === true,
+      statementTimeoutMs: getStatementTimeout(),
+      writeMode: data.writeMode === true,
+    }
   })
 
 export const $getTableCatalog = createServerFn({ method: 'GET' })

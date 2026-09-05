@@ -42,9 +42,9 @@ function SettingsPage() {
           This browser
         </h1>
         <p className="text-base text-[var(--sea-ink-soft)]">
-          Kept in this browser and shared by every tab. Two of these are sent on
-          to the server, which is the only place a query log or a timeout can
-          actually be enforced.
+          Kept in this browser and shared by every tab. Three of these are sent
+          on to the server, which is the only place a query log, a timeout or a
+          write can actually be enforced.
         </p>
       </header>
 
@@ -112,17 +112,27 @@ function SettingsPage() {
             filed: an accent rail and a paragraph of its own, at the bottom. */}
         <Section
           title="Writing"
-          blurb="Everything above reads. This is the only switch that lets the app write, and it starts off. It changes what you can reach, not what the server will accept: an update is still one row, still keyed on the primary key, still shown to you as SQL before it runs, and still refused if the row moved since the page read it."
+          blurb="Everything above reads. These are the only two switches that let the app write, and both start off. Neither changes what the server will accept on its own — the connection is read-only in Postgres, not merely in this page — so turning one on is telling the server to allow a narrow exception, not removing a guard."
           accent
         >
           <Row
             label="Edit mode"
-            hint="An expanded row grows an Edit button. Tables only — a view has no rows of its own — and only where a primary key identifies the row."
+            hint="An expanded row grows an Edit button. Tables only — a view has no rows of its own — and only where a primary key identifies the row. Still one row, still keyed on the primary key, still shown to you as SQL first, and still refused if the row moved since the page read it."
           >
             <Switch
               label="Edit mode"
               checked={settings.editMode}
               onChange={(next) => setSetting('editMode', next)}
+            />
+          </Row>
+          <Row
+            label="Console write mode"
+            hint="The SQL console may run INSERT, UPDATE, DELETE and DDL. Nothing becomes durable on its own: the statement runs in a transaction that stays open, showing what it touched, and you commit it or throw it away. An untouched transaction rolls itself back after five minutes."
+          >
+            <Switch
+              label="Console write mode"
+              checked={settings.writeMode}
+              onChange={(next) => setSetting('writeMode', next)}
             />
           </Row>
         </Section>
