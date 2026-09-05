@@ -249,8 +249,13 @@ export function edgesForGroupPair(
     )
 }
 
-/** Curated order first (it carries meaning), then anything else, `Derived` last. */
-function orderGroups(present: ReadonlySet<string>, groupOrder: readonly string[]): string[] {
+/**
+ * Curated order first (it carries meaning), then anything else, `Derived` last.
+ *
+ * Exported because the matrix's row order and the Group view's prev/next are the
+ * same claim about how a schema reads, and two definitions of it would drift.
+ */
+export function orderGroups(present: ReadonlySet<string>, groupOrder: readonly string[]): string[] {
   const result: string[] = []
   for (const g of groupOrder) {
     if (present.has(g) && !result.includes(g)) result.push(g)

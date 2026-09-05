@@ -23,12 +23,23 @@ describe('validateLensSearch', () => {
     )
   })
 
+  it('keeps the incoming switch three-valued, so absent can defer to the browser', () => {
+    expect(validateLensSearch({}).incoming).toBeUndefined()
+    expect(validateLensSearch({ incoming: true }).incoming).toBe(true)
+    expect(validateLensSearch({ incoming: false }).incoming).toBe(false)
+    // Round-tripped through a URL both arrive as strings.
+    expect(validateLensSearch({ incoming: 'true' }).incoming).toBe(true)
+    expect(validateLensSearch({ incoming: 'false' }).incoming).toBe(false)
+    expect(validateLensSearch({ incoming: 'yes' }).incoming).toBeUndefined()
+  })
+
   it('treats empty strings as absent', () => {
     expect(validateLensSearch({ damp: '', focus: '' })).toEqual({
       damp: undefined,
       basis: undefined,
       focus: undefined,
       absentGroup: undefined,
+      incoming: undefined,
     })
   })
 })

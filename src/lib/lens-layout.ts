@@ -147,42 +147,95 @@ export function internalEdges(
   return edges.filter((e) => groupTables.has(e.fromTable) && groupTables.has(e.toTable))
 }
 
+export type StubDirection = 'out' | 'in'
+
 export interface BoundaryStub {
-  targetTable: string
-  targetGroup: string
+  /** `out` — the Group references it. `in` — it references the Group. */
+  direction: StubDirection
+  /** The table on the far side of the boundary; the stub box's identity. */
+  outsideTable: string
+  outsideGroup: string
   count: number
-  /** Source tables inside the Group, deduped — where the stub's lines start. */
-  sourceTables: string[]
+  /** Group members on the ring end, deduped — where the stub's lines attach. */
+  ringTables: string[]
   edges: SchemaGraphEdge[]
 }
 
 /**
- * Edges leaving the Group, collapsed per target table. These are the main
- * content, not decoration: for most Groups more edges leave than stay.
+ * Edges crossing the Group's boundary, collapsed per outside table. These are
+ * the main content, not decoration: for most Groups more edges cross than stay.
+ *
+ * Both directions are real questions and neither answers the other — "what does
+ * this Group depend on" is `out`, "who depends on this Group" is `in` — so the
+ * direction is an argument rather than a second function, and the two columns
+ * the Group view draws are one shape read twice.
  */
 export function boundaryStubs(
   edges: readonly SchemaGraphEdge[],
   groupTables: ReadonlySet<string>,
   groupOf: (table: string) => string | undefined,
+  direction: StubDirection,
 ): BoundaryStub[] {
-  const byTarget = new Map<string, BoundaryStub>()
+  const byOutside = new Map<string, BoundaryStub>()
   for (const e of edges) {
-    if (!groupTables.has(e.fromTable) || groupTables.has(e.toTable)) continue
-    const stub = byTarget.get(e.toTable) ?? {
-      targetTable: e.toTable,
-      targetGroup: groupOf(e.toTable) ?? '',
+    // The ring end is the referencing table going out, the referenced one coming
+    // in; an edge with both ends inside is a chord and belongs to neither column.
+    const ringTable = direction === 'out' ? e.fromTable : e.toTable
+    const outsideTable = direction === 'out' ? e.toTable : e.fromTable
+    if (!groupTables.has(ringTable) || groupTables.has(outsideTable)) continue
+    const stub = byOutside.get(outsideTable) ?? {
+      direction,
+      outsideTable,
+      outsideGroup: groupOf(outsideTable) ?? '',
       count: 0,
-      sourceTables: [],
+      ringTables: [],
       edges: [],
     }
     stub.count++
     stub.edges.push(e)
-    if (!stub.sourceTables.includes(e.fromTable)) stub.sourceTables.push(e.fromTable)
-    byTarget.set(e.toTable, stub)
+    if (!stub.ringTables.includes(ringTable)) stub.ringTables.push(ringTable)
+    byOutside.set(outsideTable, stub)
   }
-  return [...byTarget.values()].sort(
-    (a, b) => b.count - a.count || a.targetTable.localeCompare(b.targetTable),
+  return [...byOutside.values()].sort(
+    (a, b) => b.count - a.count || a.outsideTable.localeCompare(b.outsideTable),
   )
+}
+
+export interface StubSection {
+  /** The Group every stub in the section belongs to; `''` for tables with none. */
+  group: string
+  /** Edges across the whole section — what orders the sections. */
+  count: number
+  stubs: BoundaryStub[]
+}
+
+/**
+ * The same stubs, still one box per table, but banked under their Groups.
+ *
+ * A hub's dependants arrive as a flat run of thirty table names, which is a list
+ * to be read rather than a shape to be seen. Banking them keeps every name — the
+ * names are the answer — while letting the eye take the column in six moves
+ * instead of thirty. Sections are ordered by weight like the stubs inside them,
+ * and tables with no Group fall to the bottom rather than inventing one.
+ */
+export function sectionStubsByGroup(stubs: readonly BoundaryStub[]): StubSection[] {
+  const byGroup = new Map<string, StubSection>()
+  for (const stub of stubs) {
+    const section = byGroup.get(stub.outsideGroup) ?? {
+      group: stub.outsideGroup,
+      count: 0,
+      stubs: [],
+    }
+    section.count += stub.count
+    section.stubs.push(stub)
+    byGroup.set(stub.outsideGroup, section)
+  }
+  return [...byGroup.values()].sort((a, b) => {
+    // The ungrouped bank is a leftover, not a finding: it sorts last whatever
+    // it weighs.
+    if (!a.group !== !b.group) return a.group ? -1 : 1
+    return b.count - a.count || a.group.localeCompare(b.group)
+  })
 }
 
 /**
@@ -209,9 +262,9 @@ export function highlightedTable(
  * Tables the highlighted thing touches, ring-side — they stay lit while the rest
  * fades, so one hover reads a whole neighbourhood.
  *
- * A boundary stub is highlighted by its *target*, which is not on the ring, so
- * the answer there is the Group members feeding it. Without that the stub lights
- * its own lines while every table those lines start from goes dark.
+ * A boundary stub is highlighted by its *outside* table, which is not on the
+ * ring, so the answer there is the Group members it connects to. Without that
+ * the stub lights its own lines while every table they touch goes dark.
  */
 export function ringNeighbours(
   highlighted: string | null,
@@ -225,7 +278,7 @@ export function ringNeighbours(
     if (e.toTable === highlighted) set.add(e.fromTable)
   }
   for (const stub of stubs) {
-    if (stub.targetTable === highlighted) for (const t of stub.sourceTables) set.add(t)
+    if (stub.outsideTable === highlighted) for (const t of stub.ringTables) set.add(t)
   }
   return set
 }

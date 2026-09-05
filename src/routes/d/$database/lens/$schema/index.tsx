@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo, useState } from 'react'
 import BasisTag from '#/components/lens/BasisTag'
@@ -27,10 +27,8 @@ export const Route = createFileRoute('/d/$database/lens/$schema/')({
  * here is a violation.
  */
 function MatrixPage() {
-  const database = useDatabaseParam()
   const { schema } = Route.useParams()
   const search = Route.useSearch()
-  const navigate = useNavigate()
   const { isChecking, isConnected } = useConnectionGuard()
   const [expandDerived, setExpandDerived] = useState(false)
   const [selected, setSelected] = useState<{ from: string; to: string } | null>(null)
@@ -90,17 +88,9 @@ function MatrixPage() {
           damp={search.damp}
           basis={search.basis}
           tables={lens.graph?.nodes ?? []}
-          dampKeys={lens.dampKeys}
           staleness={lens.graph?.staleness}
           edgeCount={lens.edges.length}
           totalEdges={lens.totalEdges}
-          onChange={(next) =>
-            navigate({
-              to: '/d/$database/lens/$schema',
-              params: { database, schema },
-              search: (prev) => ({ ...prev, ...next }),
-            })
-          }
         />
 
         <header className="flex flex-wrap items-baseline gap-3">

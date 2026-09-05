@@ -9,6 +9,7 @@ import {
   labelLadder,
   radialLayout,
   ringNeighbours,
+  sectionStubsByGroup,
   stubPath,
 } from '#/lib/lens-layout'
 import type { RadialInput, RadialNode } from '#/lib/lens-layout'
@@ -97,35 +98,94 @@ describe('boundaryStubs', () => {
   const groupOf = (t: string) =>
     ({ data_project: 'Projects', data_user: 'Auth & Users' })[t]
 
+  const crossing = [
+    edge('data_recording', 'project_id', 'data_project'),
+    edge('data_recording', 'original_project_id', 'data_project'),
+    edge('data_recordingbatch', 'project_id', 'data_project'),
+    edge('data_recording', 'user_id', 'data_user'),
+    edge('data_recording', 'batch_id', 'data_recordingbatch'),
+    edge('data_anonymizationmask', 'recording_id', 'data_recording'),
+    edge('data_user', 'last_recording_id', 'data_recording'),
+    edge('data_user', 'first_recording_id', 'data_recordingbatch'),
+  ]
+
   it('collapses edges leaving the group per target table, busiest first', () => {
-    const stubs = boundaryStubs(
-      [
-        edge('data_recording', 'project_id', 'data_project'),
-        edge('data_recording', 'original_project_id', 'data_project'),
-        edge('data_recordingbatch', 'project_id', 'data_project'),
-        edge('data_recording', 'user_id', 'data_user'),
-      ],
-      group,
-      groupOf,
-    )
-    expect(stubs.map((s) => [s.targetTable, s.count])).toEqual([
+    const stubs = boundaryStubs(crossing, group, groupOf, 'out')
+    expect(stubs.map((s) => [s.outsideTable, s.count])).toEqual([
       ['data_project', 3],
       ['data_user', 1],
     ])
-    expect(stubs[0].sourceTables).toEqual(['data_recording', 'data_recordingbatch'])
-    expect(stubs[0].targetGroup).toBe('Projects')
+    expect(stubs[0].ringTables).toEqual(['data_recording', 'data_recordingbatch'])
+    expect(stubs[0].outsideGroup).toBe('Projects')
+    expect(stubs[0].direction).toBe('out')
   })
 
-  it('ignores internal edges and edges arriving from outside', () => {
-    const stubs = boundaryStubs(
-      [
-        edge('data_recording', 'batch_id', 'data_recordingbatch'),
-        edge('data_project', 'video_id', 'data_recording'),
-      ],
-      group,
-      groupOf,
-    )
-    expect(stubs).toEqual([])
+  it('collapses edges arriving from outside per source table, busiest first', () => {
+    const stubs = boundaryStubs(crossing, group, groupOf, 'in')
+    expect(stubs.map((s) => [s.outsideTable, s.count])).toEqual([
+      ['data_user', 2],
+      ['data_anonymizationmask', 1],
+    ])
+    // The ring end of an inbound edge is the table being referenced.
+    expect(stubs[0].ringTables).toEqual(['data_recording', 'data_recordingbatch'])
+    expect(stubs[1].outsideGroup).toBe('')
+    expect(stubs[1].direction).toBe('in')
+  })
+
+  it('leaves internal edges to the chords, in either direction', () => {
+    const inside = [edge('data_recording', 'batch_id', 'data_recordingbatch')]
+    expect(boundaryStubs(inside, group, groupOf, 'out')).toEqual([])
+    expect(boundaryStubs(inside, group, groupOf, 'in')).toEqual([])
+  })
+
+  it('keeps the two directions apart', () => {
+    const out = boundaryStubs(crossing, group, groupOf, 'out')
+    const into = boundaryStubs(crossing, group, groupOf, 'in')
+    // data_user is on both sides — the Group references it and it references
+    // the Group — and each column counts only its own edges.
+    expect(out.find((s) => s.outsideTable === 'data_user')?.count).toBe(1)
+    expect(into.find((s) => s.outsideTable === 'data_user')?.count).toBe(2)
+  })
+})
+
+describe('sectionStubsByGroup', () => {
+  function stub(outsideTable: string, outsideGroup: string, count: number) {
+    return {
+      direction: 'in' as const,
+      outsideTable,
+      outsideGroup,
+      count,
+      ringTables: ['data_frame'],
+      edges: [],
+    }
+  }
+
+  it('banks the stubs under their Groups, heaviest bank first', () => {
+    const sections = sectionStubsByGroup([
+      stub('data_project', 'Projects', 3),
+      stub('data_user', 'Auth & Users', 2),
+      stub('data_role', 'Auth & Users', 4),
+    ])
+    expect(sections.map((s) => [s.group, s.count])).toEqual([
+      ['Auth & Users', 6],
+      ['Projects', 3],
+    ])
+  })
+
+  it('keeps every table rather than collapsing a bank to its Group', () => {
+    const [auth] = sectionStubsByGroup([
+      stub('data_role', 'Auth & Users', 4),
+      stub('data_user', 'Auth & Users', 2),
+    ])
+    expect(auth.stubs.map((s) => s.outsideTable)).toEqual(['data_role', 'data_user'])
+  })
+
+  it('sinks the ungrouped bank to the bottom however much it weighs', () => {
+    const sections = sectionStubsByGroup([
+      stub('data_orphan', '', 99),
+      stub('data_project', 'Projects', 1),
+    ])
+    expect(sections.map((s) => s.group)).toEqual(['Projects', ''])
   })
 })
 
@@ -273,7 +333,14 @@ describe('ringNeighbours', () => {
     { fromTable: 'd', toTable: 'e', fromColumn: 'e_id', toColumn: 'id', basis: 'declared' },
   ] as never
   const stubs = [
-    { targetTable: 'far', targetGroup: 'Other', count: 2, sourceTables: ['b', 'e'], edges: [] },
+    {
+      direction: 'out',
+      outsideTable: 'far',
+      outsideGroup: 'Other',
+      count: 2,
+      ringTables: ['b', 'e'],
+      edges: [],
+    },
   ] as never
 
   it('is null when nothing is highlighted', () => {

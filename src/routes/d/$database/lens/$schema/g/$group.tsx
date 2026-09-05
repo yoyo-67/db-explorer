@@ -5,6 +5,8 @@ import LensNav from '#/components/lens/LensNav'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useLensGraph } from '#/hooks/useLensGraph'
 import { validateLensSearch } from '#/lib/lens-search'
+import type { LensSearch } from '#/lib/lens-search'
+import { readIncomingPreference, writeIncomingPreference } from '#/lib/lens-preferences'
 import {
   arrowHead,
   boundaryStubs,
@@ -13,14 +15,14 @@ import {
   internalEdges,
   labelLadder,
   radialLayout,
+  sectionStubsByGroup,
   ringNeighbours,
   stubPath,
 } from '#/lib/lens-layout'
 import { opensNewTab } from '#/lib/link-click'
-import { degreesOf } from '#/lib/schema-graph-metrics'
+import { degreesOf, orderGroups } from '#/lib/schema-graph-metrics'
 import { tableLabel } from '#/lib/table-label'
 import type { BoundaryStub, LabelSlot, RadialNode } from '#/lib/lens-layout'
-import type { EdgeBasis, SchemaGraphEdge } from '#/lib/types'
 
 export const Route = createFileRoute('/d/$database/lens/$schema/g/$group')({
   component: GroupPage,
@@ -29,9 +31,13 @@ export const Route = createFileRoute('/d/$database/lens/$schema/g/$group')({
 
 /**
  * One Group expanded — the reading unit (BUILD-SPEC §4.2). Deterministic radial
- * placement, internal edges as chords, and every edge *leaving* the Group stubbed
- * at the right-hand boundary grouped by target table. The stubs are the main
- * content, not decoration: for most Groups more edges leave than stay.
+ * placement, internal edges as chords, and every edge *crossing* the boundary
+ * stubbed in a mirrored pair of columns: what the Group references on the right,
+ * what references the Group on the left, each collapsed per table on the far
+ * side. The stubs are the main content, not decoration — for most Groups more
+ * edges cross than stay — and one side alone answers half the question, since a
+ * Group nothing points at means something quite different from a Group that
+ * points at nothing.
  */
 const RING_MIN_RADIUS = 170
 /** Arc length per node — labels are ~14px tall, so tighter than this and the
@@ -48,7 +54,19 @@ const MAX_LABEL_CHARS = 34
 const STUB_WIDTH = 230
 const STUB_HEIGHT = 26
 const STUB_GAP = 16
+/** Top of both stub columns, under their headings. */
+const COLUMN_TOP = 40
+/** A bank's name and the air under it, in the banked column. */
+const SECTION_HEADING_HEIGHT = 20
+const SECTION_GAP = 10
 const MAX_STUBS = 40
+/** Margin outside the inbound column — the drawing's own left edge. */
+const STUB_MARGIN = 12
+/** Outbound: the Group reaching out. Inbound: something reaching in. Two hues,
+ *  because once a line has crossed the ring its side no longer tells you which
+ *  way it was going. */
+const OUT_COLOR = '#c07a24'
+const IN_COLOR = '#7a68d4'
 /** Hover swells the node so a 6px dot becomes a real target and its label wins
  *  the overlap against its neighbours' (BUILD-SPEC §4.2 reading unit). */
 const HOVER_SCALE = 1.9
@@ -101,12 +119,65 @@ function GroupPage() {
     })
   }, [absent, navigate, schema, group])
 
+  /**
+   * Where this Group sits in the reading order, and what is either side of it.
+   *
+   * The same order the matrix puts its rows in — curated first, because that
+   * order is an argument about how the schema reads, and a pager that walked
+   * some other sequence would quietly contradict it. It does not wrap: the ends
+   * are where the curation stops, and saying so is more useful than looping.
+   */
+  const tour = useMemo(() => {
+    const ordered = orderGroups(new Set(lens.tablesByGroup.keys()), lens.groupOrder)
+    const at = ordered.indexOf(group)
+    return {
+      at,
+      total: ordered.length,
+      prev: at > 0 ? ordered[at - 1] : undefined,
+      next: at >= 0 && at < ordered.length - 1 ? ordered[at + 1] : undefined,
+    }
+  }, [lens.tablesByGroup, lens.groupOrder, group])
+
+  const inside = useMemo(
+    () => internalEdges(lens.edges, memberNames),
+    [lens.edges, memberNames],
+  )
+  const outStubs = useMemo(
+    () => boundaryStubs(lens.edges, memberNames, lens.groupOf, 'out'),
+    [lens.edges, memberNames, lens.groupOf],
+  )
+  // The URL wins when it speaks; otherwise this browser's last choice does. Read
+  // after mount, not during render: the server has no localStorage, and a value
+  // guessed there would be hydrated over anyway.
+  const [remembered, setRemembered] = useState(false)
+  useEffect(() => setRemembered(readIncomingPreference()), [])
+  const showIncoming = search.incoming ?? remembered
+  const inStubs = useMemo(
+    () =>
+      showIncoming ? boundaryStubs(lens.edges, memberNames, lens.groupOf, 'in') : [],
+    [showIncoming, lens.edges, memberNames, lens.groupOf],
+  )
+  /** Counted whether or not it is drawn — the switch has to say what it would show. */
+  const arriving = useMemo(
+    () =>
+      lens.edges.filter(
+        (e) => memberNames.has(e.toTable) && !memberNames.has(e.fromTable),
+      ).length,
+    [lens.edges, memberNames],
+  )
+  /** Both columns' worth, for the things that only care that a table is off-ring. */
+  const allStubs = useMemo(() => [...outStubs, ...inStubs], [outStubs, inStubs])
+
+  /** Room for the inbound column, or none of it when nothing points at the Group. */
+  const leftGutter =
+    LABEL_GUTTER + (inStubs.length > 0 ? STUB_MARGIN + STUB_WIDTH : 0)
+
   const layout = useMemo(() => {
     const ringRadius = Math.max(
       RING_MIN_RADIUS,
       (members.length * RING_NODE_SPACING) / (2 * Math.PI),
     )
-    const cx = LABEL_GUTTER + ringRadius
+    const cx = leftGutter + ringRadius
     const cy = ringRadius + MAX_NODE_RADIUS + 16
     return {
       ringRadius,
@@ -132,7 +203,7 @@ function GroupPage() {
         },
       ),
     }
-  }, [members, lens.degrees, lens.maxInDegree])
+  }, [members, lens.degrees, lens.maxInDegree, leftGutter])
 
   const nodeByTable = useMemo(
     () => new Map(layout.nodes.map((n) => [n.table, n])),
@@ -150,14 +221,6 @@ function GroupPage() {
     [layout],
   )
 
-  const inside = useMemo(
-    () => internalEdges(lens.edges, memberNames),
-    [lens.edges, memberNames],
-  )
-  const stubs = useMemo(
-    () => boundaryStubs(lens.edges, memberNames, lens.groupOf),
-    [lens.edges, memberNames, lens.groupOf],
-  )
   /**
    * The table the ring reads around: what the pointer is on, or — with the
    * pointer away — whatever the URL is focused on. A focus that dimmed nothing
@@ -167,13 +230,13 @@ function GroupPage() {
   const highlighted = useMemo(
     () =>
       highlightedTable(hovered, search.focus, (t) =>
-        memberNames.has(t) || stubs.some((s) => s.targetTable === t),
+        memberNames.has(t) || allStubs.some((s) => s.outsideTable === t),
       ),
-    [hovered, search.focus, memberNames, stubs],
+    [hovered, search.focus, memberNames, allStubs],
   )
   const neighbours = useMemo(
-    () => ringNeighbours(highlighted, inside, stubs),
-    [highlighted, inside, stubs],
+    () => ringNeighbours(highlighted, inside, allStubs),
+    [highlighted, inside, allStubs],
   )
 
   /**
@@ -181,18 +244,43 @@ function GroupPage() {
    * anchor with a URL in it — otherwise ctrl-click, middle-click and the context
    * menu all die at an `onClick` that only knows how to navigate in place.
    */
+  /**
+   * Everything nameable in this view — a ring node, a stub box either side —
+   * opens the table itself. The ring is where you find a table; the table page
+   * is where you go once you have. Sending a stub to its Group's ring instead
+   * answered a question nobody had clicked to ask.
+   */
   const tableHref = (table: string) =>
     router.buildLocation({
-      to: '/d/$database/lens/$schema/t/$table',
+      to: '/d/$database/t/$schema/$table',
       params: { database, schema, table },
-      search: { damp: search.damp, basis: search.basis },
+      search: {},
     }).href
-  const groupFocusHref = (targetGroup: string, focus: string) =>
-    router.buildLocation({
-      to: '/d/$database/lens/$schema/g/$group',
-      params: { database, schema, group: targetGroup },
-      search: { ...search, focus },
-    }).href
+  const openTable = (table: string) =>
+    navigate({
+      to: '/d/$database/t/$schema/$table',
+      params: { database, schema, table },
+      search: {},
+    })
+
+  /** One stub box, either column. It opens the table it names. */
+  const renderStub = (stub: BoundaryStub, y: number) => {
+    return (
+      <StubGroup
+        key={`${stub.direction}:${stub.outsideTable}`}
+        stub={stub}
+        x={stub.direction === 'out' ? outStubX : inStubX}
+        y={y}
+        anchorY={y + STUB_HEIGHT / 2}
+        nodeByTable={nodeByTable}
+        hovered={highlighted}
+        label={tableLabel(stub.outsideTable, lens.nodeByName.get(stub.outsideTable)?.model)}
+        onHover={setHovered}
+        href={tableHref(stub.outsideTable)}
+        onOpen={() => openTable(stub.outsideTable)}
+      />
+    )
+  }
 
   /** Pinning is the hover made to stay: same highlight, parked in the URL. */
   const togglePin = (table: string) =>
@@ -203,14 +291,6 @@ function GroupPage() {
       replace: true,
     })
 
-  const inbound = useMemo(
-    () =>
-      lens.edges.filter(
-        (e) => memberNames.has(e.toTable) && !memberNames.has(e.fromTable),
-      ).length,
-    [lens.edges, memberNames],
-  )
-
   if (isChecking) {
     return (
       <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">
@@ -220,13 +300,38 @@ function GroupPage() {
   }
   if (!isConnected) return null
 
-  const shownStubs = stubs.slice(0, MAX_STUBS)
-  const hiddenStubs = stubs.length - shownStubs.length
-  const stubX = layout.cx + layout.ringRadius + LABEL_GUTTER
-  const width = stubX + STUB_WIDTH + 12
+  // Each column is capped on its own: 40 things the Group depends on and 40
+  // things depending on it are two separate readings, so one busy side must not
+  // spend the other's budget.
+  // Each column is capped on its own: 40 things the Group depends on and 40
+  // things depending on it are two separate readings, so one busy side must not
+  // spend the other's budget.
+  const shownOut = outStubs.slice(0, MAX_STUBS)
+  const shownIn = inStubs.slice(0, MAX_STUBS)
+  const hiddenStubs = outStubs.length - shownOut.length + (inStubs.length - shownIn.length)
+  const outStubX = layout.cx + layout.ringRadius + LABEL_GUTTER
+  const inStubX = STUB_MARGIN
+  const width = outStubX + STUB_WIDTH + STUB_MARGIN
+  const stubY = (i: number) => COLUMN_TOP + i * (STUB_HEIGHT + STUB_GAP)
+
+  // The banked column is laid out by walking it: a bank heading takes a row of
+  // its own, so a box's y is no longer a function of its index.
+  const inRows: { heading?: string; stub?: BoundaryStub; y: number }[] = []
+  let inY = COLUMN_TOP
+  for (const section of sectionStubsByGroup(shownIn)) {
+    inRows.push({ heading: section.group || 'no group', y: inY })
+    inY += SECTION_HEADING_HEIGHT
+    for (const stub of section.stubs) {
+      inRows.push({ stub, y: inY })
+      inY += STUB_HEIGHT + STUB_GAP
+    }
+    inY += SECTION_GAP
+  }
+
   const height = Math.max(
     layout.cy * 2 + MAX_NODE_RADIUS,
-    shownStubs.length * (STUB_HEIGHT + STUB_GAP) + 56,
+    stubY(shownOut.length) + STUB_HEIGHT,
+    inY,
   )
 
   return (
@@ -238,25 +343,22 @@ function GroupPage() {
           damp={search.damp}
           basis={search.basis}
           tables={lens.graph?.nodes ?? []}
-          dampKeys={lens.dampKeys}
           staleness={lens.graph?.staleness}
           edgeCount={lens.edges.length}
           totalEdges={lens.totalEdges}
-          onChange={(next) =>
-            navigate({
-              to: '/d/$database/lens/$schema/g/$group',
-              params: { database, schema, group },
-              search: (prev) => ({ ...prev, ...next }),
-            })
-          }
         />
 
-        <header className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-lg font-semibold text-[var(--sea-ink)]">{group}</h1>
-          <span className="text-xs text-[var(--sea-ink-soft)]">
-            {members.length} tables · {inside.length} internal ·{' '}
-            {stubs.reduce((a, s) => a + s.count, 0)} leaving · {inbound} arriving
-          </span>
+        {/* Sticky, and only what you need while the ring scrolls past: which
+            Group you are in, how to step out of it, and whatever the ring is
+            still marking. The counts and the description are read once on
+            arrival, so they stay below and scroll away with everything else. */}
+        <header
+          className="sticky z-20 -mx-4 flex items-center gap-3 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-4 py-2 backdrop-blur-lg"
+          style={{ top: 'var(--app-header-h, 44px)' }}
+        >
+          <h1 className="min-w-0 truncate text-lg font-semibold text-[var(--sea-ink)]">
+            {group}
+          </h1>
           {/* The focus arrives from a search or a boundary link and then stays in
               the URL, so the ring keeps one node marked long after the question
               was answered. This is how you put it down. */}
@@ -272,18 +374,35 @@ function GroupPage() {
                 })
               }
               title={`Stop marking ${search.focus} on the ring`}
-              className="flex items-center gap-1 rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-0.5 text-[11px] text-[var(--sea-ink)]"
+              className="flex min-w-0 shrink items-center gap-1 rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-0.5 text-[11px] text-[var(--sea-ink)]"
             >
-              <span className="font-mono">{search.focus}</span>
-              <span className="text-[var(--sea-ink-soft)]">clear</span>
+              <span className="truncate font-mono">{search.focus}</span>
+              <span className="shrink-0 text-[var(--sea-ink-soft)]">clear</span>
             </button>
           )}
+          {tour.at >= 0 && (
+            <GroupPager
+              schema={schema}
+              search={search}
+              at={tour.at}
+              total={tour.total}
+              prev={tour.prev}
+              next={tour.next}
+            />
+          )}
+        </header>
+
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="text-xs text-[var(--sea-ink-soft)]">
+            {members.length} tables · {inside.length} internal ·{' '}
+            {outStubs.reduce((a, s) => a + s.count, 0)} leaving · {arriving} arriving
+          </span>
           {lens.groupDescriptions.get(group) && (
             <span className="w-full text-xs text-[var(--sea-ink-soft)]">
               {lens.groupDescriptions.get(group)}
             </span>
           )}
-        </header>
+        </div>
 
         {lens.error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
@@ -310,11 +429,42 @@ function GroupPage() {
 
         {lens.graph && members.length > 0 && (
           <>
+            {/* Its own row, above the legend and never inside it: a control that
+                moves when the text beside it rewraps — and the legend rewraps
+                when this very switch is thrown — is a control you have to find
+                again every time. */}
+            <label
+              className="flex w-fit items-center gap-1.5 text-[11px] text-[var(--sea-ink-soft)]"
+              title={`Draw the ${arriving} edges that point into ${group}, in a second column on the left`}
+            >
+              <input
+                type="checkbox"
+                checked={showIncoming}
+                onChange={(e) => {
+                  const next = e.target.checked
+                  setRemembered(next)
+                  writeIncomingPreference(next)
+                  navigate({
+                    to: '/d/$database/lens/$schema/g/$group',
+                    params: { database, schema, group },
+                    search: (prev) => ({ ...prev, incoming: next }),
+                    replace: true,
+                  })
+                }}
+                className="rounded border-[var(--line)]"
+              />
+              <span
+                aria-hidden
+                className="inline-block h-2 w-4 shrink-0 rounded-full"
+                style={{ background: IN_COLOR }}
+              />
+              show what references this Group ({arriving})
+            </label>
+
             <p className="text-[11px] text-[var(--sea-ink-soft)]">
               arrow points at the referenced table (the FK's target) · solid =
               declared constraint · dashed = inferred (model or convention) · node
-              area ∝ log(1 + referencing tables) · amber = leaves the Group,
-              stubbed at the boundary
+              area ∝ log(1 + referencing tables) · amber = leaves the Group
             </p>
 
             <div className="island-shell overflow-auto rounded-xl p-2">
@@ -323,7 +473,7 @@ function GroupPage() {
                 width="100%"
                 style={{ minWidth: Math.min(width, 1100) }}
                 role="img"
-                aria-label={`${group}: ${members.length} tables, ${inside.length} internal edges, ${stubs.length} boundary targets`}
+                aria-label={`${group}: ${members.length} tables, ${inside.length} internal edges, ${outStubs.length} tables referenced outside the Group, ${inStubs.length} tables referencing it`}
                 onMouseLeave={() => setHovered(null)}
               >
                 <circle
@@ -334,6 +484,37 @@ function GroupPage() {
                   stroke="var(--line)"
                   strokeDasharray="3 4"
                 />
+
+                {shownIn.length > 0 && (
+                  <text
+                    x={inStubX}
+                    y={22}
+                    fill={IN_COLOR}
+                    fontSize={11}
+                    className="dark:fill-[#b6a8f5]"
+                  >
+                    → references the Group
+                  </text>
+                )}
+
+                {/* Before the chords on purpose: what points *at* the Group is
+                    context for the Group's own edges, so it reads behind them. */}
+                {inRows.map((row) =>
+                  row.stub ? (
+                    renderStub(row.stub, row.y)
+                  ) : (
+                    <text
+                      key={`bank:${row.heading}`}
+                      x={inStubX}
+                      y={row.y + 12}
+                      fontSize={10}
+                      fontWeight={600}
+                      fill="var(--sea-ink-soft)"
+                    >
+                      {row.heading}
+                    </text>
+                  ),
+                )}
 
                 {inside.map((e) => {
                   const from = nodeByTable.get(e.fromTable)
@@ -378,56 +559,19 @@ function GroupPage() {
                   )
                 })}
 
+                {/* The outbound column paints over the chords; the inbound one is
+                    already behind them, drawn before the ring was. */}
                 <text
-                  x={stubX}
+                  x={outStubX}
                   y={22}
-                  fill="#c07a24"
+                  fill={OUT_COLOR}
                   fontSize={11}
                   className="dark:fill-[#f0a868]"
                 >
                   leaves the Group →
                 </text>
 
-                {shownStubs.map((stub, i) => {
-                  const y = 40 + i * (STUB_HEIGHT + STUB_GAP)
-                  const anchorY = y + STUB_HEIGHT / 2
-                  return (
-                    <StubGroup
-                      key={stub.targetTable}
-                      stub={stub}
-                      x={stubX}
-                      y={y}
-                      anchorY={anchorY}
-                      nodeByTable={nodeByTable}
-                      hovered={highlighted}
-                      label={tableLabel(
-                        stub.targetTable,
-                        lens.nodeByName.get(stub.targetTable)?.model,
-                      )}
-                      onHover={setHovered}
-                      href={
-                        stub.targetGroup && stub.targetGroup !== group
-                          ? groupFocusHref(stub.targetGroup, stub.targetTable)
-                          : tableHref(stub.targetTable)
-                      }
-                      onOpen={() => {
-                        if (stub.targetGroup && stub.targetGroup !== group) {
-                          navigate({
-                            to: '/d/$database/lens/$schema/g/$group',
-                            params: { database, schema, group: stub.targetGroup },
-                            search: { ...search, focus: stub.targetTable },
-                          })
-                        } else {
-                          navigate({
-                            to: '/d/$database/lens/$schema/t/$table',
-                            params: { database, schema, table: stub.targetTable },
-                            search: { damp: search.damp, basis: search.basis },
-                          })
-                        }
-                      }}
-                    />
-                  )
-                })}
+                {shownOut.map((stub, i) => renderStub(stub, stubY(i)))}
 
                 {/* Highlighted node last so its swollen circle and label paint
                     over the neighbours it overlaps. */}
@@ -453,13 +597,7 @@ function GroupPage() {
                     viewWidth={width}
                     onHover={setHovered}
                     href={tableHref(n.table)}
-                    onOpen={() =>
-                      navigate({
-                        to: '/d/$database/lens/$schema/t/$table',
-                        params: { database, schema, table: n.table },
-                        search: { damp: search.damp, basis: search.basis },
-                      })
-                    }
+                    onOpen={() => openTable(n.table)}
                     onTogglePin={() => togglePin(n.table)}
                   />
                 ))}
@@ -468,17 +606,72 @@ function GroupPage() {
 
             {hiddenStubs > 0 && (
               <p className="text-[11px] text-[var(--sea-ink-soft)]">
-                {hiddenStubs} further boundary target
-                {hiddenStubs === 1 ? '' : 's'} not drawn (showing the {MAX_STUBS}{' '}
-                busiest) — listed below.
+                {hiddenStubs} further boundary table
+                {hiddenStubs === 1 ? '' : 's'} not drawn — each column shows the{' '}
+                {MAX_STUBS} busiest.
               </p>
             )}
-
-            <StubTable schema={schema} search={search} stubs={stubs} group={group} />
           </>
         )}
       </div>
     </main>
+  )
+}
+
+/**
+ * Step to the Group either side of this one, in the matrix's reading order.
+ *
+ * Links, not buttons: the whole view is addressable and a reader who wants the
+ * next Group in a second tab should get it. `focus` is dropped on the way — a
+ * table marked on this ring means nothing on the next one.
+ */
+function GroupPager({
+  schema,
+  search,
+  at,
+  total,
+  prev,
+  next,
+}: {
+  schema: string
+  search: LensSearch
+  /** Zero-based, so the label adds one. */
+  at: number
+  total: number
+  prev: string | undefined
+  next: string | undefined
+}) {
+  const database = useDatabaseParam()
+  const step = (target: string | undefined, glyph: string, label: string) =>
+    target ? (
+      <Link
+        to="/d/$database/lens/$schema/g/$group"
+        params={{ database, schema, group: target }}
+        search={{ ...search, focus: undefined }}
+        title={`${label}: ${target}`}
+        aria-label={`${label}: ${target}`}
+        className="rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] px-2 py-0.5 text-[var(--sea-ink)] no-underline hover:text-[var(--lagoon-deep)]"
+      >
+        {glyph}
+      </Link>
+    ) : (
+      // Kept in place rather than dropped: the buttons must not shift when you
+      // reach an end, and a dead one says the curation stops here.
+      <span
+        aria-hidden
+        className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[var(--sea-ink-soft)] opacity-40"
+      >
+        {glyph}
+      </span>
+    )
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs">
+      {step(prev, '←', 'Previous Group')}
+      <span className="tabular-nums text-[var(--sea-ink-soft)]">
+        {at + 1} / {total}
+      </span>
+      {step(next, '→', 'Next Group')}
+    </span>
   )
 }
 
@@ -720,6 +913,7 @@ function StubGroup({
   onOpen,
 }: {
   stub: BoundaryStub
+  /** Left edge of the box, whichever column it is in. */
   x: number
   y: number
   anchorY: number
@@ -731,22 +925,36 @@ function StubGroup({
   href: string
   onOpen: () => void
 }) {
-  // Symmetric with the ring: hovering a source lights the boxes it feeds, and
-  // hovering a box lights the sources feeding it.
-  const lit = !!hovered && (hovered === stub.targetTable || stub.sourceTables.includes(hovered))
+  const inbound = stub.direction === 'in'
+  const color = inbound ? IN_COLOR : OUT_COLOR
+  // Where a line meets the box: an outbound line arrives at its left edge, an
+  // inbound one departs from its right.
+  const boxAnchorX = inbound ? x + STUB_WIDTH : x
+  // Symmetric with the ring: hovering a ring table lights the boxes it touches,
+  // and hovering a box lights the ring tables touching it.
+  const lit = !!hovered && (hovered === stub.outsideTable || stub.ringTables.includes(hovered))
   return (
     <g style={{ opacity: hovered && !lit ? 0.15 : 1, transition: 'opacity 120ms ease' }}>
       {stub.edges.map((e) => {
-        const from = nodeByTable.get(e.fromTable)
-        if (!from) return null
-        const onHovered = hovered === e.fromTable || hovered === stub.targetTable
-        const leaveAt = from.x + drawnRadius(from, hovered === e.fromTable)
+        const ringTable = inbound ? e.toTable : e.fromTable
+        const node = nodeByTable.get(ringTable)
+        if (!node) return null
+        const onHovered = hovered === ringTable || hovered === stub.outsideTable
+        // Trimmed to the radius the node is *drawn* at — hover swells it, and a
+        // line trimmed to the resting radius would end under the circle.
+        const r = drawnRadius(node, hovered === ringTable)
+        const ringPoint = { x: inbound ? node.x - r : node.x + r, y: node.y }
+        const boxPoint = { x: boxAnchorX, y: anchorY }
         return (
           <path
             key={`${e.fromTable}.${e.fromColumn}`}
-            d={stubPath({ x: leaveAt, y: from.y }, { x, y: anchorY })}
+            d={
+              inbound
+                ? stubPath(boxPoint, ringPoint)
+                : stubPath(ringPoint, boxPoint)
+            }
             fill="none"
-            stroke="#c07a24"
+            stroke={color}
             strokeOpacity={hovered ? (onHovered ? 0.95 : 0.06) : 0.4}
             strokeWidth={onHovered ? 1.8 : 1}
             strokeDasharray={e.basis === 'declared' ? undefined : '4 3'}
@@ -754,14 +962,38 @@ function StubGroup({
           />
         )
       })}
-      {/* One head per box, not per line: every line into a box converges on the
-          same anchor, so per-edge arrows would just stack up. */}
-      <path
-        d={arrowHead({ x, y: anchorY }, 0, lit ? ARROW_SIZE_LIT : ARROW_SIZE)}
-        fill="#c07a24"
-        fillOpacity={hovered ? (lit ? 0.95 : 0.06) : 0.4}
-        style={{ transition: 'fill-opacity 120ms ease' }}
-      />
+      {/* The head sits on the referenced end, same rule as a chord. Going out
+          that is the box, and every line converges there, so one head does;
+          coming in it is each ring node, so there is one per line. The stub
+          curve leaves and arrives horizontally, which is why the angle is 0. */}
+      {inbound
+        ? stub.edges.map((e) => {
+            const node = nodeByTable.get(e.toTable)
+            if (!node) return null
+            const onHovered = hovered === e.toTable || hovered === stub.outsideTable
+            const tipX = node.x - drawnRadius(node, hovered === e.toTable)
+            return (
+              <path
+                key={`head:${e.fromTable}.${e.fromColumn}`}
+                d={arrowHead(
+                  { x: tipX, y: node.y },
+                  0,
+                  onHovered ? ARROW_SIZE_LIT : ARROW_SIZE,
+                )}
+                fill={color}
+                fillOpacity={hovered ? (onHovered ? 0.95 : 0.06) : 0.4}
+                style={{ transition: 'fill-opacity 120ms ease' }}
+              />
+            )
+          })
+        : (
+            <path
+              d={arrowHead({ x, y: anchorY }, 0, lit ? ARROW_SIZE_LIT : ARROW_SIZE)}
+              fill={color}
+              fillOpacity={hovered ? (lit ? 0.95 : 0.06) : 0.4}
+              style={{ transition: 'fill-opacity 120ms ease' }}
+            />
+          )}
       <a
         href={href}
         onClick={(e) => {
@@ -769,13 +1001,15 @@ function StubGroup({
           e.preventDefault()
           onOpen()
         }}
-        onMouseEnter={() => onHover(stub.targetTable)}
+        onMouseEnter={() => onHover(stub.outsideTable)}
         onMouseLeave={() => onHover(null)}
         style={{ cursor: 'pointer', textDecoration: 'none' }}
       >
-        <title>{`${stub.count} edge${stub.count === 1 ? '' : 's'} to ${stub.targetTable}${
-          stub.targetGroup ? ` (${stub.targetGroup})` : ''
-        } from ${stub.sourceTables.join(', ')}`}</title>
+        <title>{`${stub.count} edge${stub.count === 1 ? '' : 's'} ${
+          inbound ? 'from' : 'to'
+        } ${stub.outsideTable}${stub.outsideGroup ? ` (${stub.outsideGroup})` : ''} ${
+          inbound ? 'into' : 'from'
+        } ${stub.ringTables.join(', ')}`}</title>
         <rect
           x={x}
           y={y}
@@ -783,13 +1017,13 @@ function StubGroup({
           height={STUB_HEIGHT}
           rx={4}
           fill="var(--surface-strong)"
-          stroke={lit ? '#c07a24' : 'var(--line)'}
+          stroke={lit ? color : 'var(--line)'}
           strokeWidth={lit ? 1.8 : 1}
         />
         <text
           x={x + 8}
           y={y + 17}
-          fontSize={hovered === stub.targetTable ? 11.5 : 10}
+          fontSize={hovered === stub.outsideTable ? 11.5 : 10}
           fontWeight={lit ? 600 : 400}
           fill="var(--sea-ink)"
         >
@@ -802,88 +1036,4 @@ function StubGroup({
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`
-}
-
-/** Every boundary target in full, including the ones the drawing had to drop. */
-function StubTable({
-  schema,
-  search,
-  stubs,
-  group,
-}: {
-  schema: string
-  search: { damp?: string; basis?: EdgeBasis; focus?: string }
-  stubs: BoundaryStub[]
-  group: string
-}) {
-  const database = useDatabaseParam()
-  if (stubs.length === 0) {
-    return (
-      <p className="text-xs text-[var(--sea-ink-soft)]">
-        No edges leave this Group — unusually self-contained.
-      </p>
-    )
-  }
-  return (
-    <section className="island-shell rounded-xl">
-      <header className="border-b border-[var(--line)] px-4 py-2">
-        <h2 className="text-sm font-semibold text-[var(--sea-ink)]">
-          Boundary targets{' '}
-          <span className="text-xs font-normal text-[var(--sea-ink-soft)]">
-            {stubs.length} tables outside {group}
-          </span>
-        </h2>
-      </header>
-      <ul className="divide-y divide-[var(--line)]/60">
-        {stubs.map((stub) => (
-          <li
-            key={stub.targetTable}
-            className="flex flex-wrap items-baseline gap-x-2 px-4 py-1 text-[11px]"
-          >
-            <span className="w-8 shrink-0 text-right font-mono tabular-nums text-[var(--sea-ink-soft)]">
-              {stub.count}
-            </span>
-            <Link
-              to="/d/$database/lens/$schema/t/$table"
-              params={{ database, schema, table: stub.targetTable }}
-              search={{ damp: search.damp, basis: search.basis }}
-              className="font-mono text-[var(--sea-ink)] hover:text-[var(--lagoon-deep)]"
-            >
-              {stub.targetTable}
-            </Link>
-            {stub.targetGroup ? (
-              <Link
-                to="/d/$database/lens/$schema/g/$group"
-                params={{ database, schema, group: stub.targetGroup }}
-                search={{ ...search, focus: stub.targetTable }}
-                className="rounded-full border border-[var(--chip-line)] px-1.5 text-[10px] text-[var(--sea-ink-soft)] no-underline hover:text-[var(--lagoon-deep)]"
-              >
-                {stub.targetGroup}
-              </Link>
-            ) : (
-              <span className="text-[10px] italic text-[var(--sea-ink-soft)]/70">
-                no group
-              </span>
-            )}
-            <span className="text-[10px] text-[var(--sea-ink-soft)]">
-              from {stub.sourceTables.join(', ')}
-            </span>
-            <BasisSummary edges={stub.edges} />
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
-}
-
-function BasisSummary({ edges }: { edges: SchemaGraphEdge[] }) {
-  const declared = edges.filter((e) => e.basis === 'declared').length
-  const inferred = edges.length - declared
-  return (
-    <span className="ml-auto shrink-0 text-[10px] text-[var(--sea-ink-soft)]">
-      {declared > 0 && `${declared} declared`}
-      {declared > 0 && inferred > 0 && ' · '}
-      {inferred > 0 && `${inferred} inferred`}
-    </span>
-  )
 }

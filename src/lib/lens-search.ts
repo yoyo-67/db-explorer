@@ -14,6 +14,18 @@ export interface LensSearch {
   focus?: string
   /** Set when a Group view fell back here because this schema has no such Group. */
   absentGroup?: string
+  /**
+   * Draw the inbound boundary column in a Group view. Three-valued on purpose:
+   * absent means "whatever this browser last chose", so a bare Group link does
+   * not overrule the reader, while `true`/`false` are what a shared link carries
+   * to promise the picture it was copied from.
+   *
+   * Off unless asked for: the inferred edges into a hub table run to dozens of
+   * sources and crowd out the ring, and "what does this Group depend on" is the
+   * question people arrive with. The header counts the arrivals either way, so
+   * the reader can see there is something to turn on.
+   */
+  incoming?: boolean
 }
 
 /** Damping off is an explicit value, because absent has to mean on. */
@@ -25,6 +37,13 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+/** Absent stays absent — it is the third value, not a false. */
+function bool(value: unknown): boolean | undefined {
+  if (value === true || value === 'true') return true
+  if (value === false || value === 'false') return false
+  return undefined
+}
+
 export function validateLensSearch(search: Record<string, unknown>): LensSearch {
   const basis = str(search.basis)
   return {
@@ -32,6 +51,7 @@ export function validateLensSearch(search: Record<string, unknown>): LensSearch 
     basis: BASES.includes(basis as EdgeBasis) ? (basis as EdgeBasis) : undefined,
     focus: str(search.focus),
     absentGroup: str(search.absentGroup),
+    incoming: bool(search.incoming),
   }
 }
 

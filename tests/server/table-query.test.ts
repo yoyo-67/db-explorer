@@ -248,6 +248,58 @@ describe('getTablePage SQL builder', () => {
     expect(approxSql).toMatch(/reltuples/)
     expect(approxSql).toMatch(/GREATEST/)
   })
+
+  // A view has no row in pg_stat_user_tables at all, so the approx probe came
+  // back empty and was read as zero — "smaller than the threshold", the one
+  // answer that spends an unbounded COUNT(*). On an aggregate view over 22M
+  // rows that is a page that never loads.
+  it('asks the planner about a relation with no statistics rather than counting it', async () => {
+    mockColumns(['id'])
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // data
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // approx: a view is not in pg_stat_user_tables
+    mockQueryWithTimeout.mockResolvedValueOnce({
+      rows: [{ 'QUERY PLAN': [{ Plan: { 'Plan Rows': 1_161_202_141 } }] }],
+    })
+
+    const page = await getTablePage({ schema: 'public', table: 'a_view' })
+
+    expect(
+      mockQuery.mock.calls.every((call) => !/SELECT COUNT\(\*\)/.test(call[0] as string)),
+    ).toBe(true)
+    expect(page.count).toBe(1_161_202_141)
+    expect(page.isCountApproximate).toBe(true)
+  })
+
+  it('refuses the exact count when nothing can size the relation', async () => {
+    mockColumns(['id'])
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // data
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // approx: no statistics
+    mockQueryWithTimeout.mockRejectedValueOnce(new Error('plan timeout'))
+
+    const page = await getTablePage({ schema: 'public', table: 'a_view' })
+
+    // Unknown is not zero. The whole point of the number is to decide whether a
+    // COUNT(*) is affordable, so an unmeasurable relation is treated as too big.
+    expect(
+      mockQuery.mock.calls.every((call) => !/SELECT COUNT\(\*\)/.test(call[0] as string)),
+    ).toBe(true)
+    expect(page.isCountApproximate).toBe(true)
+  })
+
+  it('still counts a relation the planner says is small', async () => {
+    mockColumns(['id'])
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // data
+    mockQuery.mockResolvedValueOnce({ rows: [] }) // approx: no statistics
+    mockQueryWithTimeout.mockResolvedValueOnce({
+      rows: [{ 'QUERY PLAN': [{ Plan: { 'Plan Rows': 12 } }] }],
+    })
+    mockQuery.mockResolvedValueOnce({ rows: [{ c: '12' }] }) // exact count
+
+    const page = await getTablePage({ schema: 'public', table: 'small_view' })
+
+    expect(page.count).toBe(12)
+    expect(page.isCountApproximate).toBe(false)
+  })
 })
 
 describe('foreign-key lookups use native typed comparison (index-friendly)', () => {

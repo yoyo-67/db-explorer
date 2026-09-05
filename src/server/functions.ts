@@ -640,11 +640,22 @@ async function fetchColumns(schema: string, table: string): Promise<ColumnInfo[]
   }))
 }
 
-async function fetchApproxRowCount(schema: string, table: string): Promise<number> {
-  // n_live_tup is 0 for tables that have never been (auto)analyzed — common for
-  // freshly restored aggregate tables. Fall back to pg_class.reltuples so a huge
-  // unanalyzed table is not mistaken for an empty one (which would trigger an
-  // exact COUNT(*) seqscan over tens of millions of rows).
+/**
+ * How big the relation is, without reading it. `null` when nothing can say.
+ *
+ * Null is not zero, and the difference is the whole point: this number decides
+ * whether an exact `COUNT(*)` is affordable, so a relation that merely *looks*
+ * empty because it keeps no statistics is exactly the one that must not be
+ * counted. A view keeps none — it has no row in `pg_stat_user_tables` at all —
+ * and `data_areaactivityprogressperbucket` is a view whose plan joins 22M rows
+ * to 88k, so counting it is a page that never loads.
+ *
+ * Two sources, in order of cost. Statistics answer for an ordinary table. For
+ * everything else — views, and tables never analyzed, whose `n_live_tup` and
+ * `reltuples` are both meaningless — the planner is asked instead: it estimates
+ * without executing, which is the only cheap answer available for a view.
+ */
+async function fetchApproxRowCount(schema: string, table: string): Promise<number | null> {
   const result = await query(
     `
     SELECT GREATEST(COALESCE(s.n_live_tup, 0), COALESCE(c.reltuples, 0))::bigint AS row_count
@@ -654,7 +665,37 @@ async function fetchApproxRowCount(schema: string, table: string): Promise<numbe
   `,
     [schema, table],
   )
-  return Number(result.rows[0]?.row_count ?? 0)
+  const measured = Number(result.rows[0]?.row_count ?? 0)
+  if (measured > 0) return measured
+  return estimateRelationRows(schema, table)
+}
+
+/** What the planner thinks the whole relation holds, or null if it will not say. */
+async function estimateRelationRows(
+  schema: string,
+  table: string,
+): Promise<number | null> {
+  try {
+    const root = await explainPlanRoot(
+      buildMatchQuery({ schema, table, conditions: [] }),
+    )
+    const rows = root?.['Plan Rows']
+    return typeof rows === 'number' ? Math.round(rows) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether the pager's number is worth an exact `COUNT(*)`.
+ *
+ * An unknown size never is. Asking for one explicitly always is — that request
+ * is a reader who has seen the approximate number and decided to pay for the
+ * real one.
+ */
+export function wantsExactCount(approx: number | null, exactRequested: boolean): boolean {
+  if (exactRequested) return true
+  return approx !== null && approx < EXACT_COUNT_THRESHOLD
 }
 
 export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
@@ -693,8 +734,8 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
   // every row whatever the filter matches, so on a 14M-row table it turns an
   // instant page of 50 rows into minutes of waiting for a number in the pager —
   // the same trade the unfiltered page already refuses above the threshold.
-  const wantExact = req.exactCount === true || approx < EXACT_COUNT_THRESHOLD
-  let count = approx
+  const wantExact = wantsExactCount(approx, req.exactCount === true)
+  let count = approx ?? 0
   let isCountApproximate = true
   if (wantExact) {
     const countQuery = buildCountQuery({ schema, table, conditions, columnTypes })
@@ -705,7 +746,10 @@ export async function getTablePage(req: TablePageRequest): Promise<TablePage> {
     // The table's own estimate describes a different set of rows than the one on
     // screen, so ask the planner what the filter matches. Its answer is the same
     // number the filter panel already showed before Apply was pressed.
-    count = await estimateMatchingRows({ schema, table, conditions, columnTypes }, approx)
+    count = await estimateMatchingRows(
+      { schema, table, conditions, columnTypes },
+      approx ?? 0,
+    )
   }
 
   const totalPages = Math.max(1, Math.ceil(count / pageSize))
@@ -1108,7 +1152,7 @@ export async function getRandomRow(
     resolvePrimaryKey(schema, table),
   ])
 
-  const queue = samplePlan(approxRows)
+  const queue = samplePlan(approxRows ?? 0)
   let strategy: SampleStrategy = queue[0].strategy
 
   while (queue.length > 0) {

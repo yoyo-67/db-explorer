@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   $connect,
   $disconnect,
@@ -30,8 +30,12 @@ import ServerSheetButton from '#/components/server/ServerSheetButton'
  * data for attention and no longer needs the whole viewport to fit.
  */
 export default function Header() {
+  const ref = useAppHeaderHeight()
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-3 backdrop-blur-lg sm:px-4">
+    <header
+      ref={ref}
+      className="sticky top-0 z-50 border-b border-[var(--line)]/60 bg-[var(--header-bg)] px-3 backdrop-blur-lg sm:px-4"
+    >
       <nav className="mx-auto flex w-full max-w-[1680px] items-center gap-x-3 py-2">
         <HomeLink />
 
@@ -54,6 +58,32 @@ export default function Header() {
       </nav>
     </header>
   )
+}
+
+/**
+ * Publishes the bar's height as `--app-header-h`, so anything below can stick
+ * *under* it rather than beneath it.
+ *
+ * Measured rather than written down: the bar grows with the text-size setting,
+ * and a hard-coded offset would leave a gap at one scale and hide a line at
+ * another. Observed, not read once, because that setting changes live.
+ */
+function useAppHeaderHeight() {
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        '--app-header-h',
+        `${Math.round(el.getBoundingClientRect().height)}px`,
+      )
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return ref
 }
 
 /**

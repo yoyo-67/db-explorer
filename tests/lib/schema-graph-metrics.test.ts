@@ -9,6 +9,7 @@ import {
   findOrphans,
   hubRadius,
   isFrameworkTable,
+  orderGroups,
   resolveDampedGroups,
 } from '#/lib/schema-graph-metrics'
 import { UNGROUPED } from '#/lib/schema-graph'
@@ -284,5 +285,33 @@ describe('cellIntensity', () => {
 
   it('caps at the maximum even when a damped cell overshoots the scale', () => {
     expect(cellIntensity(200, 54)).toBe(1)
+  })
+})
+
+describe('orderGroups', () => {
+  const curated = ['Projects & Organization', 'Recordings', 'Frames & Positioning']
+
+  it('follows the curated order, which is an argument about how the schema reads', () => {
+    const present = new Set(['Frames & Positioning', 'Projects & Organization', 'Recordings'])
+    expect(orderGroups(present, curated)).toEqual(curated)
+  })
+
+  it('skips curated Groups this schema does not have', () => {
+    const present = new Set(['Frames & Positioning', 'Projects & Organization'])
+    expect(orderGroups(present, curated)).toEqual([
+      'Projects & Organization',
+      'Frames & Positioning',
+    ])
+  })
+
+  it('puts uncurated Groups after the curated ones, alphabetically', () => {
+    const present = new Set(['Recordings', 'Zebra', 'Alpha'])
+    expect(orderGroups(present, curated)).toEqual(['Recordings', 'Alpha', 'Zebra'])
+  })
+
+  it('keeps Derived last however it sorts', () => {
+    const present = new Set([DERIVED_GROUP_LABEL, 'Alpha', 'Recordings'])
+    const ordered = orderGroups(present, curated)
+    expect(ordered.at(-1)).toBe(DERIVED_GROUP_LABEL)
   })
 })

@@ -1,15 +1,17 @@
 import { Link } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
-import { DAMP_OFF } from '#/lib/lens-search'
 import type { EdgeBasis, SchemaGraphNode, SchemaGraphStaleness } from '#/lib/types'
 import LensTableSearch from '#/components/lens/LensTableSearch'
 import TableName from '#/components/TableName'
 
 /**
  * Shared chrome for the three structural views: where you are, how to get to the
- * other two, the two URL knobs, and the staleness deltas — which stay visible
- * everywhere (BUILD-SPEC §4.4) so a stale map can never be mistaken for a thin
- * schema.
+ * other two, and the staleness deltas — which stay visible everywhere
+ * (BUILD-SPEC §4.4) so a stale map can never be mistaken for a thin schema.
+ *
+ * `damp` and `basis` stay in the URL and still filter the graph, but they have no
+ * control here: the reading question is almost always "show me everything", and
+ * two knobs that answer it wrong by default cost more attention than they buy.
  */
 export default function LensNav({
   schema,
@@ -18,11 +20,9 @@ export default function LensNav({
   tables,
   damp,
   basis,
-  dampKeys,
   staleness,
   edgeCount,
   totalEdges,
-  onChange,
 }: {
   schema: string
   group?: string
@@ -30,16 +30,14 @@ export default function LensNav({
   table?: string
   /** Every node in the graph, so the search can reach outside this view. */
   tables: readonly SchemaGraphNode[]
+  /** Carried through every link so the knobs survive navigation. */
   damp: string | undefined
   basis: EdgeBasis | undefined
-  dampKeys: string[]
   staleness: SchemaGraphStaleness | undefined
   edgeCount: number
   totalEdges: number
-  onChange: (next: { damp?: string | undefined; basis?: EdgeBasis | undefined }) => void
 }) {
   const database = useDatabaseParam()
-  const damping = dampKeys.length > 0
   return (
     <div className="space-y-2">
       <nav className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--sea-ink-soft)]">
@@ -96,33 +94,6 @@ export default function LensNav({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--sea-ink-soft)]">
         <LensTableSearch schema={schema} tables={tables} damp={damp} basis={basis} />
 
-        <label className="flex items-center gap-1.5" title={DAMP_HINT}>
-          <input
-            type="checkbox"
-            checked={damping}
-            onChange={(e) => onChange({ damp: e.target.checked ? undefined : DAMP_OFF })}
-            className="rounded border-[var(--line)]"
-          />
-          Damp historical + aggregation
-        </label>
-
-        <label className="flex items-center gap-1.5">
-          Basis
-          <select
-            value={basis ?? ''}
-            onChange={(e) =>
-              onChange({ basis: (e.target.value || undefined) as EdgeBasis | undefined })
-            }
-            className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)] px-1.5 py-0.5 text-xs text-[var(--sea-ink)] outline-none"
-          >
-            <option value="">every basis</option>
-            <option value="declared">declared only</option>
-            <option value="catalog">catalog only</option>
-            <option value="model">model only</option>
-            <option value="convention">convention only</option>
-          </select>
-        </label>
-
         <span className="tabular-nums">
           {edgeCount === totalEdges
             ? `${edgeCount} edges`
@@ -134,11 +105,6 @@ export default function LensNav({
     </div>
   )
 }
-
-const DAMP_HINT =
-  'Historical and Aggregation crossings are an order of magnitude larger than ' +
-  'anything else (Historical → Auth is 54 rows of history_user_id). Undamped ' +
-  'they set the colour scale and flatten every real signal.'
 
 function StalenessBadge({
   schema,

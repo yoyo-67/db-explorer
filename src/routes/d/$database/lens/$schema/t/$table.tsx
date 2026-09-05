@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useMemo } from 'react'
 import BasisTag from '#/components/lens/BasisTag'
@@ -32,7 +32,6 @@ function TableRelationsPage() {
   const database = useDatabaseParam()
   const { schema, table } = Route.useParams()
   const search = Route.useSearch()
-  const navigate = useNavigate()
   const { isChecking, isConnected } = useConnectionGuard()
 
   const lens = useLensGraph(schema, {
@@ -85,17 +84,9 @@ function TableRelationsPage() {
           damp={search.damp}
           basis={search.basis}
           tables={lens.graph?.nodes ?? []}
-          dampKeys={lens.dampKeys}
           staleness={lens.graph?.staleness}
           edgeCount={lens.edges.length}
           totalEdges={lens.totalEdges}
-          onChange={(next) =>
-            navigate({
-              to: '/d/$database/lens/$schema/t/$table',
-              params: { database, schema, table },
-              search: (prev) => ({ ...prev, ...next }),
-            })
-          }
         />
 
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
