@@ -43,10 +43,10 @@ afterEach(() => {
 })
 
 describe('TableName', () => {
-  it('names the model behind a flat table name', () => {
+  it('names a flat table by its model, and only its model', () => {
     renderName('data_recordingpipeline')
-    expect(screen.getByText('data_recordingpipeline')).toBeTruthy()
-    expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
+    expect(screen.getByText('VideoPositioningPipeline')).toBeTruthy()
+    expect(screen.queryByText(/data_recordingpipeline/)).toBeNull()
   })
 
   it('shows a table the map does not know on its own', () => {
@@ -54,21 +54,29 @@ describe('TableName', () => {
     expect(screen.getByText('data_shorturl')).toBeTruthy()
     expect(screen.queryByText(/\(/)).toBeNull()
   })
+})
+
+describe('TableName, identifier then model', () => {
+  it('names the model behind a flat table name', () => {
+    renderName('data_recordingpipeline', false, 'table-then-model')
+    expect(screen.getByText('data_recordingpipeline')).toBeTruthy()
+    expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
+  })
 
   it('names a model the prefixed table name buries', () => {
-    renderName('auth_group')
+    renderName('auth_group', false, 'table-then-model')
     expect(screen.getByText('(Group)')).toBeTruthy()
   })
 
   it('leaves out a model that only re-cases the table name', () => {
-    renderName('recording_batch')
+    renderName('recording_batch', false, 'table-then-model')
     expect(screen.queryByText(/\(/)).toBeNull()
   })
 })
 
 describe('TableName, stacked', () => {
   it('puts the model on its own line under the identifier', () => {
-    renderName('data_recordingpipeline', true)
+    renderName('data_recordingpipeline', true, 'table-then-model')
     const model = screen.getByText('VideoPositioningPipeline')
     // Its own block, so the sidebar row reads as two lines rather than a wrap.
     expect(model.className).toContain('block')
@@ -77,7 +85,7 @@ describe('TableName, stacked', () => {
   })
 
   it('takes no second line when there is no model to name', () => {
-    renderName('recording_batch', true)
+    renderName('recording_batch', true, 'table-then-model')
     expect(screen.getByText('recording_batch')).toBeTruthy()
     expect(screen.queryByText('RecordingBatch')).toBeNull()
   })
@@ -119,6 +127,7 @@ describe('TableName, under a display setting', () => {
 
   it('falls back to the default for a stored mode it does not know', () => {
     renderName('data_recordingpipeline', false, 'pig-latin')
-    expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
+    expect(screen.getByText('VideoPositioningPipeline')).toBeTruthy()
+    expect(screen.queryByText(/data_recordingpipeline/)).toBeNull()
   })
 })

@@ -32,10 +32,10 @@ describe('parseThemeMode', () => {
     expect(parseThemeMode('auto')).toBe('auto')
   })
 
-  it('reads anything else as following the system', () => {
-    expect(parseThemeMode(null)).toBe('auto')
-    expect(parseThemeMode('DARK')).toBe('auto')
-    expect(parseThemeMode(1)).toBe('auto')
+  it('reads anything else as the default, dark', () => {
+    expect(parseThemeMode(null)).toBe('dark')
+    expect(parseThemeMode('DARK')).toBe('dark')
+    expect(parseThemeMode(1)).toBe('dark')
   })
 })
 

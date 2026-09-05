@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import {
   applyTheme,
+  DEFAULT_THEME_MODE,
   parseThemeMode,
   THEME_KEY,
   type ThemeMode,
@@ -34,11 +35,11 @@ function prefersDark(): boolean {
 }
 
 function read(): ThemeMode {
-  if (typeof window === 'undefined') return 'auto'
+  if (typeof window === 'undefined') return DEFAULT_THEME_MODE
   try {
     return parseThemeMode(window.localStorage.getItem(THEME_KEY))
   } catch {
-    return 'auto'
+    return DEFAULT_THEME_MODE
   }
 }
 
@@ -61,10 +62,10 @@ function getSnapshot(): ThemeMode {
   return cached
 }
 
-/** The server has no storage and no media query, so it renders the system's
- *  answer — which is what the head script re-decides before the first paint. */
+/** The server has no storage and no media query, so it renders the default —
+ *  which is what the head script re-decides before the first paint. */
 function getServerSnapshot(): ThemeMode {
-  return 'auto'
+  return DEFAULT_THEME_MODE
 }
 
 export function useThemeMode(): ThemeMode {

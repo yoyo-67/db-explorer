@@ -1,4 +1,10 @@
-import { TABLE_NAME_DISPLAYS, type TableNameDisplay } from '#/lib/table-label'
+import {
+  DEFAULT_TABLE_NAME_DISPLAY,
+  TABLE_NAME_DISPLAYS,
+  type TableNameDisplay,
+} from '#/lib/table-label'
+
+export { DEFAULT_TABLE_NAME_DISPLAY }
 
 /**
  * Local, per-browser preferences — the things a tab should remember without a
@@ -66,10 +72,6 @@ export function clampStatementTimeout(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_STATEMENT_TIMEOUT_MS
   return Math.min(MAX_STATEMENT_TIMEOUT_MS, Math.max(MIN_STATEMENT_TIMEOUT_MS, Math.round(value)))
 }
-
-/** The identifier leads, the model trails it: the name you match against a
- *  query stays the one you read first. */
-export const DEFAULT_TABLE_NAME_DISPLAY: TableNameDisplay = 'table-then-model'
 
 /** Anything that is not one of the four modes is the default — storage is
  *  user-editable, and a name is not worth a broken render. */

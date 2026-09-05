@@ -50,9 +50,9 @@ export function modelSuffix(
 
 /**
  * How a table's name is printed: which of the two names leads, and whether the
- * other one comes along. The raw identifier leads by default because it is what
- * you match against a query or a log line, but a reader who thinks in models
- * should be able to say so once and have every list agree.
+ * other one comes along. The model leads by default because it is the name the
+ * schema is discussed in, but a reader who works from log lines and queries can
+ * put the raw identifier first once and have every list agree.
  */
 export type TableNameDisplay =
   | 'table'
@@ -66,6 +66,11 @@ export const TABLE_NAME_DISPLAYS = [
   'table-then-model',
   'model-then-table',
 ] as const satisfies readonly TableNameDisplay[]
+
+/** The model name alone. A schema whose tables are all `data_`-prefixed runs
+ *  together in a list; the Django model behind each one is the name people say
+ *  out loud, and the raw identifier is a search away rather than on every row. */
+export const DEFAULT_TABLE_NAME_DISPLAY: TableNameDisplay = 'model'
 
 /** The two lines a name is drawn on. `secondary` is null whenever it would carry
  *  no information — nothing in the map, or a model that only re-cases the table. */
@@ -85,7 +90,7 @@ export interface TableNameParts {
 export function tableNameParts(
   table: string,
   model: string | null | undefined,
-  display: TableNameDisplay = 'table-then-model',
+  display: TableNameDisplay = DEFAULT_TABLE_NAME_DISPLAY,
 ): TableNameParts {
   const suffix = modelSuffix(table, model)
   if (!suffix) return { primary: table, secondary: null }
@@ -105,7 +110,7 @@ export function tableNameParts(
 export function tableNameText(
   table: string,
   model: string | null | undefined,
-  display: TableNameDisplay = 'table-then-model',
+  display: TableNameDisplay = DEFAULT_TABLE_NAME_DISPLAY,
 ): string {
   const { primary, secondary } = tableNameParts(table, model, display)
   return secondary ? `${primary} (${secondary})` : primary

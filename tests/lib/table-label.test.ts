@@ -69,8 +69,8 @@ describe('tableNameParts', () => {
   const T = 'data_recordingpipeline'
   const M = 'VideoPositioningPipeline'
 
-  it('leads with the identifier and trails the model by default', () => {
-    expect(tableNameParts(T, M)).toEqual({ primary: T, secondary: M })
+  it('prints the model alone by default', () => {
+    expect(tableNameParts(T, M)).toEqual({ primary: M, secondary: null })
   })
 
   it('prints the identifier alone', () => {

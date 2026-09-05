@@ -113,8 +113,8 @@ describe('statementTimeoutMs', () => {
 })
 
 describe('tableNameDisplay', () => {
-  it('defaults to the identifier with the model behind it', () => {
-    expect(DEFAULT_SETTINGS.tableNameDisplay).toBe('table-then-model')
+  it('defaults to the model alone', () => {
+    expect(DEFAULT_SETTINGS.tableNameDisplay).toBe('model')
   })
 
   it('returns a stored mode', () => {
@@ -125,10 +125,10 @@ describe('tableNameDisplay', () => {
 
   it('falls back to the default for a mode it does not know', () => {
     expect(readSettings(fakeStorage('{"tableNameDisplay":"pig-latin"}')).tableNameDisplay).toBe(
-      'table-then-model',
+      'model',
     )
     expect(readSettings(fakeStorage('{"tableNameDisplay":7}')).tableNameDisplay).toBe(
-      'table-then-model',
+      'model',
     )
   })
 })

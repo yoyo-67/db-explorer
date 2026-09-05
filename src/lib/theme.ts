@@ -15,9 +15,19 @@ export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_KEY = 'theme'
 
-/** Anything else in storage — it is user-editable — is the system's business. */
+/**
+ * What a reader who has never touched the toggle gets.
+ *
+ * Dark rather than `auto`: this is a tool for staring at query results, and the
+ * palette it was designed against is the dark one. Following the system is
+ * still one click away, and once anything is stored that choice wins.
+ */
+export const DEFAULT_THEME_MODE: ThemeMode = 'dark'
+
+/** Anything else in storage — it is user-editable — is nobody's choice, so it
+ *  falls back to {@link DEFAULT_THEME_MODE}. */
 export function parseThemeMode(raw: unknown): ThemeMode {
-  return raw === 'light' || raw === 'dark' || raw === 'auto' ? raw : 'auto'
+  return raw === 'light' || raw === 'dark' || raw === 'auto' ? raw : DEFAULT_THEME_MODE
 }
 
 export function resolveTheme(mode: ThemeMode, prefersDark: boolean): ResolvedTheme {

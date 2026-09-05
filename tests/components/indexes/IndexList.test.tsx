@@ -6,8 +6,8 @@ import IndexList from '#/components/indexes/IndexList'
 import { connectionStatusKey } from '#/hooks/useConnectionStatus'
 import type { IndexListRow, RowCriteria, TableChoice } from '#/lib/indexes/ranking'
 
-/** The list prints table names the way the rest of the app does — identifier
- *  first, Django model behind it — so the map has to be in reach. */
+/** The list prints table names the way the rest of the app does — the Django
+ *  model behind the flat identifier — so the map has to be in reach. */
 vi.mock('@tanstack/react-router', () => ({
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({ location: { pathname: '/d/shop_db/indexes/public' } }),
@@ -110,10 +110,10 @@ describe('IndexList', () => {
     expect(screen.getByText(/nothing matches/i)).toBeTruthy()
   })
 
-  it('prints a row table under both its names, not the bare identifier', () => {
+  it('prints a row table by its model, not the bare identifier', () => {
     renderList({ rows: [row({ table: 'data_recordingpipeline' })] })
-    expect(screen.getByText('data_recordingpipeline')).toBeTruthy()
-    expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
+    expect(screen.getByText('VideoPositioningPipeline')).toBeTruthy()
+    expect(screen.queryByText('data_recordingpipeline')).toBeNull()
   })
 })
 
@@ -141,7 +141,7 @@ describe('the table picker', () => {
     fireEvent.change(input, { target: { value: 'videopositioning' } })
     const hits = options()
     expect(hits).toHaveLength(1)
-    expect(hits[0].textContent).toContain('data_recordingpipeline')
+    expect(hits[0].textContent).toContain('VideoPositioningPipeline')
   })
 
   it('picks the table it was told to, exactly', () => {
@@ -164,14 +164,14 @@ describe('the table picker', () => {
     expect(screen.getByText(/no table on this page matches/i)).toBeTruthy()
   })
 
-  it('shows the chosen table by both names, with a way back to every table', () => {
+  it('shows the chosen table by its model, with a way back to every table', () => {
     const onCriteriaChange = vi.fn()
     renderList({
       tables,
       criteria: { text: '', flags: [], table: 'data_recordingpipeline' },
       onCriteriaChange,
     })
-    expect(screen.getByText('(VideoPositioningPipeline)')).toBeTruthy()
+    expect(screen.getByText('VideoPositioningPipeline')).toBeTruthy()
     screen.getByRole('button', { name: /every table/i }).click()
     expect(onCriteriaChange).toHaveBeenCalledWith(expect.objectContaining({ table: null }))
   })
