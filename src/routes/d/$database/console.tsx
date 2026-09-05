@@ -423,10 +423,19 @@ function ConsolePage() {
             )}
             {result?.ok && (
               <span className="ml-auto text-xs text-[var(--sea-ink-soft)]">
-                {result.command && result.rows.length === 0
-                  ? `${result.command} · ${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'} affected`
-                  : `${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'}`}
-                {result.truncated && ' · showing first 500'} · {result.durationMs} ms
+                {/* An explain returns no rows and counting them says nothing.
+                    Its own timings are in the plan header, which are the query's
+                    rather than this round trip's. */}
+                {result.plan ? (
+                  `explained in ${result.durationMs} ms`
+                ) : (
+                  <>
+                    {result.command && result.rows.length === 0
+                      ? `${result.command} · ${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'} affected`
+                      : `${result.rowCount.toLocaleString()} row${result.rowCount === 1 ? '' : 's'}`}
+                    {result.truncated && ' · showing first 500'} · {result.durationMs} ms
+                  </>
+                )}
               </span>
             )}
           </div>

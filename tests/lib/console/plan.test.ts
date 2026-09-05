@@ -198,3 +198,124 @@ describe('planWarnings', () => {
     expect(planWarnings(plan)).toEqual([])
   })
 })
+
+/**
+ * A `Limit` is charged only for the rows it pulls, so its total cost is lower
+ * than the totals of the nodes it sits above. Anything that treats the root's
+ * total as "the whole" is wrong for every query with a LIMIT in it — which is
+ * most of the ones anybody explains.
+ */
+describe('what a node’s share is a share of', () => {
+  const limited = [
+    {
+      Plan: {
+        'Node Type': 'Limit',
+        'Total Cost': 3414,
+        'Plan Rows': 100,
+        Plans: [
+          {
+            'Node Type': 'Index Scan',
+            'Relation Name': 'data_activity',
+            'Total Cost': 14186,
+            'Plan Rows': 69728,
+          },
+        ],
+      },
+    },
+  ]
+
+  it('adds up what each node costs on its own', () => {
+    const plan = parsePlan(limited)!
+    // The Limit is charged less than its child, so it has no self cost left.
+    expect(plan.root.selfCost).toBe(0)
+    expect(plan.totalSelfCost).toBe(14186)
+  })
+
+  it('never lets a node’s share of the total exceed the total', () => {
+    const plan = parsePlan(limited)!
+    for (const node of [plan.root, ...plan.root.children]) {
+      expect(node.selfCost).toBeLessThanOrEqual(plan.totalSelfCost)
+    }
+  })
+
+  it('measures the same way for a plan that was run', () => {
+    const plan = parsePlan([analyzed])!
+    // Self times partition the wall clock, so they add back up to it.
+    expect(plan.totalSelfMs).toBeCloseTo(plan.root.totalMs!)
+  })
+})
+
+/**
+ * The plan a real query produced, reduced: `LIMIT 100` over a scan the planner
+ * expected 69,728 rows from. Every node reports 100 actual rows because the
+ * Limit stopped them, and warning about that on all four was the bug this
+ * fixture exists to prevent.
+ */
+const limitedRun = [
+  {
+    Plan: {
+      'Node Type': 'Limit',
+      'Total Cost': 3414,
+      'Plan Rows': 100,
+      'Actual Rows': 100,
+      'Actual Loops': 1,
+      'Actual Total Time': 1.5,
+      Plans: [
+        {
+          'Node Type': 'Nested Loop',
+          'Total Cost': 5185,
+          'Plan Rows': 69_728,
+          'Actual Rows': 100,
+          'Actual Loops': 1,
+          'Actual Total Time': 1.4,
+          Plans: [
+            {
+              'Node Type': 'Index Scan',
+              'Relation Name': 'data_activity',
+              'Index Name': 'data_useractivity_pkey',
+              'Total Cost': 14_186,
+              'Plan Rows': 69_728,
+              'Actual Rows': 100,
+              'Actual Loops': 1,
+              'Actual Total Time': 0.3,
+              Filter: '(parent_activity_id IS NULL)',
+            },
+          ],
+        },
+      ],
+    },
+    'Planning Time': 1.4,
+    'Execution Time': 1.5,
+  },
+]
+
+describe('a plan cut short by a LIMIT', () => {
+  it('does not call the planner wrong for rows a LIMIT stopped', () => {
+    const plan = parsePlan(limitedRun)!
+    expect(planWarnings(plan)).toEqual([])
+  })
+
+  it('still reports an estimate the planner under-called', () => {
+    // Same shape, but the scan produced far more than predicted — which no
+    // Limit above it can explain.
+    const over = JSON.parse(JSON.stringify(limitedRun))
+    const scan = over[0].Plan.Plans[0].Plans[0]
+    scan['Plan Rows'] = 5
+    scan['Actual Rows'] = 40_000
+    const plan = parsePlan(over)!
+    expect(planWarnings(plan).map((w) => w.kind)).toEqual(['estimate-off'])
+  })
+
+  it('warns about a short estimate when no LIMIT explains it', () => {
+    const bare = JSON.parse(JSON.stringify(limitedRun))[0].Plan.Plans[0]
+    const plan = parsePlan([{ Plan: bare }])!
+    expect(planWarnings(plan).map((w) => w.kind)).toContain('estimate-off')
+  })
+
+  it('still reports a sort that spilled, LIMIT or not', () => {
+    const spilling = JSON.parse(JSON.stringify(limitedRun))
+    spilling[0].Plan.Plans[0].Plans[0]['Sort Space Type'] = 'Disk'
+    spilling[0].Plan.Plans[0].Plans[0]['Sort Method'] = 'external merge'
+    expect(planWarnings(parsePlan(spilling)!).map((w) => w.kind)).toEqual(['sort-spilled'])
+  })
+})

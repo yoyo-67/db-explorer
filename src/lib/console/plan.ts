@@ -53,6 +53,17 @@ export interface QueryPlanTree {
   analyzed: boolean
   /** The single node that costs the most on its own. */
   hottest: PlanNode | null
+  /**
+   * The self-costs added up — what a node's share is a share *of*.
+   *
+   * Not the root's own total, which is what this used to divide by and is wrong
+   * whenever the query has a `LIMIT`: the planner charges a Limit node only for
+   * the rows it actually pulls, so its total is *smaller* than the totals of
+   * the nodes beneath it. Dividing by it gave every deep node a share above one,
+   * and a row of full-width bars says nothing at all.
+   */
+  totalSelfMs: number
+  totalSelfCost: number
 }
 
 /** Which of the several condition fields a node happens to carry. */
@@ -145,6 +156,8 @@ export function parsePlan(explained: unknown): QueryPlanTree | null {
     executionMs: num(first as Record<string, unknown>, 'Execution Time'),
     analyzed,
     hottest,
+    totalSelfMs: nodes.reduce((sum, node) => sum + (node.selfMs ?? 0), 0),
+    totalSelfCost: nodes.reduce((sum, node) => sum + node.selfCost, 0),
   }
 }
 
@@ -163,6 +176,10 @@ const ESTIMATE_FACTOR = 10
 /** An estimate on a handful of rows is always proportionally wrong. */
 const ESTIMATE_FLOOR = 100
 
+/** Nodes that stop their children early, so a child returning fewer rows than
+ *  estimated has been interrupted rather than mispredicted. */
+const EARLY_STOP = new Set(['Limit'])
+
 /**
  * What is worth saying about this plan.
  *
@@ -173,8 +190,31 @@ const ESTIMATE_FLOOR = 100
  */
 export function planWarnings(plan: QueryPlanTree): PlanWarning[] {
   const found: PlanWarning[] = []
+  walk(plan.root, false, found)
+  return found
+}
 
-  for (const node of flatten(plan.root)) {
+/**
+ * `interrupted` says a `Limit` sits somewhere above this node.
+ *
+ * It changes what an estimate means. A node under a `LIMIT 100` reports the
+ * rows it was asked for, not the rows it would have produced — so `est 69,728,
+ * got 100` is the Limit doing its job, and the planner was not wrong about
+ * anything. Warning there is worse than useless: it fires on every node of
+ * every limited query, which is most of the queries anybody explains, and a
+ * warning that always fires is one nobody reads.
+ *
+ * The other direction still counts. Producing *more* rows than estimated is not
+ * something a Limit can explain.
+ */
+function walk(node: PlanNode, interrupted: boolean, found: PlanWarning[]): void {
+  collect(node, interrupted, found)
+  const below = interrupted || EARLY_STOP.has(node.nodeType)
+  for (const child of node.children) walk(child, below, found)
+}
+
+function collect(node: PlanNode, interrupted: boolean, found: PlanWarning[]): void {
+  {
     if (
       node.nodeType === 'Seq Scan' &&
       node.condition &&
@@ -192,7 +232,8 @@ export function planWarnings(plan: QueryPlanTree): PlanWarning[] {
       const estimated = node.planRows * node.loops
       const bigger = Math.max(actual, estimated)
       const smaller = Math.max(1, Math.min(actual, estimated))
-      if (bigger > ESTIMATE_FLOOR && bigger / smaller >= ESTIMATE_FACTOR) {
+      const stoppedShort = interrupted && actual < estimated
+      if (!stoppedShort && bigger > ESTIMATE_FLOOR && bigger / smaller >= ESTIMATE_FACTOR) {
         found.push({
           kind: 'estimate-off',
           node,
@@ -209,6 +250,4 @@ export function planWarnings(plan: QueryPlanTree): PlanWarning[] {
       })
     }
   }
-
-  return found
 }

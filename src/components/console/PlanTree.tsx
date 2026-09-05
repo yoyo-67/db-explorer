@@ -22,9 +22,11 @@ export default function PlanTree({ plan }: { plan: QueryPlanTree }) {
     byNode.set(warning.node.id, [...(byNode.get(warning.node.id) ?? []), warning.message])
   }
 
-  const total = plan.analyzed
-    ? (plan.root.totalMs ?? 0)
-    : plan.root.totalCost
+  // The sum of what each node costs on its own — see `totalSelfCost`. The
+  // root's own total is not it: a `Limit` is charged for the rows it pulls, so
+  // it is cheaper than the scan under it, and dividing by it puts every deep
+  // node above 100%.
+  const total = plan.analyzed ? plan.totalSelfMs : plan.totalSelfCost
 
   return (
     <div className="island-shell space-y-3 rounded-xl p-4">
@@ -62,6 +64,21 @@ export default function PlanTree({ plan }: { plan: QueryPlanTree }) {
 /** Depth-first, which is the order the plan reads in. */
 function rows(node: PlanNode, depth = 0): Array<{ node: PlanNode; depth: number }> {
   return [{ node, depth }, ...node.children.flatMap((child) => rows(child, depth + 1))]
+}
+
+/**
+ * What this node costs on its own, written so a small number does not read as
+ * nothing. A `Memoize` printed as `cost 0` looks free; `cost 0.4` looks cheap,
+ * which is what it is.
+ */
+function cost(node: PlanNode, analyzed: boolean): string {
+  const own = analyzed ? node.selfMs : node.selfCost
+  if (own === null) return `cost ${node.selfCost.toFixed(1)}`
+  const unit = analyzed ? ' ms' : ''
+  const prefix = analyzed ? '' : 'cost '
+  if (own === 0) return `${prefix}0${unit}`
+  if (own < 0.05) return `${prefix}<0.1${unit}`
+  return `${prefix}${own.toFixed(own < 10 ? 1 : 0)}${unit}`
 }
 
 function share(node: PlanNode, total: number, analyzed: boolean): number {
@@ -126,10 +143,8 @@ function PlanRow({
             ) : (
               <span>est {node.planRows.toLocaleString()} rows</span>
             )}
-            <span className="font-mono">
-              {analyzed && node.selfMs !== null
-                ? `${node.selfMs.toFixed(1)} ms`
-                : `cost ${node.selfCost.toFixed(0)}`}
+            <span className="font-mono" title={cost(node, analyzed)}>
+              {cost(node, analyzed)}
             </span>
           </span>
         </div>
