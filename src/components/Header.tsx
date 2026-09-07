@@ -15,6 +15,7 @@ import { connectionStatusKey, useConnectionState } from '#/hooks/useConnectionSt
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { parseLensPath } from '#/lib/lens-links'
 import { resolveActiveSchema } from '#/lib/active-schema'
+import { useActiveSchema } from '#/hooks/useActiveSchema'
 import { menuHoldsRoute } from '#/lib/menu-routes'
 import { useDatabase } from '#/hooks/useDatabase'
 import TextScale from './TextScale'
@@ -202,24 +203,6 @@ function ConnectionState() {
   )
 }
 
-/**
- * The schema the schema-scoped links point at: the route's own when it has one,
- * the default otherwise, so the nav does not lose entries on the console or the
- * query board. The schema list is already cached by the picker below.
- */
-function useActiveSchema(): string | undefined {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const database = useDatabase()
-  const schemasQuery = useQuery({
-    queryKey: ['schemas', database],
-    queryFn: () => $getSchemas({ data: { database: database! } }),
-    staleTime: Infinity,
-    enabled: !!database,
-  })
-  if (!database) return undefined
-  return resolveActiveSchema(pathname, (schemasQuery.data ?? []).map((s) => s.name))
-}
-
 /** The console runs SQL against one database, so it needs one to point at. */
 function ConsoleLink() {
   const database = useDatabase()
@@ -345,6 +328,24 @@ function Menu() {
               Query board
               <span className={MENU_HINT_CLASS}>
                 What this database spends its time running
+              </span>
+            </Link>
+          )}
+
+          {database && schema && (
+            <Link
+              to="/d/$database/find/$schema"
+              params={{ database, schema }}
+              // Both stages of the search live in the search params, so a bare
+              // link has to say it starts with neither.
+              search={{}}
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+              activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+            >
+              Find a value
+              <span className={MENU_HINT_CLASS}>
+                Paste an id — which table owns it, and what else holds it
               </span>
             </Link>
           )}

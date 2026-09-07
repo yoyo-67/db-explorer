@@ -28,6 +28,7 @@ import { getTablePhysical } from '#/server/table-physical'
 import { getServerProfile } from '#/server/server-profile'
 import { getLiveActivity } from '#/server/live-activity'
 import { getSchemaAnatomy } from '#/server/schema-anatomy'
+import { findValueOwners, findValueReach } from '#/server/find-value'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
@@ -671,3 +672,17 @@ export const $getLiveActivity = createServerFn({ method: 'GET' })
 export const $getSchemaAnatomy = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)
   .handler(scoped((data) => getSchemaAnatomy(data.schema)))
+
+/**
+ * Find, in two calls because it is two questions: whose id is this, and where
+ * else does it appear. Split so the second is only paid for the owner the
+ * reader picked — a value that turns out to be nobody's key costs one round of
+ * index lookups and stops there.
+ */
+export const $findValueOwners = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string; value: string }) => data)
+  .handler(scoped((data) => findValueOwners(data.schema, data.value)))
+
+export const $findValueReach = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string; value: string; owner: string }) => data)
+  .handler(scoped((data) => findValueReach(data.schema, data.value, data.owner)))

@@ -9,7 +9,7 @@
  * and `/settings` are about neither and sit at the root — a flow doc is a file,
  * and it names its own database.
  */
-const DATABASE_ROUTES = ['/queries', '/pressure', '/indexes'] as const
+const DATABASE_ROUTES = ['/queries', '/pressure', '/indexes', '/find'] as const
 const ROOT_ROUTES = ['/flow', '/help', '/settings'] as const
 
 /** Prefix match on a segment boundary: `/pressured` is not `/pressure`. */

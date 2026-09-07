@@ -18,6 +18,7 @@ import { Route as HelpTopicRouteImport } from './routes/help/$topic'
 import { Route as DDatabaseIndexRouteImport } from './routes/d/$database/index'
 import { Route as DDatabaseConsoleRouteImport } from './routes/d/$database/console'
 import { Route as DDatabaseQueriesRouteImport } from './routes/d/$database/queries'
+import { Route as DDatabaseFindSchemaRouteImport } from './routes/d/$database/find/$schema'
 import { Route as DDatabaseIndexesSchemaRouteImport } from './routes/d/$database/indexes/$schema'
 import { Route as DDatabasePressureSchemaRouteImport } from './routes/d/$database/pressure/$schema'
 import { Route as DDatabaseLensSchemaIndexRouteImport } from './routes/d/$database/lens/$schema/index'
@@ -70,6 +71,11 @@ const DDatabaseConsoleRoute = DDatabaseConsoleRouteImport.update({
 const DDatabaseQueriesRoute = DDatabaseQueriesRouteImport.update({
   id: '/d/$database/queries',
   path: '/d/$database/queries',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DDatabaseFindSchemaRoute = DDatabaseFindSchemaRouteImport.update({
+  id: '/d/$database/find/$schema',
+  path: '/d/$database/find/$schema',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DDatabaseIndexesSchemaRoute = DDatabaseIndexesSchemaRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
   '/d/$database/': typeof DDatabaseIndexRoute
+  '/d/$database/find/$schema': typeof DDatabaseFindSchemaRoute
   '/d/$database/indexes/$schema': typeof DDatabaseIndexesSchemaRoute
   '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
   '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
   '/d/$database': typeof DDatabaseIndexRoute
+  '/d/$database/find/$schema': typeof DDatabaseFindSchemaRoute
   '/d/$database/indexes/$schema': typeof DDatabaseIndexesSchemaRoute
   '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
   '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/d/$database/console': typeof DDatabaseConsoleRoute
   '/d/$database/queries': typeof DDatabaseQueriesRoute
   '/d/$database/': typeof DDatabaseIndexRoute
+  '/d/$database/find/$schema': typeof DDatabaseFindSchemaRoute
   '/d/$database/indexes/$schema': typeof DDatabaseIndexesSchemaRoute
   '/d/$database/pressure/$schema': typeof DDatabasePressureSchemaRoute
   '/d/$database/lens/$schema/orphans': typeof DDatabaseLensSchemaOrphansRoute
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/d/$database/console'
     | '/d/$database/queries'
     | '/d/$database/'
+    | '/d/$database/find/$schema'
     | '/d/$database/indexes/$schema'
     | '/d/$database/pressure/$schema'
     | '/d/$database/lens/$schema/orphans'
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/d/$database/console'
     | '/d/$database/queries'
     | '/d/$database'
+    | '/d/$database/find/$schema'
     | '/d/$database/indexes/$schema'
     | '/d/$database/pressure/$schema'
     | '/d/$database/lens/$schema/orphans'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/d/$database/console'
     | '/d/$database/queries'
     | '/d/$database/'
+    | '/d/$database/find/$schema'
     | '/d/$database/indexes/$schema'
     | '/d/$database/pressure/$schema'
     | '/d/$database/lens/$schema/orphans'
@@ -247,6 +259,7 @@ export interface RootRouteChildren {
   DDatabaseConsoleRoute: typeof DDatabaseConsoleRoute
   DDatabaseQueriesRoute: typeof DDatabaseQueriesRoute
   DDatabaseIndexRoute: typeof DDatabaseIndexRoute
+  DDatabaseFindSchemaRoute: typeof DDatabaseFindSchemaRoute
   DDatabaseIndexesSchemaRoute: typeof DDatabaseIndexesSchemaRoute
   DDatabasePressureSchemaRoute: typeof DDatabasePressureSchemaRoute
   DDatabaseLensSchemaOrphansRoute: typeof DDatabaseLensSchemaOrphansRoute
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseQueriesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/d/$database/find/$schema': {
+      id: '/d/$database/find/$schema'
+      path: '/d/$database/find/$schema'
+      fullPath: '/d/$database/find/$schema'
+      preLoaderRoute: typeof DDatabaseFindSchemaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/d/$database/indexes/$schema': {
       id: '/d/$database/indexes/$schema'
       path: '/d/$database/indexes/$schema'
@@ -391,6 +411,7 @@ const rootRouteChildren: RootRouteChildren = {
   DDatabaseConsoleRoute: DDatabaseConsoleRoute,
   DDatabaseQueriesRoute: DDatabaseQueriesRoute,
   DDatabaseIndexRoute: DDatabaseIndexRoute,
+  DDatabaseFindSchemaRoute: DDatabaseFindSchemaRoute,
   DDatabaseIndexesSchemaRoute: DDatabaseIndexesSchemaRoute,
   DDatabasePressureSchemaRoute: DDatabasePressureSchemaRoute,
   DDatabaseLensSchemaOrphansRoute: DDatabaseLensSchemaOrphansRoute,

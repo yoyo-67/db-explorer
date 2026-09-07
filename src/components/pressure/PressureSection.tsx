@@ -1,7 +1,4 @@
 import { useState } from 'react'
-import { useDatabaseParam } from '#/hooks/useDatabase'
-import { Link } from '@tanstack/react-router'
-import TableName from '#/components/TableName'
 
 /**
  * Shared shell for the pressure sections. Each one is a card that says what rule
@@ -78,18 +75,9 @@ export function CappedList<T>({
   )
 }
 
-export function TableLink({ schema, table }: { schema: string; table: string }) {
-  const database = useDatabaseParam()
-  return (
-    <Link
-      to="/d/$database/t/$schema/$table"
-      params={{ database, schema, table }}
-      className="font-mono text-[var(--sea-ink)] no-underline hover:text-[var(--lagoon-deep)] hover:underline"
-    >
-      <TableName table={table} />
-    </Link>
-  )
-}
+/** Re-exported so the pressure sections keep one import — the component itself
+ *  is shared, since every list in the app ends in a table link. */
+export { default as TableLink } from '#/components/TableLink'
 
 export function Chip({
   children,

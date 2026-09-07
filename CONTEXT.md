@@ -73,6 +73,26 @@ The honest label for a table with no edge in either direction on the Merged grap
 **Trace**:
 Following what one row actually touches, one steered hop at a time. It *is* the **Row detail** route with an `outgoing` array beside `children` — no separate route, so hop history is browser history and a shareable trace is the row URL.
 
+**Find**:
+Starting from a value instead of a table. Route `/d/$database/find/$schema`, `?v=<value>&owner=<table>`. Two stages: **Owner** (whose primary key is this?) then **Reach** (which columns referencing that table hold it?). Never scans: stage one is one index lookup per candidate key, stage two counts only where the **Reach plan** says it is cheap.
+_Avoid_: search (the app already has three name searches), grep, lookup.
+
+**Owner**:
+A table whose single-column primary key holds the pasted value. Plural on purpose — a shared sequence or a mirrored history table can make the same id a key in two places, which is a finding, not an ambiguity. Multi-column keys are never probed: a value alone cannot address a row that needs two.
+
+**Gate**:
+What Find returns when a value's shape cannot single a row out — a bare integer (`ambiguous-integer`) or a short unstructured word (`too-short`). Not an error: the response carries every primary key that *could* hold the value, and picking one is a click. Row detail's "Where else" link answers the gate before it is asked, because that page already knows both the value and its table.
+
+**Reach**:
+The columns that reference an **Owner**, from the **Merged graph**, and whether this value is in them. The list is the graph filtered to one table, not a search — which is why a row may say *not counted*: the column is a place the value could be whether or not anyone has looked. Same budget as incoming references (indexed leading column, table under 100k estimated rows), same three reasons (`unindexed`, `large`, `timeout`), and `excludedByType` for referencing columns whose own type cannot hold the value.
+
+**Palette**:
+The floating window over any page, on `⌘K` (and `⌘J`, which a browser extension may claim first — `chrome.commands` is dispatched above the page, so `preventDefault` cannot win it back). Pages of its own rather than one filtered list: the root offers commands and, from two characters, the tables it is *sure* of; pasting an id offers **Find** as the first row. `↵` opens, `⌘↵` opens in a new tab (rows are real anchors), `⇥` asks the selected row's follow-up question, `⇧⇥`/`esc`/`⌫` go back.
+_Avoid_: command bar, omnibox, spotlight.
+
+**Confident match**:
+What the palette's root will show for a typed table name: the query as a contiguous run of characters in the identifier or its model name, ranked whole-name → prefix → word-start → anywhere, and the weaker tier dropped whenever a stronger one exists. Deliberately *not* the fuzzy matcher the Tables page uses — on the root a loose match pushes the row you wanted off the list.
+
 **SQL console**:
 Read-only textarea at `/console`, runs query, renders result in shared `DataTable`. localStorage-backed history of last 20 queries. No save/share. Constrained by session-level `READ ONLY` already set on the pool.
 
@@ -84,6 +104,7 @@ Read-only textarea at `/console`, runs query, renders result in shared `DataTabl
 - A **Table** has **Column**s; some **Column**s are FKs referencing another **Table**.
 - A **Row detail** of one Table shows all rows from other Tables holding an FK back to it.
 - A **Preset** produces a **Connection** when applied (from connect screen or header switcher).
+- **Find** turns a value into an **Owner**, and an Owner into a **Reach** list read off the **Merged graph** — so a **Basis** labels every row of it.
 
 ## Decisions (locked)
 
@@ -116,6 +137,13 @@ Read-only textarea at `/console`, runs query, renders result in shared `DataTabl
 | Q25 | Trace = Row detail extended, no `/trace` route | hop history is browser history; the row URL is the shareable trace |
 | Q26 | Incoming counts split into eager (indexed, < 100k est.) and not-counted | 45% of inferred columns are unindexed; eager counting would seq-scan per neighbour |
 | Q27 | Internal schema metadata (`local/`) is gitignored, its own private repo | this repo is public |
+| Q28 | Find is graph-first: probe primary keys for the **Owner**, then read **Reach** off the merged graph | once the owner is known, the columns that can hold the value *are* the columns that reference it — a schema-wide hunt becomes a known list |
+| Q29 | Value shape gates the fan-out; bare integers need a table | `4271` is a key in nearly every table, so an unaided answer is 300 true and useless rows. The gate ships with the candidate list and the row-detail entry point, so answering it is one click |
+| Q30 | Reach reuses the incoming-reference budget rather than inventing one | same question (does this column hold this value), same 45%-unindexed schema, so one rule and one set of reasons |
+| Q31 | The palette is a page stack, not one filtered list | the second question is always narrower than the first (id → owner → referencing columns); a flat list cannot ask it |
+| Q32 | `⌘K` leads, `⌘J` beside it | an extension holding `⌘J` through `chrome.commands` is dispatched above the page, so one of the two chords may never arrive |
+| Q33 | Palette rows are anchors, and `⌘` means new tab | the same rule as everywhere else in the app (`#/lib/link-click`); the follow-up question moved to `⇥` rather than take the browser's modifier |
+| Q34 | Root table rows use a contiguous match, not the fuzzy one | table rows sit beside commands there, so a loose match is noise that hides the row that was wanted |
 
 ## Execution order
 

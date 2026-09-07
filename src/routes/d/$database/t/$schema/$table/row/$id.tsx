@@ -122,6 +122,18 @@ function RowDetailPage() {
             {schema}.<TableName table={table} />
           </span>
           <div className="ml-auto flex items-center gap-3">
+            {/* The one entry into Find that needs no gate: this page already
+                knows both the value and the table it is the key of, which is
+                exactly what a bare integer id cannot say on its own. */}
+            <Link
+              to="/d/$database/find/$schema"
+              params={{ database, schema }}
+              search={{ v: id, owner: table }}
+              title="Every column that references this table, and whether it holds this id"
+              className="whitespace-nowrap rounded-full border border-[var(--chip-line)] px-2 py-0.5 text-xs text-[var(--palm)] transition hover:bg-[var(--link-bg-hover)]"
+            >
+              Where else
+            </Link>
             {detail && (
               <CopyPageButton
                 detail={detail}

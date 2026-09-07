@@ -1,5 +1,6 @@
 import type { SampleStrategy } from '#/lib/sample-plan'
 import type { Condition } from '#/lib/filter-model'
+import type { FindGateReason, FindShape } from '#/lib/find/value-shape'
 
 export type JsonValue =
   | string
@@ -810,4 +811,73 @@ export interface SchemaIndexUsage {
   history: IndexUsageSample[]
   /** Why history is missing or short, when there is a reason worth showing. */
   historyNote: string | null
+}
+
+// ── Find ───────────────────────────────────────────────────────────────────
+
+/**
+ * A primary key column a value could be sitting in — a question worth asking,
+ * not an answer. Candidates exist so a gated value has something to offer the
+ * reader to pick from.
+ */
+export interface FindCandidate {
+  table: string
+  pkColumn: string
+  /** `information_schema` spelling, shown so a miss can be read as a type miss. */
+  pkType: string
+  rowCount: number
+}
+
+/** A table whose primary key really does hold the value. */
+export interface FindOwner extends FindCandidate {}
+
+/** Stage one: whose id is this? */
+export interface FindOwners {
+  schema: string
+  /** The value as compared — trimmed and unquoted by `planValue`. */
+  value: string
+  shape: FindShape
+  /** Set when the shape cannot single a row out, so nothing was probed. */
+  gateReason: FindGateReason | null
+  /** How many primary keys were asked. Zero when gated. */
+  probed: number
+  owners: FindOwner[]
+  /** Every primary key that *could* hold this shape, for the gated pick list. */
+  candidates: FindCandidate[]
+  /** A probe batch ran out of time, so `owners` may be short. Never silent. */
+  timedOut: boolean
+}
+
+/** One column that references the owner, and whether it holds the value. */
+export interface FindReachEntry {
+  fromTable: string
+  fromColumn: string
+  toColumn: string
+  basis: EdgeBasis
+  indexed: boolean
+  group: string
+  rowCount: number
+  /** `null` means not counted — never zero standing in for unknown. */
+  total: number | null
+  /** Why the count was skipped, so the UI can say which. */
+  countSkipped?: 'unindexed' | 'large' | 'timeout'
+}
+
+/** Stage two: where else does this id appear? */
+export interface FindReach {
+  schema: string
+  value: string
+  owner: string
+  /** Null when the owner's key is not a single column — the reach list still
+   *  stands, only the link back to the row itself cannot be built. */
+  ownerPkColumn: string | null
+  entries: FindReachEntry[]
+  /**
+   * Columns that reference the owner but whose own type cannot hold this value
+   * — a `varchar` column carrying a `bigint` key, usually a convention edge that
+   * read a name and not a type. Counted rather than listed: they are not places
+   * the value can be, but leaving them out silently would understate how much
+   * points at this table.
+   */
+  excludedByType: number
 }

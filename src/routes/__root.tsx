@@ -7,6 +7,7 @@ import {
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import Header from '../components/Header'
+import Palette from '#/components/palette/Palette'
 import { useServerSettingsSync } from '#/hooks/useServerSettings'
 import Sidebar from '../components/Sidebar'
 import TextScaleSync from '../components/TextScaleSync'
@@ -89,6 +90,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             outlives it. */}
         <ThemeSync />
         <TextScaleSync />
+        {/* Outside the page tree: the palette opens over whatever is showing,
+            and its chord has to work on every route. */}
+        <Palette />
         <Header />
         <div className="flex">
           <Sidebar />

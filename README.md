@@ -51,6 +51,26 @@ functions), TypeScript, and Tailwind.
   and a list of tables nothing references. Deterministic layout, no graph
   library. Edges are labelled by where they came from — a real FK constraint, an
   optional schema map, or a column-name rule — and never conflated.
+- **Find a value** (`/d/$database/find/$schema`) — the one page that starts from
+  data rather than from a table. Paste an id out of a log and it asks which
+  table's primary key holds it (one index lookup per candidate key, batched),
+  then which columns reference that table and whether this value is in them —
+  read off the same merged graph the Lens draws, so an inferred relation is
+  found *and* labelled as inferred. Counts only where an index leads with the
+  column and the table is small enough; everything else is listed with the
+  reason, never as a zero. A bare integer is a key in nearly every table, so
+  Find asks which one you meant instead of returning all of them — and row
+  detail's *Where else* link answers that before it is asked. Both stages live
+  in the URL, so an answer is a link.
+- **Palette** (`⌘K`, or `⌘J`) — a floating window over any page, with pages of
+  its own. Paste an id and the first row is *Find it*; choosing an owner opens
+  the row, `⇥` asks where else the id appears, and every row is a real link so
+  `⌘↵` opens it in a new tab. Type two characters of a table name and the
+  tables it is sure of appear above the commands — a contiguous match, not a
+  fuzzy one, so nothing arrives that you did not mean. (`⌘J` is Chrome's own
+  Downloads chord and a favourite of extensions; an extension that claims it
+  through `chrome.commands` is dispatched above the page and cannot be
+  overridden from here, which is why `⌘K` leads.)
 - **SQL console** — every statement runs inside a `BEGIN READ ONLY`
   transaction, so the connection can never write.
 - **Query HUD** — a badge in the navbar shows how many queries the last action
