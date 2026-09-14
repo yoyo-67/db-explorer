@@ -4,6 +4,7 @@ import {
   lensTargetForTable,
   parseLensPath,
   schemaFromPathname,
+  tableFromPathname,
 } from '#/lib/lens-links'
 import type { TableCatalog } from '#/lib/types'
 
@@ -147,5 +148,27 @@ describe('the parsers refuse a path with no database', () => {
 describe('schemaFromPathname on the index inspector', () => {
   it('reads the schema out of an index inspector URL', () => {
     expect(schemaFromPathname('/d/reporting/indexes/aggs_staged')).toBe('aggs_staged')
+  })
+})
+
+describe('tableFromPathname', () => {
+  it('names the table on a table page', () => {
+    expect(tableFromPathname('/d/shop_db/t/public/data_recording')).toBe('data_recording')
+  })
+
+  it('names it on a row page too — still the table being read', () => {
+    expect(tableFromPathname('/d/shop_db/t/public/data_recording/row/42')).toBe(
+      'data_recording',
+    )
+  })
+
+  it('decodes it', () => {
+    expect(tableFromPathname('/d/shop_db/t/public/odd%20name')).toBe('odd name')
+  })
+
+  it('is nothing on the pages that are about no table', () => {
+    expect(tableFromPathname('/d/shop_db/lens/public')).toBeUndefined()
+    expect(tableFromPathname('/d/shop_db/console')).toBeUndefined()
+    expect(tableFromPathname('/settings')).toBeUndefined()
   })
 })

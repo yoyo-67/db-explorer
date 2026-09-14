@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MIN_QUERY,
   confidentTableMatches,
+  looseRank,
   matchRank,
 } from '#/lib/palette/table-matches'
 
@@ -66,5 +67,58 @@ describe('confidentTableMatches', () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ name: `data_thing${i}` }))
     expect(confidentTableMatches(many, 'data_thing')).toHaveLength(5)
     expect(confidentTableMatches(many, 'data_thing', 2)).toHaveLength(2)
+  })
+})
+
+describe('a name typed in pieces', () => {
+  const pieced = [
+    { name: 'data_constructionproject', model: 'ConstructionProject', rowCount: 40 },
+    { name: 'data_frameinfo', rowCount: 900 },
+  ]
+
+  it('finds the table whose name was typed in runs', () => {
+    expect(confidentTableMatches(pieced, 'constpro').map((t) => t.name)).toEqual([
+      'data_constructionproject',
+    ])
+    expect(confidentTableMatches(pieced, 'cproj').map((t) => t.name)).toEqual([
+      'data_constructionproject',
+    ])
+  })
+
+  it('still refuses letters merely present in order', () => {
+    // The case the root has always guarded against: `find` sits next to the
+    // *Find a value* command, and must not drag a table above it.
+    expect(looseRank('data_frameinfo', 'fdi')).toBeNull()
+    expect(confidentTableMatches(pieced, 'dtfi')).toEqual([])
+  })
+
+  it('drops pieced matches entirely when a contiguous one exists', () => {
+    const both = [
+      { name: 'data_constructionproject', rowCount: 40 },
+      { name: 'data_constpro_log', rowCount: 1 },
+    ]
+    expect(confidentTableMatches(both, 'constpro').map((t) => t.name)).toEqual([
+      'data_constpro_log',
+    ])
+  })
+
+  it('matches the model name in pieces too', () => {
+    const modelled = [{ name: 'data_bduserroleassignment', model: 'BDUserRoleAssignment', rowCount: 7 }]
+    expect(confidentTableMatches(modelled, 'userassign').map((t) => t.name)).toEqual([
+      'data_bduserroleassignment',
+    ])
+  })
+})
+
+describe('ordering inside the pieced tier', () => {
+  it('puts the tighter arrangement of the same letters first', () => {
+    const siblings = [
+      { name: 'data_constructionerrorprioritychangelog', rowCount: 0 },
+      { name: 'data_constructionproject', rowCount: 0 },
+      { name: 'data_historicalconstructionproject', rowCount: 0 },
+    ]
+    expect(confidentTableMatches(siblings, 'constpro')[0].name).toBe(
+      'data_constructionproject',
+    )
   })
 })

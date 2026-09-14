@@ -31,12 +31,20 @@ import {
 import type { Condition } from '#/lib/filter-model'
 import { lensTargetForTable } from '#/lib/lens-links'
 import { tableLabel } from '#/lib/table-label'
+import {
+  DEFAULT_PAGE_SIZE,
+  PAGE_SIZE_OPTIONS,
+  pageForNewSize,
+  parsePageSize,
+} from '#/lib/page-size'
 import type { TableSort } from '#/lib/types'
 import { formatSidebarView, parseSidebarView } from '#/lib/table-creation'
 import LensBadge from '#/components/LensBadge'
 
 interface TableSearch {
   p?: number
+  /** Rows per page. Absent is {@link DEFAULT_PAGE_SIZE}. */
+  ps?: number
   exact?: boolean
   /** The filter, one encoded condition per entry. See `#/lib/filter-model`. */
   q?: string[]
@@ -45,6 +53,15 @@ interface TableSearch {
   insp?: InspectorTab
   /** The filter panel is open. */
   fp?: boolean
+  /**
+   * Start an empty condition on this column, then leave.
+   *
+   * A handoff rather than state: the palette cannot reach into the panel's
+   * draft, so it names the column in the URL, the page seeds the draft from it
+   * and strips it again. What stays in the URL is what the filter *is* (`q`),
+   * never what someone was part-way through typing.
+   */
+  fc?: string
   /** Which list the sidebar is showing — see `#/lib/table-creation`. Absent is
    *  the catalog grouping. */
   view?: string
@@ -58,6 +75,7 @@ export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
   validateSearch: (search: Record<string, unknown>): TableSearch => {
     const rawP = Number(search.p)
     const p = Number.isFinite(rawP) && rawP >= 1 ? Math.floor(rawP) : undefined
+    const ps = parsePageSize(search.ps)
     const exact = search.exact === true || search.exact === 'true' ? true : undefined
     const rawQ = search.q
     const q = Array.isArray(rawQ)
@@ -68,13 +86,12 @@ export const Route = createFileRoute('/d/$database/t/$schema/$table/')({
     const sort = typeof search.sort === 'string' && search.sort.length > 0 ? search.sort : undefined
     const insp = parseInspectorTab(search.insp)
     const fp = search.fp === true || search.fp === 'true' ? true : undefined
+    const fc = typeof search.fc === 'string' && search.fc.length > 0 ? search.fc : undefined
     const sql = typeof search.sql === 'string' && search.sql.trim().length > 0 ? search.sql : undefined
     const view = formatSidebarView(parseSidebarView(search.view))
-    return { p, exact, q: q?.length ? q : undefined, sort, insp, fp, sql, view }
+    return { p, ps, exact, q: q?.length ? q : undefined, sort, insp, fp, fc, sql, view }
   },
 })
-
-const PAGE_SIZE = 50
 
 function parseSort(s: string | undefined): TableSort | null {
   if (!s) return null
@@ -148,6 +165,7 @@ function TablePage() {
   const { database, schema, table } = Route.useParams()
   const search = Route.useSearch()
   const page = search.p ?? 1
+  const pageSize = search.ps ?? DEFAULT_PAGE_SIZE
   const exact = search.exact
   const sort = parseSort(search.sort)
   const rawSql = search.sql ?? null
@@ -194,7 +212,7 @@ function TablePage() {
       schema,
       table,
       page,
-      PAGE_SIZE,
+      pageSize,
       exact ?? false,
       JSON.stringify(applied),
       search.sort ?? '',
@@ -206,7 +224,7 @@ function TablePage() {
           schema,
           table,
           page,
-          pageSize: PAGE_SIZE,
+          pageSize,
           exactCount: exact === true ? true : undefined,
           conditions: applied.length ? applied : undefined,
           sort,
@@ -264,6 +282,35 @@ function TablePage() {
     })
   }, [displayColumns, fks, table, schema, crossRefsQuery.data])
 
+  /**
+   * The palette's handoff (`fc`): open the panel with a condition on that column
+   * ready to fill in, then take the parameter back out of the URL so a copied
+   * link does not re-seed a draft the reader has since changed.
+   *
+   * It waits for the introspection it needs — a condition seeded before the
+   * column's type is known would start on the wrong operator — and gives up if
+   * that read failed, rather than leaving the parameter stuck in the URL.
+   */
+  const seedColumn = search.fc
+  const columnsKnown = introspectQuery.data !== undefined || introspectQuery.isError
+  useEffect(() => {
+    if (!seedColumn || !columnsKnown) return
+    const dataType = introspectQuery.data?.tables
+      .find((t) => t.name === table)
+      ?.columns.find((c) => c.name === seedColumn)?.dataType
+    setDraft((prev) =>
+      prev.some((c) => c.column === seedColumn)
+        ? prev
+        : [...prev, newCondition(seedColumn, dataType, `fc-${seedColumn}`)],
+    )
+    navigate({
+      to: '/d/$database/t/$schema/$table',
+      params: { database, schema, table },
+      search: (prev) => ({ ...prev, fc: undefined, fp: true }),
+      replace: true,
+    })
+  }, [seedColumn, columnsKnown])
+
   if (isChecking) {
     return (
       <div className="p-8 text-center text-sm text-[var(--sea-ink-soft)]">
@@ -282,6 +329,20 @@ function TablePage() {
   }
 
   const goToPage = (p: number) => updateSearch({ p })
+
+  /**
+   * A new page size keeps the first row on screen (`pageForNewSize`), so the
+   * buttons read as "show me more of this" rather than "start again". The
+   * default size is left out of the URL: a link should not carry a choice
+   * nobody made.
+   */
+  const setPageSize = (next: number) => {
+    const anchored = pageForNewSize(page, pageSize, next)
+    updateSearch({
+      ps: next === DEFAULT_PAGE_SIZE ? undefined : next,
+      p: anchored === 1 ? undefined : anchored,
+    })
+  }
 
   const requestExactCount = () => updateSearch({ exact: true })
 
@@ -421,13 +482,17 @@ function TablePage() {
         {pageData && rawSql === null && (
           <Pager
             page={pageData.page}
-            pageSize={pageData.pageSize}
+            // The size asked for, not the size the rows on screen came back
+            // with: a pressed button has to light up now, not after the read.
+            pageSize={pageSize}
             count={pageData.count}
             totalPages={pageData.totalPages}
             isCountApproximate={pageData.isCountApproximate}
             onPageChange={goToPage}
             onRequestExactCount={requestExactCount}
             isExactLoading={pageQuery.isFetching && exact === true}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={setPageSize}
           />
         )}
 
@@ -486,7 +551,7 @@ function TablePage() {
             isApplying={isReading}
             sort={sort}
             page={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             raw={rawDraft}
             onEnterRaw={(sql) => setRawDraft(sql)}
             onChangeRaw={setRawDraft}

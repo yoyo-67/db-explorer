@@ -19,6 +19,9 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  server: {
+    allowedHosts: ['db.local'],
+  },
 })
 
 export default config

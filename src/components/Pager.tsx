@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface PagerProps {
   page: number
@@ -9,6 +9,10 @@ interface PagerProps {
   onPageChange: (page: number) => void
   onRequestExactCount?: () => void
   isExactLoading?: boolean
+  /** The sizes offered as buttons. Absent means the size is not the reader's
+   *  to choose on this page, and no buttons are drawn. */
+  pageSizeOptions?: readonly number[]
+  onPageSizeChange?: (pageSize: number) => void
 }
 
 export default function Pager({
@@ -20,8 +24,13 @@ export default function Pager({
   onPageChange,
   onRequestExactCount,
   isExactLoading = false,
+  pageSizeOptions,
+  onPageSizeChange,
 }: PagerProps) {
   const [draft, setDraft] = useState(String(page))
+  // The page can move without this box being what moved it — changing the page
+  // size re-anchors it — so the box follows the page rather than only leading it.
+  useEffect(() => setDraft(String(page)), [page])
   const start = count === 0 ? 0 : (page - 1) * pageSize + 1
   const end = Math.min(count, page * pageSize)
   const prefix = isCountApproximate ? '≈ ' : ''
@@ -38,6 +47,31 @@ export default function Pager({
         {start.toLocaleString()}–{end.toLocaleString()} of {prefix}
         {count.toLocaleString()}
       </span>
+      {pageSizeOptions && onPageSizeChange && (
+        <div className="flex items-center gap-1" role="group" aria-label="Rows per page">
+          <span className="text-[10px] uppercase tracking-wide opacity-70">rows</span>
+          {pageSizeOptions.map((size) => {
+            const active = size === pageSize
+            return (
+              <button
+                key={size}
+                type="button"
+                onClick={() => onPageSizeChange(size)}
+                aria-pressed={active}
+                title={`${size} rows per page`}
+                className={
+                  active
+                    ? 'rounded border border-[var(--lagoon-deep)] bg-[rgba(79,184,178,0.15)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--lagoon-deep)]'
+                    : 'rounded border border-[var(--line)] px-1.5 py-0.5 text-[10px] tabular-nums hover:bg-[var(--surface-strong)]'
+                }
+              >
+                {size}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {isCountApproximate && onRequestExactCount && (
         <button
           type="button"

@@ -95,3 +95,27 @@ describe('byGroup', () => {
     expect(new Set(groups).size).toBe(groups.length)
   })
 })
+
+describe('filtering the table on screen', () => {
+  it('is offered only while a table is being read', () => {
+    expect(rootActions(scoped).map((a) => a.id)).not.toContain('filter')
+    const onTable = rootActions({ ...scoped, table: 'data_recording' })
+    expect(onTable.map((a) => a.id)).toContain('filter')
+  })
+
+  it('pushes the column list for that table', () => {
+    const action = rootActions({ ...scoped, table: 'data_recording' }).find(
+      (a) => a.id === 'filter',
+    )
+    expect(action?.target).toEqual({
+      kind: 'push',
+      view: { kind: 'filter', table: 'data_recording' },
+    })
+  })
+
+  it('answers to how people ask for it', () => {
+    const actions = rootActions({ ...scoped, table: 'data_recording' })
+    expect(filterActions(actions, 'where').map((a) => a.id)).toContain('filter')
+    expect(filterActions(actions, 'filter').map((a) => a.id)).toContain('filter')
+  })
+})

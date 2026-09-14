@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import type { NavigateOptions } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import PaletteFrame, { KeyHint } from '#/components/palette/PaletteFrame'
@@ -9,6 +9,8 @@ import { skipExplanation } from '#/lib/find/reach-plan'
 import type { ReachSkip } from '#/lib/find/reach-plan'
 import { reachTableSearch } from '#/lib/find/find-search'
 import { opensNewTab } from '#/lib/link-click'
+import { tableFromPathname } from '#/lib/lens-links'
+import { defaultOpForType, operatorsForType } from '#/lib/filter-model'
 import { rootRows } from '#/lib/palette/actions'
 import type { PaletteRoute } from '#/lib/palette/actions'
 import {
@@ -22,6 +24,7 @@ import {
 } from '#/lib/palette/stack'
 import { moveSelection } from '#/lib/palette/rows'
 import { confidentTableMatches } from '#/lib/palette/table-matches'
+import type { ColumnInfo } from '#/lib/types'
 import type { PaletteRowModel } from '#/lib/palette/rows'
 import { viewPlaceholder, viewSubmits } from '#/lib/palette/views'
 import { fuzzySearch } from '#/lib/fuzzy'
@@ -78,6 +81,11 @@ export default function Palette() {
   const database = useDatabase()
   const schema = useActiveSchema()
   const connected = useConnectionStatus().data?.connected ?? false
+  /** The table on screen, if the page is about one — what *Filter this table*
+   *  acts on. Read from the path for the same reason the database is. */
+  const activeTable = useRouterState({
+    select: (state) => tableFromPathname(state.location.pathname),
+  })
   const models = useModelNames()
   /** The app's one way of spelling a table name, for the rows' plain text. */
   const nameOf = useTableNameText()
@@ -177,7 +185,6 @@ export default function Palette() {
   )
 
   // ── What each page offers ────────────────────────────────────────────────
-
   const tablesQuery = useQuery({
     queryKey: ['introspect', database, schema],
     queryFn: () => $introspect({ data: { database: database!, schema } }),
@@ -187,7 +194,7 @@ export default function Palette() {
     enabled:
       open &&
       connected &&
-      (view.kind === 'tables' || view.kind === 'actions') &&
+      (view.kind === 'tables' || view.kind === 'actions' || view.kind === 'filter') &&
       !!database,
   })
 
@@ -221,10 +228,55 @@ export default function Palette() {
     enabled: open && connected && view.kind === 'reach' && !!database,
   })
 
+  /**
+   * One column of a table, as a row that starts a filter on it.
+   *
+   * Shared by the *Filter* page and the root: typing a column name on the root
+   * reaches the filter directly, so the common case — you know which column you
+   * want to narrow by — costs one page instead of two.
+   */
+  const filterRow = useCallback(
+    (tableName: string, column: ColumnInfo): PaletteRowModel => {
+      const to =
+        database && schema
+          ? destination({
+              to: '/d/$database/t/$schema/$table',
+              params: { database, schema, table: tableName },
+              search: { fp: true, fc: column.name },
+            })
+          : null
+      return {
+        id: `filter:${tableName}.${column.name}`,
+        title: column.name,
+        table: tableName,
+        column: column.name,
+        hint: `${defaultOpForType(column.dataType)} — ${operatorsForType(column.dataType).length} operators${column.isNullable ? ', nullable' : ''}`,
+        meta: column.dataType,
+        group: 'Filter by column',
+        href: to?.href,
+        run: () => {
+          close()
+          to?.go()
+        },
+      }
+    },
+    [close, database, destination, schema],
+  )
+
+  /** The columns of whichever table is on screen, for both pages that offer them. */
+  const columnsOf = useCallback(
+    (tableName: string | undefined): ColumnInfo[] =>
+      tableName
+        ? (tablesQuery.data?.tables.find((t) => t.name === tableName)?.columns ?? [])
+        : [],
+    [tablesQuery.data],
+  )
+
+
   const rows = useMemo<PaletteRowModel[]>(() => {
     switch (view.kind) {
       case 'actions': {
-        const commands = rootRows({ database, schema }, query).map((action) => {
+        const commands = rootRows({ database, schema, table: activeTable }, query).map((action) => {
           const to =
             action.target.kind === 'route' ? routeDestination(action.target.route) : null
           return {
@@ -281,9 +333,18 @@ export default function Palette() {
           }
         })
 
+        // A column of the table being read, matched the same way a table name
+        // is — `urlname` finds `url_name` — so narrowing the rows on screen is
+        // reachable from what you type rather than only from the Filter page.
+        const columns = activeTable
+          ? confidentTableMatches(columnsOf(activeTable), query, 4).map((column) =>
+              filterRow(activeTable, column),
+            )
+          : []
+
         const pasted = commands.filter((row) => row.id.startsWith('paste:'))
         const rest = commands.filter((row) => !row.id.startsWith('paste:'))
-        return [...pasted, ...tables, ...rest]
+        return [...pasted, ...tables, ...columns, ...rest]
       }
 
       case 'tables': {
@@ -399,6 +460,17 @@ export default function Palette() {
         })
       }
 
+      case 'filter': {
+        const columns = columnsOf(view.table)
+        const matched =
+          query.trim().length === 0
+            ? columns
+            : fuzzySearch(columns, query, (column) => `${column.name} ${column.dataType}`).map(
+                (hit) => hit.item,
+              )
+        return matched.slice(0, 60).map((column) => filterRow(view.table, column))
+      }
+
       case 'reach': {
         const reach = reachQuery.data
         if (!reach) return []
@@ -463,6 +535,9 @@ export default function Palette() {
     nameOf,
     schema,
     tablesQuery.data,
+    activeTable,
+    columnsOf,
+    filterRow,
     view,
   ])
 
@@ -612,5 +687,8 @@ function EmptyFor({
     )
   }
   if (viewKind === 'reach') return <>Nothing references this table on any basis.</>
+  if (viewKind === 'filter') {
+    return hasQuery ? <>No column matches.</> : <>This table has no columns to filter on.</>
+  }
   return hasQuery ? <>Nothing matches.</> : <>Nothing here.</>
 }

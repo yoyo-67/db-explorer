@@ -21,6 +21,8 @@ export type PaletteView =
   | { kind: 'find' }
   /** Stage two: the columns referencing `owner`, and whether they hold `value`. */
   | { kind: 'reach'; value: string; owner: string }
+  /** The columns of the table being read, to start a filter on one of them. */
+  | { kind: 'filter'; table: string }
 
 /**
  * One step of the trail across the top of the palette.
@@ -45,6 +47,8 @@ export function viewCrumb(view: PaletteView): PaletteCrumb {
       return { label: 'Find a value' }
     case 'reach':
       return { label: 'Where else', table: view.owner }
+    case 'filter':
+      return { label: 'Filter', table: view.table }
   }
 }
 
@@ -65,6 +69,8 @@ export function viewPlaceholder(view: PaletteView): string {
       return 'Paste an id, uuid, email or token…'
     case 'reach':
       return 'Filter the columns holding it…'
+    case 'filter':
+      return 'Which column…'
   }
 }
 

@@ -55,7 +55,7 @@ export const tablePageTopic: HelpTopic = {
       clause: 'LIMIT 50 OFFSET 100',
       title: 'The window',
       detail:
-        '`LIMIT` is the page size, `OFFSET` is page number minus one, times page size — page 3 of 50 skips 100 rows. The catch: `OFFSET` is not a jump, it is a discard. The database still produces those 100 rows and throws them away, so page 2000 of a big table is genuinely slower than page 2. That is the price of being able to jump to any page.',
+        '`LIMIT` is the page size — 50 unless you press one of the size buttons beside the pager, which offer 25 through 500 and keep the first row you were looking at on screen. `OFFSET` is page number minus one, times page size — page 3 of 50 skips 100 rows. The catch: `OFFSET` is not a jump, it is a discard. The database still produces those 100 rows and throws them away, so page 2000 of a big table is genuinely slower than page 2, and a bigger page size makes every skipped row count. That is the price of being able to jump to any page.',
     },
   ],
   terms: [

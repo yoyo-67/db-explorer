@@ -46,6 +46,9 @@ export interface PaletteContext {
   /** Absent on the pages that are about no database — connect, help, settings. */
   database?: string
   schema?: string
+  /** The table being read, when the page is about one. Actions that act on it
+   *  are offered only then — a filter needs something to filter. */
+  table?: string
 }
 
 /**
@@ -81,6 +84,17 @@ export function rootActions(context: PaletteContext): PaletteAction[] {
       group: 'Navigate',
       target: { kind: 'route', route: 'console' },
       keywords: ['query', 'sql', 'run'],
+    })
+  }
+
+  if (scoped && context.schema && context.table) {
+    actions.push({
+      id: 'filter',
+      title: 'Filter this table',
+      hint: 'Pick a column — opens the filter panel with a condition ready',
+      group: 'Find',
+      target: { kind: 'push', view: { kind: 'filter', table: context.table } },
+      keywords: ['where', 'column', 'condition', 'narrow', 'search'],
     })
   }
 

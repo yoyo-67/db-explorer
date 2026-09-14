@@ -43,6 +43,18 @@ export function schemaFromPathname(pathname: string): string | undefined {
   return match ? decodeURIComponent(match[1]) : undefined
 }
 
+/**
+ * Which table the current URL is about, when it is about one — the table page
+ * and its row pages. The palette reads this to offer actions that only mean
+ * something while a table is on screen, such as filtering it.
+ */
+export function tableFromPathname(pathname: string): string | undefined {
+  const rest = afterDatabase(pathname)
+  if (!rest) return undefined
+  const match = rest.match(/^\/t\/[^/]+\/([^/]+)/)
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
 export function parseLensPath(pathname: string): LensLocation | null {
   const scoped = afterDatabase(pathname)
   if (!scoped) return null

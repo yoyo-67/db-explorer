@@ -88,7 +88,17 @@ export default function FilterPanel({
   const settled = useDebounced(JSON.stringify(complete), PLAN_DEBOUNCE_MS)
 
   const planQuery = useQuery({
-    queryKey: ['planTableQuery', database, schema, table, settled, sort?.column, sort?.direction, page],
+    queryKey: [
+      'planTableQuery',
+      database,
+      schema,
+      table,
+      settled,
+      sort?.column,
+      sort?.direction,
+      page,
+      pageSize,
+    ],
     queryFn: () =>
       $planTableQuery({
         data: {
