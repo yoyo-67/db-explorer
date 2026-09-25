@@ -37,11 +37,27 @@ describe('getColumnFacets', () => {
 
     const facets = await getColumnFacets('public')
 
-    expect(facets.columns['orders.customer_id']).toEqual({ index: 'lead', nullFrac: 0, nDistinctRaw: 40, comment: null })
-    expect(facets.columns['orders.status']).toEqual({ index: 'member', nullFrac: 0.25, nDistinctRaw: 3, comment: 'lifecycle' })
+    expect(facets.columns['orders.customer_id']).toEqual({ index: 'lead', nullFrac: 0, nDistinctRaw: 40, comment: null, rowEstimate: null })
+    expect(facets.columns['orders.status']).toEqual({ index: 'member', nullFrac: 0.25, nDistinctRaw: 3, comment: 'lifecycle', rowEstimate: null })
     // Never analyzed: unknown, not zero.
-    expect(facets.columns['orders.notes']).toEqual({ index: null, nullFrac: null, nDistinctRaw: null, comment: null })
+    expect(facets.columns['orders.notes']).toEqual({ index: null, nullFrac: null, nDistinctRaw: null, comment: null, rowEstimate: null })
     expect(facets.analyzedAt).toEqual({ orders: '2026-09-01T10:00:00.000Z' })
+  })
+
+  it('sizes each column from reltuples, which persists — not the live counters, which reset', async () => {
+    answer([
+      [
+        'FROM pg_attribute',
+        [
+          { table: 'orders', column: 'id', leads_index: true, in_index: true, null_frac: 0, n_distinct: -1, comment: null, reltuples: 1200 },
+          { table: 'fresh', column: 'id', leads_index: true, in_index: true, null_frac: null, n_distinct: null, comment: null, reltuples: -1 },
+        ],
+      ],
+    ])
+    const facets = await getColumnFacets('public')
+    expect(facets.columns['orders.id'].rowEstimate).toBe(1200)
+    // -1 is Postgres for "never vacuumed or analyzed": unknown, not zero.
+    expect(facets.columns['fresh.id'].rowEstimate).toBeNull()
   })
 
   it('passes the schema as a parameter, never in the SQL text', async () => {

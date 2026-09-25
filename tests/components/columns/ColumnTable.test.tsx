@@ -35,10 +35,31 @@ const entry: ColumnEntry = {
   group: 'Sales',
   model: 'PurchaseOrder',
   reference: { toTable: 'customers', toColumn: 'id', basis: 'declared' },
-  facet: { index: 'lead', nullFrac: 0, nDistinctRaw: 40, comment: null },
+  facet: { index: 'lead', nullFrac: 0, nDistinctRaw: 40, comment: null, rowEstimate: 500 },
 }
 
 describe('ColumnTable', () => {
+  it('shows a reference as unknown, not absent, when the graph could not be read', () => {
+    const blind: ColumnEntry = { ...entry, reference: null }
+    render(
+      <ColumnTable database="shop_db" schema="public" entries={[blind]} graphLoading={false} graphFailed />,
+    )
+    const cells = screen.getAllByRole('cell').map((cell) => cell.textContent ?? '')
+    expect(cells[4]).toBe('—')
+  })
+
+  it('scales a distinct share by the stored row estimate, not a live counter that reads 0', () => {
+    const shared: ColumnEntry = {
+      ...entry,
+      rowCount: 0,
+      facet: { index: 'lead', nullFrac: 0, nDistinctRaw: -0.5, comment: null, rowEstimate: 1000 },
+    }
+    render(<ColumnTable database="shop_db" schema="public" entries={[shared]} graphLoading={false} />)
+    const cells = screen.getAllByRole('cell').map((cell) => cell.textContent ?? '')
+    expect(cells[7]).not.toMatch(/^~?0$/)
+    expect(cells[7]).toContain('500')
+  })
+
   it('prints both the table and the table it references the way the setting asks', () => {
     render(<ColumnTable database="shop_db" schema="public" entries={[entry]} graphLoading={false} />)
     const cells = screen.getAllByRole('cell').map((cell) => cell.textContent ?? '')

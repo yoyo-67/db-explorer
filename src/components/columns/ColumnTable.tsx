@@ -19,11 +19,14 @@ export default function ColumnTable({
   schema,
   entries,
   graphLoading,
+  graphFailed = false,
 }: {
   database: string
   schema: string
   entries: ColumnEntry[]
   graphLoading: boolean
+  /** The graph could not be read: every reference is unknown, not absent. */
+  graphFailed?: boolean
 }) {
   const shown = entries.slice(0, MAX_ROWS)
   return (
@@ -50,6 +53,7 @@ export default function ColumnTable({
               schema={schema}
               entry={entry}
               graphLoading={graphLoading}
+              graphFailed={graphFailed}
             />
           ))}
         </tbody>
@@ -69,17 +73,19 @@ function ColumnRow({
   schema,
   entry,
   graphLoading,
+  graphFailed,
 }: {
   database: string
   schema: string
   entry: ColumnEntry
   graphLoading: boolean
+  graphFailed: boolean
 }) {
   const facet = entry.facet
   const distinct =
     facet?.nDistinctRaw === null || facet?.nDistinctRaw === undefined
       ? null
-      : estimateDistinct(facet.nDistinctRaw, entry.rowCount ?? -1)
+      : estimateDistinct(facet.nDistinctRaw, facet.rowEstimate ?? -1)
   const unindexed = isUnindexedReference(entry)
 
   return (
@@ -119,6 +125,10 @@ function ColumnRow({
       <td className="py-1 pr-3">
         {graphLoading ? (
           <span className="inline-block h-3 w-20 animate-pulse rounded bg-[var(--line)]" />
+        ) : graphFailed ? (
+          <span className="text-[var(--sea-ink-soft)]" title="The schema graph could not be read">
+            —
+          </span>
         ) : entry.reference ? (
           <span className="inline-flex items-center gap-1">
             <span className="font-mono text-[11px]">

@@ -5,9 +5,11 @@ import {
   facetKey,
   isUnindexedReference,
   searchColumns,
+  statsFreshness,
   typesPresent,
   validateColumnSearch,
 } from '#/lib/column-search'
+import type { ColumnEntry } from '#/lib/column-search'
 import type { SchemaGraph, TableInfo } from '#/lib/types'
 
 function table(
@@ -108,7 +110,7 @@ describe('buildColumnEntries', () => {
   it('attaches facets by table.column', () => {
     const facets = {
       columns: {
-        [facetKey('customers', 'payload')]: { index: null, nullFrac: 0.4, nDistinctRaw: -1, comment: 'raw' },
+        [facetKey('customers', 'payload')]: { index: null, nullFrac: 0.4, nDistinctRaw: -1, comment: 'raw', rowEstimate: null },
       },
       analyzedAt: { customers: '2026-09-01T00:00:00.000Z' },
     }
@@ -118,6 +120,7 @@ describe('buildColumnEntries', () => {
       nullFrac: 0.4,
       nDistinctRaw: -1,
       comment: 'raw',
+      rowEstimate: null,
     })
     // A column the facets did not mention is unknown, not "no stats".
     expect(entries.find((e) => e.table === 'orders' && e.column === 'id')?.facet).toBeNull()
@@ -174,14 +177,27 @@ describe('validateColumnSearch', () => {
 describe('searchColumns', () => {
   const facets = {
     columns: {
-      [facetKey('orders', 'customer_id')]: { index: 'lead' as const, nullFrac: 0, nDistinctRaw: 40, comment: null },
-      [facetKey('invoices', 'order_id')]: { index: null, nullFrac: 0.1, nDistinctRaw: -0.5, comment: null },
-      [facetKey('customers', 'payload')]: { index: null, nullFrac: null, nDistinctRaw: null, comment: null },
+      [facetKey('orders', 'customer_id')]: { index: 'lead' as const, nullFrac: 0, nDistinctRaw: 40, comment: null, rowEstimate: null },
+      [facetKey('invoices', 'order_id')]: { index: null, nullFrac: 0.1, nDistinctRaw: -0.5, comment: null, rowEstimate: null },
+      [facetKey('customers', 'payload')]: { index: null, nullFrac: null, nDistinctRaw: null, comment: null, rowEstimate: null },
     },
     analyzedAt: {},
   }
   const entries = buildColumnEntries(tables, graph, facets)
   const ids = (list: ReturnType<typeof searchColumns>) => list.map((e) => `${e.table}.${e.column}`)
+
+  it('finds what the palette root finds — a spread-out name too, below the contiguous hits', () => {
+    const hits = ids(searchColumns(entries, { name: 'custid' }))
+    expect(hits).toContain('orders.customer_id')
+  })
+
+  it('answers no reference filter while the references are unknown — none is not "none"', () => {
+    const blind = buildColumnEntries(tables, undefined, facets)
+    expect(searchColumns(blind, { ref: 'none' }, { referencesKnown: false })).toEqual([])
+    expect(searchColumns(blind, { ref: 'any' }, { referencesKnown: false })).toEqual([])
+    // Without a reference filter the rows are still there to read.
+    expect(searchColumns(blind, {}, { referencesKnown: false })).toHaveLength(blind.length)
+  })
 
   it('returns everything for an empty search', () => {
     expect(searchColumns(entries, {})).toHaveLength(9)
@@ -227,5 +243,35 @@ describe('searchColumns', () => {
     // No facets: unknown, not flagged.
     const bare = buildColumnEntries(tables, graph, undefined)
     expect(isUnindexedReference(bare.find((e) => e.column === 'order_id')!)).toBe(false)
+  })
+})
+
+describe('statsFreshness', () => {
+  const at = (table: string, nullFrac: number | null) =>
+    ({ table, facet: { index: null, nullFrac, nDistinctRaw: null, comment: null, rowEstimate: null } }) as ColumnEntry
+
+  it('names the oldest analyze among the tables shown', () => {
+    expect(
+      statsFreshness([at('a', 0), at('b', 0)], { a: '2026-09-02T00:00:00Z', b: '2026-09-01T00:00:00Z' }),
+    ).toEqual({ kind: 'at', oldest: '2026-09-01T00:00:00Z' })
+  })
+
+  it('leaves out views — they have no counters and cannot be analyzed', () => {
+    expect(statsFreshness([at('a', 0), at('some_view', null)], { a: '2026-09-02T00:00:00Z' })).toEqual({
+      kind: 'at',
+      oldest: '2026-09-02T00:00:00Z',
+    })
+  })
+
+  it('calls a table never analyzed only when it has no statistics either', () => {
+    expect(statsFreshness([at('a', null)], { a: null })).toEqual({ kind: 'never' })
+  })
+
+  it('says the time is unknown when the counters were reset but statistics exist', () => {
+    expect(statsFreshness([at('a', 0.1)], { a: null })).toEqual({ kind: 'unknown' })
+  })
+
+  it('has nothing to say about nothing', () => {
+    expect(statsFreshness([], {})).toEqual({ kind: 'none' })
   })
 })

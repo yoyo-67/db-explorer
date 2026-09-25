@@ -5,7 +5,7 @@ import ColumnTable from '#/components/columns/ColumnTable'
 import { useColumnIndex } from '#/hooks/useColumnIndex'
 import { useConnectionGuard } from '#/hooks/useConnectionGuard'
 import { useDatabaseParam } from '#/hooks/useDatabase'
-import { searchColumns, typesPresent, validateColumnSearch } from '#/lib/column-search'
+import { searchColumns, statsFreshness, typesPresent, validateColumnSearch } from '#/lib/column-search'
 import type { ColumnSearch } from '#/lib/column-search'
 import { formatRelativeTime } from '#/lib/inspect/format'
 
@@ -32,17 +32,18 @@ function ColumnsPage() {
 
   const types = useMemo(() => (index.entries ? typesPresent(index.entries) : []), [index.entries])
   const results = useMemo(
-    () => (index.entries ? searchColumns(index.entries, search) : []),
-    [index.entries, search],
+    () =>
+      index.entries
+        ? searchColumns(index.entries, search, {
+            referencesKnown: !index.graphLoading && index.graphError === null,
+          })
+        : [],
+    [index.entries, search, index.graphLoading, index.graphError],
   )
-  // The oldest analyze among the tables shown bounds how fresh any number on
-  // screen can be. `null` means one of them was never analyzed.
-  const oldestAnalyze = useMemo(() => {
-    const times = [...new Set(results.map((e) => e.table))].map((t) => index.analyzedAt[t] ?? null)
-    if (times.length === 0) return undefined
-    if (times.some((t) => t === null)) return null
-    return (times as string[]).sort()[0]
-  }, [results, index.analyzedAt])
+  const freshness = useMemo(
+    () => statsFreshness(results, index.analyzedAt),
+    [results, index.analyzedAt],
+  )
 
   if (isChecking) {
     return (
@@ -65,17 +66,25 @@ function ColumnsPage() {
           </h1>
         </header>
 
+        {index.graphError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            References are unknown — the schema graph could not be read: {index.graphError}
+          </div>
+        )}
+
         {index.facetsError && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
             Index, statistics and comments are unavailable: {index.facetsError}
           </div>
         )}
 
-        {oldestAnalyze !== undefined && !index.facetsLoading && !index.facetsError && (
+        {freshness.kind !== 'none' && !index.facetsLoading && !index.facetsError && (
           <p className="text-[11px] text-[var(--sea-ink-soft)]">
-            {oldestAnalyze === null
+            {freshness.kind === 'never'
               ? 'Some of these tables have never been analyzed — their null share and distinct counts show as —.'
-              : `Statistics from the last ANALYZE — the oldest among these tables is from ${formatRelativeTime(oldestAnalyze, Date.now())}.`}
+              : freshness.kind === 'unknown'
+                ? 'Statistics from the last ANALYZE — when it ran is not recorded for some of these tables (counters reset, or a replica).'
+                : `Statistics from the last ANALYZE — the oldest among these tables is from ${formatRelativeTime(freshness.oldest, Date.now())}.`}
           </p>
         )}
 
@@ -97,6 +106,7 @@ function ColumnsPage() {
                   schema={schema}
                   entries={results}
                   graphLoading={index.graphLoading}
+                  graphFailed={index.graphError !== null}
                 />
               </>
             )}

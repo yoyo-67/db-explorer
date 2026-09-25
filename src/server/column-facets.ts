@@ -31,7 +31,8 @@ export async function getColumnFacets(schema: string = DEFAULT_SCHEMA): Promise<
         )                                        AS in_index,
         s.null_frac,
         s.n_distinct,
-        col_description(a.attrelid, a.attnum)    AS comment
+        col_description(a.attrelid, a.attnum)    AS comment,
+        c.reltuples                              AS reltuples
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -65,6 +66,11 @@ export async function getColumnFacets(schema: string = DEFAULT_SCHEMA): Promise<
       nDistinctRaw:
         row.n_distinct === null || row.n_distinct === undefined ? null : Number(row.n_distinct),
       comment: typeof row.comment === 'string' ? row.comment : null,
+      // -1 (Postgres 14+) is "never vacuumed or analyzed".
+      rowEstimate:
+        row.reltuples === null || row.reltuples === undefined || Number(row.reltuples) < 0
+          ? null
+          : Number(row.reltuples),
     }
   }
 

@@ -1,4 +1,4 @@
-import { MAX_MATCHES, confidentTableMatches, matchRank } from '#/lib/palette/table-matches'
+import { MAX_MATCHES, confidentTableMatches, looseRank, matchRank } from '#/lib/palette/table-matches'
 import type { EdgeBasis, SchemaGraph, SchemaGraphEdge, TableInfo } from '#/lib/types'
 
 /**
@@ -28,6 +28,12 @@ export interface ColumnFacet {
   /** `pg_stats.n_distinct` as stored. Resolve with `estimateDistinct`. */
   nDistinctRaw: number | null
   comment: string | null
+  /**
+   * The table's `pg_class.reltuples`, which a negative `nDistinctRaw` is a share
+   * of. Stored with the statistics, so it survives a counter reset and a
+   * replica; `null` when the table was never vacuumed or analyzed.
+   */
+  rowEstimate: number | null
 }
 
 export interface ColumnFacets {
@@ -210,7 +216,11 @@ function matchesIndex(entry: ColumnEntry, indexed: IndexFilter): boolean {
 export function searchColumns(
   entries: readonly ColumnEntry[],
   search: ColumnSearch,
+  /** `referencesKnown: false` while the graph is missing: a reference filter
+   *  then answers nothing, because every `null` reference means "unknown". */
+  { referencesKnown = true }: { referencesKnown?: boolean } = {},
 ): ColumnEntry[] {
+  if (search.ref && !referencesKnown) return []
   const types = search.type ? new Set(search.type) : null
   const q = search.name?.trim() ?? ''
 
@@ -220,7 +230,8 @@ export function searchColumns(
     if (search.ref && !matchesRef(entry, search.ref)) return
     if (search.indexed && !matchesIndex(entry, search.indexed)) return
     if (search.nullable && !entry.isNullable) return
-    const rank = q.length === 0 ? 0 : matchRank(entry.column, q)
+    // The loose tier too, so this page never finds less than the palette root.
+    const rank = q.length === 0 ? 0 : (matchRank(entry.column, q) ?? looseRank(entry.column, q))
     if (rank === null) return
     ranked.push({ entry, rank, order })
   })
@@ -243,4 +254,46 @@ export function typesPresent(entries: readonly ColumnEntry[]): string[] {
  */
 export function isUnindexedReference(entry: ColumnEntry): boolean {
   return entry.reference !== null && entry.facet !== null && entry.facet.index !== 'lead'
+}
+
+export type StatsFreshness =
+  | { kind: 'none' }
+  /** Some table shown has no statistics at all. */
+  | { kind: 'never' }
+  /** Statistics exist, but the counters that date them were reset or never kept. */
+  | { kind: 'unknown' }
+  | { kind: 'at'; oldest: string }
+
+/**
+ * How fresh the statistics on screen can be: the oldest ANALYZE among the
+ * tables shown.
+ *
+ * A table missing from `analyzedAt` is a view — `pg_stat_user_tables` has no
+ * row for one, and there is nothing to analyze — so it is left out. A `null`
+ * time is "never analyzed" only when the table has no statistics either: after
+ * a counter reset, or on a replica, the time is lost while `pg_stats` is not.
+ */
+export function statsFreshness(
+  entries: readonly Pick<ColumnEntry, 'table' | 'facet'>[],
+  analyzedAt: Readonly<Record<string, string | null>>,
+): StatsFreshness {
+  const hasStats = new Set<string>()
+  const tables = new Set<string>()
+  for (const entry of entries) {
+    if (!(entry.table in analyzedAt)) continue
+    tables.add(entry.table)
+    if (entry.facet?.nullFrac != null) hasStats.add(entry.table)
+  }
+  if (tables.size === 0) return { kind: 'none' }
+
+  const times: string[] = []
+  let unknown = false
+  for (const table of tables) {
+    const time = analyzedAt[table]
+    if (time) times.push(time)
+    else if (hasStats.has(table)) unknown = true
+    else return { kind: 'never' }
+  }
+  if (unknown) return { kind: 'unknown' }
+  return { kind: 'at', oldest: times.sort()[0] }
 }

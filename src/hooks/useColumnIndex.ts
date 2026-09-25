@@ -10,6 +10,8 @@ export interface ColumnIndex {
   entries: ColumnEntry[] | null
   /** While true, references are unknown, not absent. */
   graphLoading: boolean
+  /** Why the graph isn't there. References are then unknown, not absent. */
+  graphError: string | null
   facetsLoading: boolean
   /** Why the facets aren't there. Names, types and references still render. */
   facetsError: string | null
@@ -61,6 +63,7 @@ export function useColumnIndex(
   return {
     entries,
     graphLoading: graph.isLoading,
+    graphError: graph.isError ? (graph.error as Error).message : null,
     facetsLoading: facets.isLoading,
     facetsError: facets.isError ? (facets.error as Error).message : null,
     analyzedAt: facets.data?.analyzedAt ?? {},
