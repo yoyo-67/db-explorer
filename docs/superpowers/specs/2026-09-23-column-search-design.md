@@ -32,7 +32,6 @@ on none.
 | Indexed | `pg_index` | new, one read per schema |
 | Null share, distinct estimate, stats age | `pg_stats` + `pg_stat_user_tables.last_(auto)analyze` | new, one read per schema |
 | Comment | `col_description()` | new, one read per schema |
-| Catalog description | `table-catalog.json` | free: already loaded, merged client-side |
 
 The three new reads go in one server function, one round trip:
 
@@ -41,7 +40,7 @@ $getColumnFacets({ database, schema }) → {
   columns: Record<`${table}.${column}`, {
     index: 'lead' | 'member' | null   // leads an index / appears later in one
     nullFrac: number | null           // null = no stats, never 0
-    nDistinct: number | null          // pg_stats sign convention resolved to a count or share
+    nDistinctRaw: number | null       // as stored; resolved client-side with estimateDistinct
     comment: string | null
   }>
   analyzedAt: Record<table, string | null>
