@@ -66,9 +66,9 @@ functions), TypeScript, and Tailwind.
   row drawn with what it is attached to: the rows it references on the left,
   the rows referencing it on the right, one or two hops out, every reference the
   merged graph knows (inferred ones dashed). Five children per reference, then a
-  *more* node; a child table is read only where an index leads with the column
-  and the table is small enough, and every other edge is a node saying why it
-  was not read. Click a node to center on it.
+  *more* node; a child table is read only where an index leads with the column,
+  and every other edge — or a read that timed out or failed — is a node saying
+  why, in the database's own words. Click a node to center on it.
 - **Column search** (`/d/$database/columns/$schema`) — which table has a column
   called this, across the whole schema. Each hit says what it references (and
   whether that link is a real FK, the schema map or a name rule), whether an

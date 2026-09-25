@@ -6,21 +6,21 @@ export const rowNeighborhoodTopic: HelpTopic = {
   title: 'Row neighborhood',
   question: 'What is this row attached to, drawn?',
   answer:
-    'Starting from one row, the page follows every reference the merged graph knows about: to the rows it points at, and from the rows that point at it, one or two steps out. Each step is one small lookup per value, limited per value, and a child table is only read when an index leads with the referencing column and the table is under 100k rows. Everything else is drawn as a node that says why it was not read.',
+    'Starting from one row, the page follows every reference the merged graph knows about: to the rows it points at, and from the rows that point at it, one or two steps out. Each step is one small lookup per value, limited per value, and a child table is only read when an index leads with the referencing column — then each lookup costs the same on any table size. Everything else is drawn as a node that says why it was not read.',
   route: '/t/$schema/$table/neighborhood/$id',
   previewCaption: 'One order with its customer, its invoices, and an edge that was not read. Hover a clause to see what it draws.',
   source: {
     file: 'src/server/row-neighborhood.ts',
-    line: 27,
-    anchor: "format('(SELECT %s FROM %I.%I WHERE %I = %L LIMIT %s)'",
+    line: 72,
+    anchor: "format('(SELECT %s, %L AS %I FROM %I.%I WHERE %I = %L LIMIT %s)'",
   },
   prerequisite: null,
   steps: [
     {
       id: 'select',
-      clause: '(SELECT id::text AS id, name::text AS name',
+      clause: "(SELECT id::text AS id, name::text AS name, '10' AS __probe",
       title: 'Only what a node shows',
-      detail: 'The key, a label column if the table has one (`name`, `title`, `email`, …), and the columns references leave or enter through — as text, so any type draws the same way.',
+      detail: 'The key, a label column if the table has one (`name`, `title`, `email`, …), and the columns references leave or enter through — as text, so any type draws the same way. `__probe` repeats the value asked for, so a row is matched to its question without re-comparing text.',
     },
     {
       id: 'where',

@@ -306,7 +306,7 @@ async function isCatalogSchema(schema: string): Promise<boolean> {
   return result.rows[0]?.schema_name === schema
 }
 
-export async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
+async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
   const [declared, unique] = await Promise.all([
     query(
       `

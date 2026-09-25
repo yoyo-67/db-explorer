@@ -1,4 +1,3 @@
-import { countSkipReason } from '#/lib/row-trace'
 import type { EdgeBasis, NodeKind, SchemaGraphEdge } from '#/lib/types'
 
 /**
@@ -20,15 +19,16 @@ import type { EdgeBasis, NodeKind, SchemaGraphEdge } from '#/lib/types'
 export const CHILDREN_PER_EDGE = 5
 /** Nodes per neighborhood. Past this the picture stops being readable. */
 export const NODE_BUDGET = 80
-/** The row count past which a child edge is not read — the same bound row
- *  detail and Find count under. */
-export const CHILD_ROW_BUDGET = 100_000
+/** A column every fetched row carries: the value its lookup was asked for.
+ *  Matching on it, not on the row's own column as text, leaves comparing to
+ *  Postgres — an uppercase uuid in a text column still finds its row. */
+export const PROBE_COLUMN = '__probe'
 /** The column that names a row, first one a table has. */
 export const LABEL_COLUMNS = ['name', 'title', 'label', 'email', 'code', 'slug', 'status'] as const
 
 export type Depth = -2 | -1 | 0 | 1 | 2
 export type Hops = 1 | 2
-export type SkipReason = 'unindexed' | 'large' | 'timeout' | 'failed'
+export type SkipReason = 'unindexed' | 'timeout' | 'mismatch' | 'failed'
 
 export interface NeighborTable {
   kind: NodeKind
@@ -66,7 +66,7 @@ export type NeighborNode =
   /** A parent value that points at no row. */
   | (NodeBase & { kind: 'missing' })
   /** An edge that was not read, and why. */
-  | (NodeBase & { kind: 'skipped'; reason: SkipReason })
+  | (NodeBase & { kind: 'skipped'; reason: SkipReason; detail?: string })
 
 /** Always child → parent, whichever side the walk came from. */
 export interface NeighborEdge {
@@ -95,7 +95,11 @@ export interface RowFetch {
 }
 
 export type FetchedRow = Record<string, string | null>
-export type FetchOutcome = { rows: FetchedRow[] } | { error: 'timeout' | 'failed' }
+export type FetchOutcome =
+  | { rows: FetchedRow[] }
+  /** `mismatch`: the value cannot be compared with the column (a type error).
+   *  `failed`: anything else, with the database's own words in `detail`. */
+  | { error: 'timeout' | 'mismatch' | 'failed'; detail?: string }
 export type FetchRows = (request: RowFetch) => Promise<FetchOutcome>
 
 export function labelColumn(columns: readonly string[]): string | null {
@@ -115,6 +119,14 @@ function selectColumns(table: string, lookup: string, schema: NeighborhoodSchema
     if (edge.toTable === table) columns.add(edge.toColumn)
   }
   return [...columns].sort()
+}
+
+function probe(row: FetchedRow, column: string): string {
+  return row[PROBE_COLUMN] ?? row[column] ?? ''
+}
+
+function skipped(outcome: { error: 'timeout' | 'mismatch' | 'failed'; detail?: string }) {
+  return { kind: 'skipped' as const, reason: outcome.error, ...(outcome.detail ? { detail: outcome.detail } : {}) }
 }
 
 interface Reached {
@@ -143,14 +155,20 @@ class NeighborhoodBuilder {
     return { table, column, values: [...values], limit, select: selectColumns(table, column, this.schema) }
   }
 
-  addRow(table: string, row: FetchedRow, column: string, depth: Depth): { node: RowNode; fresh: boolean } | null {
+  addRow(
+    table: string,
+    row: FetchedRow,
+    column: string,
+    depth: Depth,
+    ordinal = 0,
+  ): { node: RowNode; fresh: boolean } | null {
     const info = this.schema.tables[table]
     const keyColumn = info?.keyColumn ?? null
     const key = keyColumn ? (row[keyColumn] ?? null) : null
-    const value = row[column] ?? ''
-    // Keyed rows are one node however they were reached; a keyless row is
-    // known only by the value that led to it.
-    const id = key !== null ? `row:${table}:${keyColumn}=${key}` : `row:${table}:${column}=${value}`
+    const value = probe(row, column)
+    // Keyed rows are one node however they were reached. A keyless row has
+    // nothing that tells two of them apart, so each one reached is its own node.
+    const id = key !== null ? `row:${table}:${keyColumn}=${key}` : `row:${table}:${column}=${value}#${ordinal}`
     const existing = this.nodes.get(id)
     if (existing) return { node: existing as RowNode, fresh: false }
     if (!this.hasRoom()) return null
@@ -170,7 +188,7 @@ class NeighborhoodBuilder {
   }
 
   addMarker(
-    marker: { kind: 'more' | 'missing' } | { kind: 'skipped'; reason: SkipReason },
+    marker: { kind: 'more' | 'missing' } | { kind: 'skipped'; reason: SkipReason; detail?: string },
     table: string,
     column: string,
     value: string,
@@ -204,7 +222,9 @@ class NeighborhoodBuilder {
         if (edge.fromTable !== from.node.table) continue
         const value = from.row[edge.fromColumn]
         if (value === null || value === undefined) continue
-        const key = `${edge.toTable}.${edge.toColumn}`
+        // One statement per edge: a value one reference cannot compare fails
+        // that reference, not every other one pointing at the same table.
+        const key = `${edge.fromTable}.${edge.fromColumn}`
         groups.set(key, [...(groups.get(key) ?? []), { from, edge, value }])
       }
     }
@@ -214,12 +234,12 @@ class NeighborhoodBuilder {
       const { toTable, toColumn } = wants[0].edge
       const outcome = await this.fetchRows(this.request(toTable, toColumn, new Set(wants.map((w) => w.value)), 1))
       const byValue = new Map<string, FetchedRow>()
-      if ('rows' in outcome) for (const row of outcome.rows) byValue.set(row[toColumn] ?? '', row)
+      if ('rows' in outcome) for (const row of outcome.rows) byValue.set(probe(row, toColumn), row)
 
       for (const want of wants) {
         const row = byValue.get(want.value)
         if ('error' in outcome) {
-          const marker = this.addMarker({ kind: 'skipped', reason: outcome.error }, toTable, toColumn, want.value, depth)
+          const marker = this.addMarker(skipped(outcome), toTable, toColumn, want.value, depth)
           if (marker) this.link(want.from.node.id, marker.id, want.edge)
         } else if (row) {
           const added = this.addRow(toTable, row, toColumn, depth)
@@ -246,9 +266,11 @@ class NeighborhoodBuilder {
         if (!child || child.kind === 'view') continue
         const value = from.row[edge.toColumn]
         if (value === null || value === undefined) continue
-        const skip = countSkipReason(edge.indexed, child.rowCount, CHILD_ROW_BUDGET)
-        if (skip) {
-          const marker = this.addMarker({ kind: 'skipped', reason: skip }, edge.fromTable, edge.fromColumn, value, depth)
+        // An unindexed column means a scan per value. An indexed one is a
+        // limited lookup that costs the same on any table size, so size is
+        // not a reason to skip — the statement timeout is the bound.
+        if (!edge.indexed) {
+          const marker = this.addMarker({ kind: 'skipped', reason: 'unindexed' }, edge.fromTable, edge.fromColumn, value, depth)
           if (marker) this.link(marker.id, from.node.id, edge)
           continue
         }
@@ -266,20 +288,20 @@ class NeighborhoodBuilder {
       const byValue = new Map<string, FetchedRow[]>()
       if ('rows' in outcome) {
         for (const row of outcome.rows) {
-          const value = row[fromColumn] ?? ''
+          const value = probe(row, fromColumn)
           byValue.set(value, [...(byValue.get(value) ?? []), row])
         }
       }
 
       for (const want of wants) {
         if ('error' in outcome) {
-          const marker = this.addMarker({ kind: 'skipped', reason: outcome.error }, fromTable, fromColumn, want.value, depth)
+          const marker = this.addMarker(skipped(outcome), fromTable, fromColumn, want.value, depth)
           if (marker) this.link(marker.id, want.from.node.id, want.edge)
           continue
         }
         const rows = byValue.get(want.value) ?? []
-        for (const row of rows.slice(0, CHILDREN_PER_EDGE)) {
-          const added = this.addRow(fromTable, row, fromColumn, depth)
+        for (const [ordinal, row] of rows.slice(0, CHILDREN_PER_EDGE).entries()) {
+          const added = this.addRow(fromTable, row, fromColumn, depth, ordinal)
           if (!added) continue
           this.link(added.node.id, want.from.node.id, want.edge)
           if (added.fresh) next.push({ node: added.node, row })
@@ -307,7 +329,11 @@ export async function buildNeighborhood(
 ): Promise<RowNeighborhood | null> {
   const builder = new NeighborhoodBuilder(schema, fetchRows, nodeBudget)
   const outcome = await fetchRows(builder.request(root.table, root.column, [root.value], 1))
-  if ('error' in outcome) throw new Error(`Could not read ${root.table}.${root.column} = ${root.value} (${outcome.error})`)
+  if ('error' in outcome) {
+    throw new Error(
+      `Could not read ${root.table}.${root.column} = ${root.value}: ${outcome.detail ?? outcome.error}`,
+    )
+  }
   const row = outcome.rows[0]
   if (!row) return null
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildNeighborhood, labelColumn } from '#/lib/row-neighborhood'
-import type { FetchRows, FetchedRow, NeighborhoodSchema, NeighborNode, RowFetch } from '#/lib/row-neighborhood'
+import { PROBE_COLUMN, buildNeighborhood, labelColumn } from '#/lib/row-neighborhood'
+import type { FetchOutcome, FetchRows, FetchedRow, NeighborhoodSchema, NeighborNode, RowFetch } from '#/lib/row-neighborhood'
 import type { SchemaGraphEdge } from '#/lib/types'
 
 const edge = (
@@ -69,17 +69,25 @@ const db: Record<string, FetchedRow[]> = {
   ],
 }
 
-function fakeFetch(data: Record<string, FetchedRow[]>, failing: Record<string, 'timeout' | 'failed'> = {}) {
+function fakeFetch(
+  data: Record<string, FetchedRow[]>,
+  failing: Record<string, 'timeout' | 'mismatch' | 'failed'> = {},
+  failWhen?: (request: RowFetch) => FetchOutcome | null,
+) {
   const calls: RowFetch[] = []
   const fetchRows: FetchRows = async (request) => {
     calls.push(request)
     const failure = failing[request.table]
     if (failure) return { error: failure }
+    const forced = failWhen?.(request)
+    if (forced) return forced
     const rows: FetchedRow[] = []
     for (const value of request.values) {
-      const matches = (data[request.table] ?? []).filter((row) => row[request.column] === value)
+      // Postgres compares typed: an uppercase uuid in a text column still
+      // finds its lowercase row. Case-folding stands in for that here.
+      const matches = (data[request.table] ?? []).filter((row) => row[request.column]?.toLowerCase() === value.toLowerCase())
       for (const row of matches.slice(0, request.limit)) {
-        rows.push(Object.fromEntries(request.select.map((c) => [c, row[c] ?? null])))
+        rows.push({ ...Object.fromEntries(request.select.map((c) => [c, row[c] ?? null])), [PROBE_COLUMN]: value })
       }
     }
     return { rows }
@@ -119,9 +127,14 @@ describe('buildNeighborhood', () => {
     const { fetchRows, calls } = fakeFetch(db)
     const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows))!
     expect(find(graph.nodes, 'audit', 'skipped')).toEqual([expect.objectContaining({ reason: 'unindexed', column: 'order_id', value: '10' })])
-    expect(find(graph.nodes, 'big_log', 'skipped')).toEqual([expect.objectContaining({ reason: 'large' })])
     expect(calls.map((c) => c.table)).not.toContain('audit')
-    expect(calls.map((c) => c.table)).not.toContain('big_log')
+  })
+
+  it('reads an indexed child edge however big the table — a limited index lookup costs the same on any size', async () => {
+    const { fetchRows, calls } = fakeFetch(db)
+    const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows))!
+    expect(calls.map((c) => c.table)).toContain('big_log')
+    expect(find(graph.nodes, 'big_log', 'skipped')).toEqual([])
   })
 
   it('leaves views out — they reference nothing of their own', async () => {
@@ -195,6 +208,56 @@ describe('buildNeighborhood', () => {
   it('throws when the root itself cannot be read', async () => {
     const { fetchRows } = fakeFetch(db, { orders: 'failed' })
     await expect(buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows)).rejects.toThrow(/could not read/i)
+  })
+})
+
+describe('buildNeighborhood, review fixes', () => {
+  it('draws every keyless child as its own node', async () => {
+    const two = { ...db, notes: [{ order_id: '10', body: 'a' }, { order_id: '10', body: 'b' }] }
+    const { fetchRows } = fakeFetch(two)
+    const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows))!
+    expect(find(graph.nodes, 'notes')).toHaveLength(2)
+  })
+
+  it('reads each reference on its own, so one bad value cannot hide another edge', async () => {
+    const withLegacy: NeighborhoodSchema = {
+      ...schema,
+      edges: [...schema.edges, edge('orders', 'legacy_customer', 'customers', 'convention')],
+    }
+    const data = { ...db, orders: [{ id: '10', status: 'paid', customer_id: '1', legacy_customer: 'N/A' }] }
+    const { fetchRows } = fakeFetch(data, {}, (request) =>
+      request.values.includes('N/A') ? { error: 'mismatch' } : null,
+    )
+    const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, withLegacy, 1, fetchRows))!
+    expect(find(graph.nodes, 'customers')).toEqual([expect.objectContaining({ key: '1' })])
+    expect(find(graph.nodes, 'customers', 'skipped')).toEqual([expect.objectContaining({ reason: 'mismatch', value: 'N/A' })])
+  })
+
+  it('matches a fetched row by the value asked for, not by re-comparing text', async () => {
+    const data = { ...db, orders: [{ id: '10', status: 'paid', customer_id: 'AB' }], customers: [{ id: 'ab', name: 'Ada' }] }
+    const { fetchRows } = fakeFetch(data)
+    const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows))!
+    expect(find(graph.nodes, 'customers', 'missing')).toEqual([])
+    expect(find(graph.nodes, 'customers')).toEqual([expect.objectContaining({ key: 'ab' })])
+  })
+
+  it('carries why a read failed into the node', async () => {
+    const { fetchRows } = fakeFetch(db, {}, (request) =>
+      request.table === 'invoices' ? { error: 'failed', detail: 'permission denied for table invoices' } : null,
+    )
+    const graph = (await buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows))!
+    expect(find(graph.nodes, 'invoices', 'skipped')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ reason: 'failed', detail: 'permission denied for table invoices' })]),
+    )
+  })
+
+  it('says why the root could not be read', async () => {
+    const { fetchRows } = fakeFetch(db, {}, (request) =>
+      request.table === 'orders' ? { error: 'failed', detail: 'permission denied for table orders' } : null,
+    )
+    await expect(buildNeighborhood({ table: 'orders', column: 'id', value: '10' }, schema, 1, fetchRows)).rejects.toThrow(
+      /permission denied for table orders/,
+    )
   })
 })
 

@@ -19,7 +19,7 @@ function render(ui: React.ReactNode) {
   setSetting('tableNameDisplay', 'model')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(connectionStatusKey, { connected: true })
-  client.setQueryData(['mapModels', 'shop_db', 'public'], { orders: 'PurchaseOrder', customers: 'Client' })
+  client.setQueryData(['mapModels', 'shop_db', 'public'], { orders: 'PurchaseOrder', customers: 'Client', audit: 'AuditEntry' })
   return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
 }
 
@@ -44,7 +44,8 @@ describe('NeighborhoodGraph', () => {
 
   it('says why an edge was not read, and that a parent is missing', () => {
     render(<NeighborhoodGraph database="shop_db" schema="public" graph={graph} />)
-    expect(screen.getByText(/not read — no index on audit\.order_id/)).toBeTruthy()
+    // The reason names the table the way the setting asks, like every other name.
+    expect(document.body.textContent).toContain('not read — no index on AuditEntry.order_id')
     expect(screen.getByText(/no row with id = 99/)).toBeTruthy()
     expect(screen.getByText(/more →/)).toBeTruthy()
   })
@@ -52,5 +53,18 @@ describe('NeighborhoodGraph', () => {
   it('draws an inferred edge dashed', () => {
     const { container } = render(<NeighborhoodGraph database="shop_db" schema="public" graph={graph} />)
     expect(container.querySelector('path[stroke-dasharray]')).not.toBeNull()
+  })
+
+  it('prints the database’s own reason when a read failed', () => {
+    const failed: RowNeighborhood = {
+      ...graph,
+      nodes: [
+        graph.nodes[0],
+        { kind: 'skipped', id: 'skipped:invoices.order_id=10', table: 'invoices', depth: 1, column: 'order_id', value: '10', reason: 'failed', detail: 'permission denied for table invoices' },
+      ],
+      edges: [],
+    }
+    render(<NeighborhoodGraph database="shop_db" schema="public" graph={failed} />)
+    expect(document.body.textContent).toContain('not read — permission denied for table invoices')
   })
 })

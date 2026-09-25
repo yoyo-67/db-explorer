@@ -2,18 +2,24 @@ import { Link } from '@tanstack/react-router'
 import TableName from '#/components/TableName'
 import { encodeConditions } from '#/lib/filter-model'
 import { NODE_HEIGHT, NODE_WIDTH, layoutNeighborhood } from '#/lib/neighborhood-layout'
-import type { NeighborNode, RowNeighborhood, SkipReason } from '#/lib/row-neighborhood'
+import type { NeighborNode, RowNeighborhood } from '#/lib/row-neighborhood'
 
-export function skipReasonText(reason: SkipReason, table: string, column: string): string {
-  switch (reason) {
+/** Why an edge was not read, in words. The table in it is a table name like
+ *  any other, so it follows the *Table names* setting. */
+export function SkipReasonText({ node }: { node: Extract<NeighborNode, { kind: 'skipped' }> }) {
+  switch (node.reason) {
     case 'unindexed':
-      return `not read — no index on ${table}.${column}`
-    case 'large':
-      return 'not read — table too large to look up without an index budget'
+      return (
+        <>
+          not read — no index on <TableName table={node.table} />.{node.column}
+        </>
+      )
     case 'timeout':
-      return 'not read — timed out'
+      return <>not read — timed out</>
+    case 'mismatch':
+      return <>not read — {node.value} does not compare with {node.column}</>
     case 'failed':
-      return 'not read — the two columns do not compare'
+      return <>not read — {node.detail ?? 'the database refused the read'}</>
   }
 }
 
@@ -38,6 +44,20 @@ function NodeBody({ database, schema, node, isRoot }: { database: string; schema
       <TableName table={node.table} />
     </span>
   )
+  if (node.kind === 'row' && node.key === null && !isRoot) {
+    // Nothing tells this row apart from its neighbors, so there is no page to
+    // center on — only the table filtered to the value that led here.
+    return (
+      <>
+        {title}
+        <span className="block truncate text-[11px] text-[var(--sea-ink-soft)]">
+          <FilteredTableLink database={database} schema={schema} node={node}>
+            {node.label ?? 'no key'} →
+          </FilteredTableLink>
+        </span>
+      </>
+    )
+  }
   if (node.kind === 'row') {
     const id = node.key ?? node.value
     const col = node.key !== null ? node.keyColumn : node.column
@@ -86,7 +106,7 @@ function NodeBody({ database, schema, node, isRoot }: { database: string; schema
       {title}
       <span className="block truncate text-[11px] text-[var(--sea-ink-soft)]">
         <FilteredTableLink database={database} schema={schema} node={node}>
-          {node.kind === 'more' ? 'more →' : skipReasonText(node.reason, node.table, node.column)}
+          {node.kind === 'more' ? 'more →' : <SkipReasonText node={node} />}
         </FilteredTableLink>
       </span>
     </>
