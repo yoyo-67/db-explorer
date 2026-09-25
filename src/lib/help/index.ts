@@ -9,6 +9,7 @@ import { indexUsageTopic } from '#/lib/help/topics/index-usage'
 import { queryBoardTopic } from '#/lib/help/topics/query-board'
 import { randomRowTopic } from '#/lib/help/topics/random-row'
 import { rowPageTopic } from '#/lib/help/topics/row-page'
+import { rowNeighborhoodTopic } from '#/lib/help/topics/row-neighborhood'
 import { rowUpdateTopic } from '#/lib/help/topics/row-update'
 import { schemaGraphTopic } from '#/lib/help/topics/schema-graph'
 import { columnSearchTopic } from '#/lib/help/topics/column-search'
@@ -29,6 +30,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   tableListTopic,
   tablePageTopic,
   rowPageTopic,
+  rowNeighborhoodTopic,
   randomRowTopic,
   // Changing data — one topic, and the only one that writes.
   rowUpdateTopic,

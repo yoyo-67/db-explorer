@@ -62,6 +62,13 @@ functions), TypeScript, and Tailwind.
   Find asks which one you meant instead of returning all of them — and row
   detail's *Where else* link answers that before it is asked. Both stages live
   in the URL, so an answer is a link.
+- **Row neighborhood** (`/d/$database/t/$schema/$table/neighborhood/$id`) — one
+  row drawn with what it is attached to: the rows it references on the left,
+  the rows referencing it on the right, one or two hops out, every reference the
+  merged graph knows (inferred ones dashed). Five children per reference, then a
+  *more* node; a child table is read only where an index leads with the column
+  and the table is small enough, and every other edge is a node saying why it
+  was not read. Click a node to center on it.
 - **Column search** (`/d/$database/columns/$schema`) — which table has a column
   called this, across the whole schema. Each hit says what it references (and
   whether that link is a real FK, the schema map or a name rule), whether an

@@ -10,6 +10,7 @@ import IndexUsagePreview from '#/components/help/previews/IndexUsagePreview'
 import QueryBoardPreview from '#/components/help/previews/QueryBoardPreview'
 import RandomRowPreview from '#/components/help/previews/RandomRowPreview'
 import RowPagePreview from '#/components/help/previews/RowPagePreview'
+import RowNeighborhoodPreview from '#/components/help/previews/RowNeighborhoodPreview'
 import RowUpdatePreview from '#/components/help/previews/RowUpdatePreview'
 import SchemaGraphPreview from '#/components/help/previews/SchemaGraphPreview'
 import SequenceHeadroomPreview from '#/components/help/previews/SequenceHeadroomPreview'
@@ -32,6 +33,7 @@ export const HELP_PREVIEWS: Record<string, ComponentType> = {
   'table-list': TableListPreview,
   'table-page': TablePagePreview,
   'row-page': RowPagePreview,
+  'row-neighborhood': RowNeighborhoodPreview,
   'row-update': RowUpdatePreview,
   'random-row': RandomRowPreview,
   'column-profile': ColumnProfilePreview,
