@@ -249,7 +249,7 @@ export async function getSchemaNames(): Promise<string[]> {
 }
 
 /** Every column in the schema, grouped by table, in ordinal order. */
-async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInfo[]>> {
+export async function fetchSchemaColumns(schema: string): Promise<Map<string, ColumnInfo[]>> {
   const result = await query(
     `
     SELECT
@@ -306,7 +306,7 @@ async function isCatalogSchema(schema: string): Promise<boolean> {
   return result.rows[0]?.schema_name === schema
 }
 
-async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
+export async function fetchSchemaPrimaryKeys(schema: string): Promise<Map<string, string>> {
   const [declared, unique] = await Promise.all([
     query(
       `

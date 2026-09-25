@@ -30,6 +30,7 @@ import { getLiveActivity } from '#/server/live-activity'
 import { getSchemaAnatomy } from '#/server/schema-anatomy'
 import { getColumnFacets } from '#/server/column-facets'
 import { findValueOwners, findValueReach } from '#/server/find-value'
+import { getRowNeighborhood } from '#/server/row-neighborhood'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
 import { readSchemaMap, readTableCatalog } from '#/server/local-metadata'
@@ -696,3 +697,11 @@ export const $findValueOwners = createServerFn({ method: 'GET' })
 export const $findValueReach = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string; value: string; owner: string }) => data)
   .handler(scoped((data) => findValueReach(data.schema, data.value, data.owner)))
+
+export const $getRowNeighborhood = createServerFn({ method: 'GET' })
+  .inputValidator(
+    (data: Scoped & { schema: string; table: string; id: string; column?: string; hops: 1 | 2 }) => data,
+  )
+  .handler(
+    scoped((data) => getRowNeighborhood(data.schema, data.table, data.id, data.column, data.hops === 2 ? 2 : 1)),
+  )
