@@ -144,7 +144,9 @@ export type IndexFilter = 'lead' | 'any' | 'none'
  * the unindexed reference columns") is a link someone else can open.
  */
 export interface ColumnSearch {
-  q?: string
+  /** The column name typed. Not `q`: the table page owns that key as a list, and a
+   *  navigation that merges every route's search would give it two types. */
+  name?: string
   type?: string[]
   ref?: RefFilter
   indexed?: IndexFilter
@@ -164,8 +166,8 @@ function nonEmptyText(value: unknown): string | undefined {
  */
 export function validateColumnSearch(search: Record<string, unknown>): ColumnSearch {
   const result: ColumnSearch = {}
-  const q = nonEmptyText(search.q)
-  if (q) result.q = q
+  const name = nonEmptyText(search.name)
+  if (name) result.name = name
 
   const rawTypes = Array.isArray(search.type) ? search.type : [search.type]
   const types = rawTypes.filter((t): t is string => typeof t === 'string' && t.length > 0)
@@ -210,7 +212,7 @@ export function searchColumns(
   search: ColumnSearch,
 ): ColumnEntry[] {
   const types = search.type ? new Set(search.type) : null
-  const q = search.q?.trim() ?? ''
+  const q = search.name?.trim() ?? ''
 
   const ranked: { entry: ColumnEntry; rank: number; order: number }[] = []
   entries.forEach((entry, order) => {

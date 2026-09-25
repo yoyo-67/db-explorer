@@ -352,6 +352,23 @@ function Menu() {
 
           {database && schema && (
             <Link
+              to="/d/$database/columns/$schema"
+              params={{ database, schema }}
+              // Filters live in the search params; a bare link starts with none.
+              search={{}}
+              role="menuitem"
+              className={MENU_ITEM_CLASS}
+              activeProps={{ className: MENU_ITEM_ACTIVE_CLASS }}
+            >
+              Columns
+              <span className={MENU_HINT_CLASS}>
+                Which table has a column — by name, type, reference or index
+              </span>
+            </Link>
+          )}
+
+          {database && schema && (
+            <Link
               to="/d/$database/pressure/$schema"
               params={{ database, schema }}
               role="menuitem"

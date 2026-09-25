@@ -7,6 +7,11 @@ describe('menuHoldsRoute', () => {
     expect(menuHoldsRoute('/d/app_db/pressure/public')).toBe(true)
   })
 
+  it('holds the column survey, on a segment boundary', () => {
+    expect(menuHoldsRoute('/d/app_db/columns/public')).toBe(true)
+    expect(menuHoldsRoute('/d/app_db/columnsx/public')).toBe(false)
+  })
+
   it('claims the routes that belong to no database', () => {
     expect(menuHoldsRoute('/help')).toBe(true)
     expect(menuHoldsRoute('/help/filters')).toBe(true)

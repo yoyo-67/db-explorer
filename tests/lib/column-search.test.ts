@@ -153,18 +153,18 @@ describe('validateColumnSearch', () => {
   it('keeps what it understands', () => {
     expect(
       validateColumnSearch({
-        q: 'created',
+        name: 'created',
         type: ['jsonb', 'uuid'],
         ref: 'declared',
         indexed: 'lead',
         nullable: true,
       }),
-    ).toEqual({ q: 'created', type: ['jsonb', 'uuid'], ref: 'declared', indexed: 'lead', nullable: true })
+    ).toEqual({ name: 'created', type: ['jsonb', 'uuid'], ref: 'declared', indexed: 'lead', nullable: true })
   })
 
   it('drops what a hand-edited URL got wrong instead of throwing', () => {
     expect(
-      validateColumnSearch({ q: '', type: 'jsonb', ref: 'nope', indexed: 'banana', nullable: 'yes' }),
+      validateColumnSearch({ name: '', type: 'jsonb', ref: 'nope', indexed: 'banana', nullable: 'yes' }),
     ).toEqual({ type: ['jsonb'] })
     expect(validateColumnSearch({ type: [1, '', 'uuid'] })).toEqual({ type: ['uuid'] })
     expect(validateColumnSearch({ nullable: 'true' })).toEqual({ nullable: true })
@@ -188,7 +188,7 @@ describe('searchColumns', () => {
   })
 
   it('matches the name without the palette gate, best tier first, then by table', () => {
-    expect(ids(searchColumns(entries, { q: 'id' }))).toEqual([
+    expect(ids(searchColumns(entries, { name: 'id' }))).toEqual([
       'customers.id',
       'invoices.id',
       'orders.id',
