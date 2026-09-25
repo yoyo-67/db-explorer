@@ -79,7 +79,7 @@ the same way `$getSchemaPressure` is.
 
 ## Survey page
 
-Route: `/d/$database/columns/$schema?q=&type=&ref=&indexed=&nullable=`
+Route: `/d/$database/columns/$schema?name=&type=&ref=&indexed=&nullable=`
 (`src/routes/d/$database/columns/$schema.tsx`). Added to `DATABASE_ROUTES` in
 `src/lib/menu-routes.ts` and to the header menu.
 

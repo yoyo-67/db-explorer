@@ -62,6 +62,15 @@ functions), TypeScript, and Tailwind.
   Find asks which one you meant instead of returning all of them — and row
   detail's *Where else* link answers that before it is asked. Both stages live
   in the URL, so an answer is a link.
+- **Column search** (`/d/$database/columns/$schema`) — which table has a column
+  called this, across the whole schema. Each hit says what it references (and
+  whether that link is a real FK, the schema map or a name rule), whether an
+  index leads with it, its null share and rough distinct count, and its comment.
+  All of it is read from the catalog and the last `ANALYZE`, never from the
+  tables, so it costs the same on a billion rows as on none — and a table never
+  analyzed shows —, not 0%. A reference with no index leading on it is flagged.
+  The palette answers the same question as you type, and the filters live in the
+  URL.
 - **Palette** (`⌘K`, or `⌘J`) — a floating window over any page, with pages of
   its own. Paste an id and the first row is *Find it*; choosing an owner opens
   the row, `⇥` asks where else the id appears, and every row is a real link so
