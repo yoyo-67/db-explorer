@@ -126,6 +126,15 @@ function RowDetailPage() {
                 knows both the value and the table it is the key of, which is
                 exactly what a bare integer id cannot say on its own. */}
             <Link
+              to="/d/$database/t/$schema/$table/neighborhood/$id"
+              params={{ database, schema, table, id }}
+              search={col ? { col } : {}}
+              title="This row's parents and children, drawn"
+              className="whitespace-nowrap rounded-full border border-[var(--chip-line)] px-2 py-0.5 text-xs text-[var(--palm)] transition hover:bg-[var(--link-bg-hover)]"
+            >
+              Neighborhood
+            </Link>
+            <Link
               to="/d/$database/find/$schema"
               params={{ database, schema }}
               search={{ v: id, owner: table }}

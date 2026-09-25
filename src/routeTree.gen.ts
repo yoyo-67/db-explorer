@@ -27,6 +27,7 @@ import { Route as DDatabaseLensSchemaOrphansRouteImport } from './routes/d/$data
 import { Route as DDatabaseLensSchemaGGroupRouteImport } from './routes/d/$database/lens/$schema/g/$group'
 import { Route as DDatabaseLensSchemaTTableRouteImport } from './routes/d/$database/lens/$schema/t/$table'
 import { Route as DDatabaseTSchemaTableIndexRouteImport } from './routes/d/$database/t/$schema/$table/index'
+import { Route as DDatabaseTSchemaTableNeighborhoodIdRouteImport } from './routes/d/$database/t/$schema/$table/neighborhood/$id'
 import { Route as DDatabaseTSchemaTableRowIdRouteImport } from './routes/d/$database/t/$schema/$table/row/$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -124,6 +125,12 @@ const DDatabaseTSchemaTableIndexRoute =
     path: '/d/$database/t/$schema/$table/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DDatabaseTSchemaTableNeighborhoodIdRoute =
+  DDatabaseTSchemaTableNeighborhoodIdRouteImport.update({
+    id: '/d/$database/t/$schema/$table/neighborhood/$id',
+    path: '/d/$database/t/$schema/$table/neighborhood/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DDatabaseTSchemaTableRowIdRoute =
   DDatabaseTSchemaTableRowIdRouteImport.update({
     id: '/d/$database/t/$schema/$table/row/$id',
@@ -150,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
   '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
   '/d/$database/t/$schema/$table/': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/neighborhood/$id': typeof DDatabaseTSchemaTableNeighborhoodIdRoute
   '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRoutesByTo {
@@ -171,6 +179,7 @@ export interface FileRoutesByTo {
   '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
   '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
   '/d/$database/t/$schema/$table': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/neighborhood/$id': typeof DDatabaseTSchemaTableNeighborhoodIdRoute
   '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRoutesById {
@@ -193,6 +202,7 @@ export interface FileRoutesById {
   '/d/$database/lens/$schema/g/$group': typeof DDatabaseLensSchemaGGroupRoute
   '/d/$database/lens/$schema/t/$table': typeof DDatabaseLensSchemaTTableRoute
   '/d/$database/t/$schema/$table/': typeof DDatabaseTSchemaTableIndexRoute
+  '/d/$database/t/$schema/$table/neighborhood/$id': typeof DDatabaseTSchemaTableNeighborhoodIdRoute
   '/d/$database/t/$schema/$table/row/$id': typeof DDatabaseTSchemaTableRowIdRoute
 }
 export interface FileRouteTypes {
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/d/$database/lens/$schema/g/$group'
     | '/d/$database/lens/$schema/t/$table'
     | '/d/$database/t/$schema/$table/'
+    | '/d/$database/t/$schema/$table/neighborhood/$id'
     | '/d/$database/t/$schema/$table/row/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -237,6 +248,7 @@ export interface FileRouteTypes {
     | '/d/$database/lens/$schema/g/$group'
     | '/d/$database/lens/$schema/t/$table'
     | '/d/$database/t/$schema/$table'
+    | '/d/$database/t/$schema/$table/neighborhood/$id'
     | '/d/$database/t/$schema/$table/row/$id'
   id:
     | '__root__'
@@ -258,6 +270,7 @@ export interface FileRouteTypes {
     | '/d/$database/lens/$schema/g/$group'
     | '/d/$database/lens/$schema/t/$table'
     | '/d/$database/t/$schema/$table/'
+    | '/d/$database/t/$schema/$table/neighborhood/$id'
     | '/d/$database/t/$schema/$table/row/$id'
   fileRoutesById: FileRoutesById
 }
@@ -280,6 +293,7 @@ export interface RootRouteChildren {
   DDatabaseLensSchemaGGroupRoute: typeof DDatabaseLensSchemaGGroupRoute
   DDatabaseLensSchemaTTableRoute: typeof DDatabaseLensSchemaTTableRoute
   DDatabaseTSchemaTableIndexRoute: typeof DDatabaseTSchemaTableIndexRoute
+  DDatabaseTSchemaTableNeighborhoodIdRoute: typeof DDatabaseTSchemaTableNeighborhoodIdRoute
   DDatabaseTSchemaTableRowIdRoute: typeof DDatabaseTSchemaTableRowIdRoute
 }
 
@@ -411,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DDatabaseTSchemaTableIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/d/$database/t/$schema/$table/neighborhood/$id': {
+      id: '/d/$database/t/$schema/$table/neighborhood/$id'
+      path: '/d/$database/t/$schema/$table/neighborhood/$id'
+      fullPath: '/d/$database/t/$schema/$table/neighborhood/$id'
+      preLoaderRoute: typeof DDatabaseTSchemaTableNeighborhoodIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/d/$database/t/$schema/$table/row/$id': {
       id: '/d/$database/t/$schema/$table/row/$id'
       path: '/d/$database/t/$schema/$table/row/$id'
@@ -440,6 +461,8 @@ const rootRouteChildren: RootRouteChildren = {
   DDatabaseLensSchemaGGroupRoute: DDatabaseLensSchemaGGroupRoute,
   DDatabaseLensSchemaTTableRoute: DDatabaseLensSchemaTTableRoute,
   DDatabaseTSchemaTableIndexRoute: DDatabaseTSchemaTableIndexRoute,
+  DDatabaseTSchemaTableNeighborhoodIdRoute:
+    DDatabaseTSchemaTableNeighborhoodIdRoute,
   DDatabaseTSchemaTableRowIdRoute: DDatabaseTSchemaTableRowIdRoute,
 }
 export const routeTree = rootRouteImport
