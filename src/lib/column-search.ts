@@ -1,4 +1,4 @@
-import { MAX_MATCHES, confidentTableMatches } from '#/lib/palette/table-matches'
+import { MAX_MATCHES, confidentTableMatches, matchRank } from '#/lib/palette/table-matches'
 import type { EdgeBasis, SchemaGraph, SchemaGraphEdge, TableInfo } from '#/lib/types'
 
 /**
@@ -134,4 +134,111 @@ export function confidentColumnMatches(
   return confidentTableMatches(candidates, query, opts.limit ?? MAX_MATCHES).map(
     (hit) => hit.entry,
   )
+}
+
+export type RefFilter = 'any' | 'none' | EdgeBasis
+export type IndexFilter = 'lead' | 'any' | 'none'
+
+/**
+ * The survey page's URL state. Every filter lives here so a finding ("these are
+ * the unindexed reference columns") is a link someone else can open.
+ */
+export interface ColumnSearch {
+  q?: string
+  type?: string[]
+  ref?: RefFilter
+  indexed?: IndexFilter
+  nullable?: true
+}
+
+const REF_FILTERS = new Set<string>(['any', 'none', 'declared', 'model', 'convention', 'catalog'])
+const INDEX_FILTERS = new Set<string>(['lead', 'any', 'none'])
+
+function nonEmptyText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Read the search params, dropping whatever doesn't parse. A hand-edited URL
+ * should land on a wider list, never on an error page or an empty one.
+ */
+export function validateColumnSearch(search: Record<string, unknown>): ColumnSearch {
+  const result: ColumnSearch = {}
+  const q = nonEmptyText(search.q)
+  if (q) result.q = q
+
+  const rawTypes = Array.isArray(search.type) ? search.type : [search.type]
+  const types = rawTypes.filter((t): t is string => typeof t === 'string' && t.length > 0)
+  if (types.length > 0) result.type = types
+
+  if (typeof search.ref === 'string' && REF_FILTERS.has(search.ref)) {
+    result.ref = search.ref as RefFilter
+  }
+  if (typeof search.indexed === 'string' && INDEX_FILTERS.has(search.indexed)) {
+    result.indexed = search.indexed as IndexFilter
+  }
+  if (search.nullable === true || search.nullable === 'true') result.nullable = true
+  return result
+}
+
+function matchesRef(entry: ColumnEntry, ref: RefFilter): boolean {
+  if (ref === 'any') return entry.reference !== null
+  if (ref === 'none') return entry.reference === null
+  return entry.reference?.basis === ref
+}
+
+/**
+ * Only a facet that was read can say "in no index". Missing facets mean the
+ * read failed or hasn't landed, and those rows are left out of `none` rather
+ * than claimed as unindexed.
+ */
+function matchesIndex(entry: ColumnEntry, indexed: IndexFilter): boolean {
+  if (!entry.facet) return false
+  if (indexed === 'lead') return entry.facet.index === 'lead'
+  if (indexed === 'any') return entry.facet.index !== null
+  return entry.facet.index === null
+}
+
+/**
+ * The survey list. No confidence gate: this page exists to show every match.
+ * But it keeps the tiers, so whole-name hits sit above a word inside a longer
+ * name. Inside a tier, entries keep the table-then-column order
+ * {@link buildColumnEntries} gave them.
+ */
+export function searchColumns(
+  entries: readonly ColumnEntry[],
+  search: ColumnSearch,
+): ColumnEntry[] {
+  const types = search.type ? new Set(search.type) : null
+  const q = search.q?.trim() ?? ''
+
+  const ranked: { entry: ColumnEntry; rank: number; order: number }[] = []
+  entries.forEach((entry, order) => {
+    if (types && !types.has(entry.dataType)) return
+    if (search.ref && !matchesRef(entry, search.ref)) return
+    if (search.indexed && !matchesIndex(entry, search.indexed)) return
+    if (search.nullable && !entry.isNullable) return
+    const rank = q.length === 0 ? 0 : matchRank(entry.column, q)
+    if (rank === null) return
+    ranked.push({ entry, rank, order })
+  })
+
+  return ranked
+    .sort((a, b) => a.rank - b.rank || a.order - b.order)
+    .map((hit) => hit.entry)
+}
+
+/** The type chips: only types this schema actually uses. */
+export function typesPresent(entries: readonly ColumnEntry[]): string[] {
+  return [...new Set(entries.map((entry) => entry.dataType))].sort((a, b) => a.localeCompare(b))
+}
+
+/**
+ * A reference column that no index leads. Following that relation from the
+ * referenced side reads the whole table. A column later in a composite index
+ * cannot serve that lookup alone, so it counts too. Unknown facets are not
+ * flagged: this is a claim about the schema, made only when the catalog said so.
+ */
+export function isUnindexedReference(entry: ColumnEntry): boolean {
+  return entry.reference !== null && entry.facet !== null && entry.facet.index !== 'lead'
 }

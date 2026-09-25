@@ -3,6 +3,10 @@ import {
   buildColumnEntries,
   confidentColumnMatches,
   facetKey,
+  isUnindexedReference,
+  searchColumns,
+  typesPresent,
+  validateColumnSearch,
 } from '#/lib/column-search'
 import type { SchemaGraph, TableInfo } from '#/lib/types'
 
@@ -142,5 +146,86 @@ describe('confidentColumnMatches', () => {
   it('skips the excluded table, whose columns the root already lists', () => {
     const hits = confidentColumnMatches(entries, 'created_at', { excludeTable: 'invoices' })
     expect(hits.map((e) => e.table)).not.toContain('invoices')
+  })
+})
+
+describe('validateColumnSearch', () => {
+  it('keeps what it understands', () => {
+    expect(
+      validateColumnSearch({
+        q: 'created',
+        type: ['jsonb', 'uuid'],
+        ref: 'declared',
+        indexed: 'lead',
+        nullable: true,
+      }),
+    ).toEqual({ q: 'created', type: ['jsonb', 'uuid'], ref: 'declared', indexed: 'lead', nullable: true })
+  })
+
+  it('drops what a hand-edited URL got wrong instead of throwing', () => {
+    expect(
+      validateColumnSearch({ q: '', type: 'jsonb', ref: 'nope', indexed: 'banana', nullable: 'yes' }),
+    ).toEqual({ type: ['jsonb'] })
+    expect(validateColumnSearch({ type: [1, '', 'uuid'] })).toEqual({ type: ['uuid'] })
+    expect(validateColumnSearch({ nullable: 'true' })).toEqual({ nullable: true })
+  })
+})
+
+describe('searchColumns', () => {
+  const facets = {
+    columns: {
+      [facetKey('orders', 'customer_id')]: { index: 'lead' as const, nullFrac: 0, nDistinctRaw: 40, comment: null },
+      [facetKey('invoices', 'order_id')]: { index: null, nullFrac: 0.1, nDistinctRaw: -0.5, comment: null },
+      [facetKey('customers', 'payload')]: { index: null, nullFrac: null, nDistinctRaw: null, comment: null },
+    },
+    analyzedAt: {},
+  }
+  const entries = buildColumnEntries(tables, graph, facets)
+  const ids = (list: ReturnType<typeof searchColumns>) => list.map((e) => `${e.table}.${e.column}`)
+
+  it('returns everything for an empty search', () => {
+    expect(searchColumns(entries, {})).toHaveLength(9)
+  })
+
+  it('matches the name without the palette gate, best tier first, then by table', () => {
+    expect(ids(searchColumns(entries, { q: 'id' }))).toEqual([
+      'customers.id',
+      'invoices.id',
+      'orders.id',
+      'invoices.order_id',
+      'orders.customer_id',
+    ])
+  })
+
+  it('filters by type set', () => {
+    expect(ids(searchColumns(entries, { type: ['jsonb'] }))).toEqual(['customers.payload'])
+  })
+
+  it('filters by reference presence and basis', () => {
+    expect(ids(searchColumns(entries, { ref: 'any' }))).toEqual(['invoices.order_id', 'orders.customer_id'])
+    expect(ids(searchColumns(entries, { ref: 'model' }))).toEqual(['invoices.order_id'])
+    expect(searchColumns(entries, { ref: 'none' })).toHaveLength(7)
+  })
+
+  it('filters by index, and treats missing facets as unknown rather than unindexed', () => {
+    expect(ids(searchColumns(entries, { indexed: 'lead' }))).toEqual(['orders.customer_id'])
+    // Only columns the facets actually said are in no index.
+    expect(ids(searchColumns(entries, { indexed: 'none' }))).toEqual(['customers.payload', 'invoices.order_id'])
+  })
+
+  it('filters to nullable columns', () => {
+    expect(ids(searchColumns(entries, { nullable: true }))).toEqual(['customers.payload', 'invoices.order_id'])
+  })
+
+  it('lists the types that are present, once each, sorted', () => {
+    expect(typesPresent(entries)).toEqual(['jsonb', 'timestamp with time zone', 'uuid'])
+  })
+
+  it('flags a reference column no index leads', () => {
+    expect(isUnindexedReference(entries.find((e) => e.column === 'order_id')!)).toBe(true)
+    expect(isUnindexedReference(entries.find((e) => e.column === 'customer_id')!)).toBe(false)
+    // No facets: unknown, not flagged.
+    const bare = buildColumnEntries(tables, graph, undefined)
+    expect(isUnindexedReference(bare.find((e) => e.column === 'order_id')!)).toBe(false)
   })
 })
