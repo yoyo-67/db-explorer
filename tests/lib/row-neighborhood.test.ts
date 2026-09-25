@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PROBE_COLUMN, buildNeighborhood, labelColumn } from '#/lib/row-neighborhood'
+import { PROBE_COLUMN, buildNeighborhood, labelColumns } from '#/lib/row-neighborhood'
 import type { FetchOutcome, FetchRows, FetchedRow, NeighborhoodSchema, NeighborNode, RowFetch } from '#/lib/row-neighborhood'
 import type { SchemaGraphEdge } from '#/lib/types'
 
@@ -11,11 +11,11 @@ const edge = (
   indexed = true,
 ): SchemaGraphEdge => ({ fromTable, fromColumn, toTable, toColumn: 'id', basis, nullable: true, indexed })
 
-const table = (keyColumn: string | null = 'id', labelColumn: string | null = null, rowCount = 100, kind: 'table' | 'view' = 'table') => ({
+const table = (keyColumn: string | null = 'id', label: string | string[] | null = null, rowCount = 100, kind: 'table' | 'view' = 'table') => ({
   kind,
   rowCount,
   keyColumn,
-  labelColumn,
+  labelColumns: label === null ? [] : Array.isArray(label) ? label : [label],
 })
 
 const schema: NeighborhoodSchema = {
@@ -261,10 +261,46 @@ describe('buildNeighborhood, review fixes', () => {
   })
 })
 
-describe('labelColumn', () => {
-  it('prefers name, then title, label, email, code, slug, status', () => {
-    expect(labelColumn(['id', 'status', 'email'])).toBe('email')
-    expect(labelColumn(['title', 'name'])).toBe('name')
-    expect(labelColumn(['id', 'created_at'])).toBeNull()
+describe('labelColumns', () => {
+  const col = (name: string, dataType = 'text') => ({ name, dataType })
+
+  it('tries the fields the row page names a row by, in its order', () => {
+    expect(labelColumns([col('email'), col('title'), col('name')], new Set())).toEqual(['name', 'title', 'email'])
+  })
+
+  it('falls back to the other text columns, in table order, as the row page does', () => {
+    const columns = [col('id', 'uuid'), col('user_id', 'uuid'), col('role', 'USER-DEFINED'), col('note', 'character varying'), col('created_at', 'timestamp with time zone')]
+    expect(labelColumns(columns, new Set(['id', 'user_id']))).toEqual(['role', 'note'])
+  })
+
+  it('leaves out the key and the reference columns, even when they are text', () => {
+    expect(labelColumns([col('code'), col('parent_code'), col('kind')], new Set(['code', 'parent_code']))).toEqual(['kind'])
+  })
+
+  it('is empty when nothing could name a row', () => {
+    expect(labelColumns([col('id', 'integer'), col('created_at', 'date')], new Set(['id']))).toEqual([])
+  })
+})
+
+describe('node labels', () => {
+  it('uses the first label column the row has a value in', async () => {
+    const small: NeighborhoodSchema = {
+      edges: [],
+      tables: { assignments: table('id', ['name', 'role']) },
+    }
+    const fetch: FetchRows = async () => ({ rows: [{ id: 'a1', name: null as unknown as string, role: 'Project manager' }] })
+    const graph = await buildNeighborhood({ table: 'assignments', column: 'id', value: 'a1' }, small, 1, fetch)
+    expect(graph?.nodes[0]).toMatchObject({ kind: 'row', label: 'Project manager' })
+  })
+
+  it('reads every label column', async () => {
+    const small: NeighborhoodSchema = { edges: [], tables: { assignments: table('id', ['name', 'role']) } }
+    const seen: RowFetch[] = []
+    const fetch: FetchRows = async (request) => {
+      seen.push(request)
+      return { rows: [{ id: 'a1' }] }
+    }
+    await buildNeighborhood({ table: 'assignments', column: 'id', value: 'a1' }, small, 1, fetch)
+    expect(seen[0].select).toEqual(expect.arrayContaining(['name', 'role']))
   })
 })

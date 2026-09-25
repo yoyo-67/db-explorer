@@ -1,3 +1,4 @@
+import { PRIMARY_FIELDS } from '#/lib/row-label'
 import type { EdgeBasis, NodeKind, SchemaGraphEdge } from '#/lib/types'
 
 /**
@@ -24,7 +25,14 @@ export const NODE_BUDGET = 80
  *  Postgres — an uppercase uuid in a text column still finds its row. */
 export const PROBE_COLUMN = '__probe'
 /** The column that names a row, first one a table has. */
-export const LABEL_COLUMNS = ['name', 'title', 'label', 'email', 'code', 'slug', 'status'] as const
+/** Past the well-known fields, how many other text columns a node may try. */
+export const FALLBACK_LABEL_COLUMNS = 3
+/** A fallback value this long is content, not a name. The row page uses the same cap. */
+const LABEL_MAX_LENGTH = 100
+
+/** `information_schema` types that read back as a short string. `USER-DEFINED`
+ *  covers enums and citext, the usual carriers of a role or a kind. */
+const TEXT_TYPES = new Set(['text', 'character varying', 'character', 'USER-DEFINED'])
 
 export type Depth = -2 | -1 | 0 | 1 | 2
 export type Hops = 1 | 2
@@ -35,7 +43,8 @@ export interface NeighborTable {
   rowCount: number
   /** Single-column key, or `null` when the table has none. */
   keyColumn: string | null
-  labelColumn: string | null
+  /** Columns to name a row by, tried in order; see {@link labelColumns}. */
+  labelColumns: string[]
 }
 
 export interface NeighborhoodSchema {
@@ -102,9 +111,31 @@ export type FetchOutcome =
   | { error: 'timeout' | 'mismatch' | 'failed'; detail?: string }
 export type FetchRows = (request: RowFetch) => Promise<FetchOutcome>
 
-export function labelColumn(columns: readonly string[]): string | null {
-  const present = new Set(columns)
-  return LABEL_COLUMNS.find((column) => present.has(column)) ?? null
+/**
+ * What names a row, in the order the row page tries: the well-known fields
+ * first, then the other text columns in table order. The key and the columns
+ * references go through are ids, never names, so they are left out.
+ */
+export function labelColumns(
+  columns: readonly { name: string; dataType: string }[],
+  skip: ReadonlySet<string>,
+): string[] {
+  const present = new Set(columns.map((column) => column.name))
+  const wellKnown: string[] = PRIMARY_FIELDS.filter((field) => present.has(field))
+  const fallback = columns
+    .filter((column) => TEXT_TYPES.has(column.dataType) && !skip.has(column.name) && !wellKnown.includes(column.name))
+    .slice(0, FALLBACK_LABEL_COLUMNS)
+    .map((column) => column.name)
+  return [...wellKnown, ...fallback]
+}
+
+function rowLabel(row: FetchedRow, columns: readonly string[]): string | null {
+  for (const column of columns) {
+    const value = row[column]
+    if (!value) continue
+    if ((PRIMARY_FIELDS as readonly string[]).includes(column) || value.length < LABEL_MAX_LENGTH) return value
+  }
+  return null
 }
 
 /** What to read of a table's rows: its key, its label, the column it is looked
@@ -113,7 +144,7 @@ function selectColumns(table: string, lookup: string, schema: NeighborhoodSchema
   const info = schema.tables[table]
   const columns = new Set<string>([lookup])
   if (info?.keyColumn) columns.add(info.keyColumn)
-  if (info?.labelColumn) columns.add(info.labelColumn)
+  for (const label of info?.labelColumns ?? []) columns.add(label)
   for (const edge of schema.edges) {
     if (edge.fromTable === table) columns.add(edge.fromColumn)
     if (edge.toTable === table) columns.add(edge.toColumn)
@@ -181,7 +212,7 @@ class NeighborhoodBuilder {
       value,
       keyColumn: key !== null ? keyColumn : null,
       key,
-      label: info?.labelColumn ? (row[info.labelColumn] ?? null) : null,
+      label: rowLabel(row, info?.labelColumns ?? []),
     }
     this.nodes.set(id, node)
     return { node, fresh: true }

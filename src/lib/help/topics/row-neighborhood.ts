@@ -20,7 +20,7 @@ export const rowNeighborhoodTopic: HelpTopic = {
       id: 'select',
       clause: "(SELECT id::text AS id, name::text AS name, '10' AS __probe",
       title: 'Only what a node shows',
-      detail: 'The key, a label column if the table has one (`name`, `title`, `email`, …), and the columns references leave or enter through — as text, so any type draws the same way. `__probe` repeats the value asked for, so a row is matched to its question without re-comparing text.',
+      detail: 'The key, the columns that name a row — the same ones the row page tries: `name`, `title`, `email`, …, then a few other text columns — and the columns references leave or enter through — as text, so any type draws the same way. `__probe` repeats the value asked for, so a row is matched to its question without re-comparing text.',
     },
     {
       id: 'where',

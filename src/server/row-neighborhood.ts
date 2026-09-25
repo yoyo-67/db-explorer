@@ -1,7 +1,7 @@
 import format from 'pg-format'
 import { StatementTimeoutError, query, queryWithTimeout } from '#/server/db'
 import { fetchSchemaColumns, getSchemaGraph } from '#/server/functions'
-import { PROBE_COLUMN, buildNeighborhood, labelColumn } from '#/lib/row-neighborhood'
+import { PROBE_COLUMN, buildNeighborhood, labelColumns } from '#/lib/row-neighborhood'
 import type { FetchOutcome, FetchedRow, Hops, NeighborTable, RowFetch, RowNeighborhood } from '#/lib/row-neighborhood'
 
 /**
@@ -89,12 +89,14 @@ export async function getRowNeighborhood(
 
   const tables: Record<string, NeighborTable> = {}
   for (const node of graph.nodes) {
-    const names = (columnsByTable.get(node.name) ?? []).map((c) => c.name)
+    const keyColumn = keys.get(node.name) ?? null
+    const ids = new Set(graph.edges.filter((edge) => edge.fromTable === node.name).map((edge) => edge.fromColumn))
+    if (keyColumn) ids.add(keyColumn)
     tables[node.name] = {
       kind: node.kind,
       rowCount: node.rowCount,
-      keyColumn: keys.get(node.name) ?? null,
-      labelColumn: labelColumn(names),
+      keyColumn,
+      labelColumns: labelColumns(columnsByTable.get(node.name) ?? [], ids),
     }
   }
 

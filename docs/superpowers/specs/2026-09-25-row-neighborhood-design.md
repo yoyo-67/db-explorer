@@ -28,7 +28,7 @@ unbounded scan.
 | Edges | The merged graph's edges (declared / catalog / model / convention), inferred ones drawn dashed with their basis in the tooltip | Same edges row detail and Find use; an inferred link is shown *and* labelled as inferred. |
 | Children per edge | Up to 5 rows shown, then a "+N more" node | A node per row does not survive a 40k-child edge. |
 | When children are not fetched | The child column must lead an index; otherwise one "not read" node with the reason and a link to the filtered child table | Row detail's and Find's 100k row gate bounds `COUNT(*)`; a `LIMIT 6` index lookup costs the same on any size, and the statement timeout bounds the rest (ruled at final review). A skipped edge is a node that says why, never an absent edge or a zero. |
-| Node label | Table name through `TableName`, then the row's key, then one *label column* value if the table has one (`name`, `title`, `label`, `email`, `code`, `slug`, `status`, first found) | Enough to recognise a row without opening it. |
+| Node label | Table name through `TableName`, then the row's key, then the name the row page would give it: the first non-empty of its well-known fields, else of its other text columns | The box and the row page name a row the same way. |
 | Layout | Pure, deterministic layered layout: columns −2 … +2, sorted by table then key; SVG, like the lens group view | No graph library, testable without a DOM, stable between reloads. |
 | Re-centering | Click a node → its own neighborhood (new URL). A small link on each node opens its row page | The picture is for walking; the row page is for reading. |
 
@@ -74,7 +74,7 @@ Functions:
   gate (`countSkipReason` in `row-trace.ts`).
 - `mergeHop(graph, results)` → adds nodes and edges, dedups, applies the
   5-per-edge cap and the node budget.
-- `labelColumn(columns)` → the label column or `null`.
+- `labelColumns(columns, skip)` → the columns to name a row by, in the row page's order: its well-known fields, then up to 3 other text columns (not the key, not a reference column).
 
 Limits (constants, exported):
 
@@ -141,7 +141,7 @@ heights centred on the root; edges as cubic paths between node sides. Pure.
 - `tests/lib/row-neighborhood.test.ts` — dedup of a row reached twice; per-edge
   cap and `more` node; node budget → `truncated`; gate → `skipped` with reason;
   parent pointing nowhere → `missing`; hop 2 only continues in the same
-  direction; `labelColumn` preference order.
+  direction; `labelColumns` order and the first non-empty value wins.
 - `tests/lib/neighborhood-layout.test.ts` — columns by depth, deterministic
   order, root centred, stable across input order.
 - `tests/server/row-neighborhood.test.ts` — mocked db: identifiers quoted, values

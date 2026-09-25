@@ -1,6 +1,7 @@
 import type { ColumnInfo, ForeignKey, JsonValue } from '#/lib/types'
 
-const PRIMARY_FIELDS = ['name', 'title', 'email', 'username', 'label', 'slug'] as const
+/** The fields a row is named by first, strongest first. */
+export const PRIMARY_FIELDS = ['name', 'title', 'email', 'username', 'label', 'slug'] as const
 
 /**
  * Pick a human-friendly label for a row given its columns and the FK graph.
