@@ -10,7 +10,9 @@ import type { ReachSkip } from '#/lib/find/reach-plan'
 import { reachTableSearch } from '#/lib/find/find-search'
 import { opensNewTab } from '#/lib/link-click'
 import { tableFromPathname } from '#/lib/lens-links'
-import { defaultOpForType, operatorsForType } from '#/lib/filter-model'
+import { defaultOpForType, encodeConditions, operatorsForType } from '#/lib/filter-model'
+import { buildColumnEntries, confidentColumnMatches, searchColumns } from '#/lib/column-search'
+import type { ColumnEntry } from '#/lib/column-search'
 import { rootRows } from '#/lib/palette/actions'
 import type { PaletteRoute } from '#/lib/palette/actions'
 import {
@@ -134,6 +136,14 @@ export default function Palette() {
       switch (route) {
         case 'tables':
           return database ? destination({ to: '/d/$database', params: { database } }) : null
+        case 'columns':
+          return database && schema
+            ? destination({
+                to: '/d/$database/columns/$schema',
+                params: { database, schema },
+                search: {},
+              })
+            : null
         case 'console':
           return database
             ? destination({ to: '/d/$database/console', params: { database } })
@@ -194,7 +204,10 @@ export default function Palette() {
     enabled:
       open &&
       connected &&
-      (view.kind === 'tables' || view.kind === 'actions' || view.kind === 'filter') &&
+      (view.kind === 'tables' ||
+        view.kind === 'columns' ||
+        view.kind === 'actions' ||
+        view.kind === 'filter') &&
       !!database,
   })
 
@@ -272,6 +285,88 @@ export default function Palette() {
     [tablesQuery.data],
   )
 
+  /** Every column in the schema, for column hits. Introspection only — the
+   *  palette offers where a column is, not what the catalog says about it. */
+  const columnEntries = useMemo(
+    () =>
+      tablesQuery.data ? buildColumnEntries(tablesQuery.data.tables, undefined, undefined) : [],
+    [tablesQuery.data],
+  )
+
+  /**
+   * One column somewhere in the schema, as a row: `↵` opens its table, `⇥` opens
+   * it filtered to rows where the column is set — "show me the rows that use it"
+   * is the usual next question once you've found which table has it.
+   */
+  const columnRow = useCallback(
+    (entry: ColumnEntry): PaletteRowModel => {
+      const open =
+        database && schema
+          ? destination({
+              to: '/d/$database/t/$schema/$table',
+              params: { database, schema, table: entry.table },
+              search: {},
+            })
+          : null
+      const set =
+        database && schema
+          ? destination({
+              to: '/d/$database/t/$schema/$table',
+              params: { database, schema, table: entry.table },
+              search: {
+                q: encodeConditions([
+                  { id: `palette-${entry.column}`, column: entry.column, op: 'notNull', values: [] },
+                ]),
+              },
+            })
+          : null
+      return {
+        id: `column:${entry.table}.${entry.column}`,
+        title: `${nameOf(entry.table)}.${entry.column}`,
+        table: entry.table,
+        column: entry.column,
+        meta: entry.dataType,
+        group: 'Columns',
+        href: open?.href,
+        run: () => {
+          close()
+          open?.go()
+        },
+        runAlt: () => {
+          close()
+          set?.go()
+        },
+        altLabel: 'where set',
+      }
+    },
+    [close, database, destination, nameOf, schema],
+  )
+
+  /** The last row of any column list: the same query on the survey page. */
+  const allColumnsRow = useCallback(
+    (count: number, typed: string): PaletteRowModel | null => {
+      if (!database || !schema || count === 0) return null
+      const name = typed.trim()
+      const to = destination({
+        to: '/d/$database/columns/$schema',
+        params: { database, schema },
+        search: name ? { name } : {},
+      })
+      return {
+        id: 'columns:all',
+        title: `All ${count.toLocaleString('en-US')} matching columns →`,
+        hint: 'With type, references, index and statistics',
+        group: 'Columns',
+        href: to.href,
+        run: () => {
+          close()
+          to.go()
+        },
+      }
+    },
+    [close, database, destination, schema],
+  )
+
 
   const rows = useMemo<PaletteRowModel[]>(() => {
     switch (view.kind) {
@@ -342,9 +437,19 @@ export default function Palette() {
             )
           : []
 
+        // Columns anywhere in the schema — the same gate a table name passes —
+        // minus the table on screen, whose columns are already offered above as
+        // filters.
+        const elsewhere = confidentColumnMatches(columnEntries, query, {
+          excludeTable: activeTable,
+        }).map(columnRow)
+        const allHits =
+          elsewhere.length > 0 ? searchColumns(columnEntries, { name: query }).length : 0
+        const more = allHits > elsewhere.length ? allColumnsRow(allHits, query) : null
+
         const pasted = commands.filter((row) => row.id.startsWith('paste:'))
         const rest = commands.filter((row) => !row.id.startsWith('paste:'))
-        return [...pasted, ...tables, ...columns, ...rest]
+        return [...pasted, ...tables, ...columns, ...elsewhere, ...(more ? [more] : []), ...rest]
       }
 
       case 'tables': {
@@ -378,6 +483,14 @@ export default function Palette() {
             },
           }
         })
+      }
+
+      case 'columns': {
+        const matched =
+          query.trim().length === 0 ? columnEntries : searchColumns(columnEntries, { name: query })
+        const shown = matched.slice(0, 60).map(columnRow)
+        const all = matched.length > 60 ? allColumnsRow(matched.length, query) : null
+        return all ? [...shown, all] : shown
       }
 
       case 'find': {
@@ -538,6 +651,9 @@ export default function Palette() {
     activeTable,
     columnsOf,
     filterRow,
+    columnEntries,
+    columnRow,
+    allColumnsRow,
     view,
   ])
 

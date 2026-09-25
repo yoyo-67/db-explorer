@@ -16,6 +16,7 @@ import type { PaletteView } from '#/lib/palette/views'
  *  calls stays in one component instead of stringly-typed all over. */
 export type PaletteRoute =
   | 'tables'
+  | 'columns'
   | 'console'
   | 'lens'
   | 'find'
@@ -99,6 +100,14 @@ export function rootActions(context: PaletteContext): PaletteAction[] {
   }
 
   if (scoped && context.schema) {
+    actions.push({
+      id: 'columns',
+      title: 'Find a column',
+      hint: 'Which table has a column — by name, across the schema',
+      group: 'Navigate',
+      target: { kind: 'push', view: { kind: 'columns' } },
+      keywords: ['column', 'field', 'attribute', 'which table'],
+    })
     actions.push({
       id: 'lens',
       title: 'Schema lens',

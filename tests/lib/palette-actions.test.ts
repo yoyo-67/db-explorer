@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { viewCrumb, viewPlaceholder, viewSubmits } from '#/lib/palette/views'
 import {
   byGroup,
   filterActions,
@@ -117,5 +118,22 @@ describe('filtering the table on screen', () => {
     const actions = rootActions({ ...scoped, table: 'data_recording' })
     expect(filterActions(actions, 'where').map((a) => a.id)).toContain('filter')
     expect(filterActions(actions, 'filter').map((a) => a.id)).toContain('filter')
+  })
+})
+
+describe('columns', () => {
+  it('offers a Columns page when a schema is known', () => {
+    const action = rootActions(scoped).find((a) => a.id === 'columns')
+    expect(action?.target).toEqual({ kind: 'push', view: { kind: 'columns' } })
+  })
+
+  it('does not offer it without a schema', () => {
+    expect(rootActions({ database: 'shop_db' }).map((a) => a.id)).not.toContain('columns')
+  })
+
+  it('names the page and its box', () => {
+    expect(viewCrumb({ kind: 'columns' })).toEqual({ label: 'Columns' })
+    expect(viewPlaceholder({ kind: 'columns' })).toBe('Column name…')
+    expect(viewSubmits({ kind: 'columns' })).toBe(false)
   })
 })

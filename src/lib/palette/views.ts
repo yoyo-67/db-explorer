@@ -17,6 +17,8 @@ export type PaletteView =
   | { kind: 'actions' }
   /** Every table in the schema, fuzzy-matched by name. */
   | { kind: 'tables' }
+  /** Every column in the schema, by name — which table has it. */
+  | { kind: 'columns' }
   /** Stage one of Find: the box holds the value, the rows are its owners. */
   | { kind: 'find' }
   /** Stage two: the columns referencing `owner`, and whether they hold `value`. */
@@ -43,6 +45,8 @@ export function viewCrumb(view: PaletteView): PaletteCrumb {
       return { label: 'Explore' }
     case 'tables':
       return { label: 'Tables' }
+    case 'columns':
+      return { label: 'Columns' }
     case 'find':
       return { label: 'Find a value' }
     case 'reach':
@@ -65,6 +69,8 @@ export function viewPlaceholder(view: PaletteView): string {
       return 'Search, or paste an id…'
     case 'tables':
       return 'Table name…'
+    case 'columns':
+      return 'Column name…'
     case 'find':
       return 'Paste an id, uuid, email or token…'
     case 'reach':
