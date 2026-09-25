@@ -11,6 +11,7 @@ import { randomRowTopic } from '#/lib/help/topics/random-row'
 import { rowPageTopic } from '#/lib/help/topics/row-page'
 import { rowUpdateTopic } from '#/lib/help/topics/row-update'
 import { schemaGraphTopic } from '#/lib/help/topics/schema-graph'
+import { columnSearchTopic } from '#/lib/help/topics/column-search'
 import { sequenceHeadroomTopic } from '#/lib/help/topics/sequence-headroom'
 import { tableListTopic } from '#/lib/help/topics/table-list'
 import { tablePageTopic } from '#/lib/help/topics/table-page'
@@ -34,6 +35,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   // Schema shape.
   foreignKeysTopic,
   schemaGraphTopic,
+  columnSearchTopic,
   // Table internals.
   columnProfileTopic,
   ddlRebuildTopic,

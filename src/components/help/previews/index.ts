@@ -1,5 +1,6 @@
 import AnalyzeStalenessPreview from '#/components/help/previews/AnalyzeStalenessPreview'
 import ColumnProfilePreview from '#/components/help/previews/ColumnProfilePreview'
+import ColumnSearchPreview from '#/components/help/previews/ColumnSearchPreview'
 import ConsolePreview from '#/components/help/previews/ConsolePreview'
 import DdlRebuildPreview from '#/components/help/previews/DdlRebuildPreview'
 import EnumTypesPreview from '#/components/help/previews/EnumTypesPreview'
@@ -34,6 +35,7 @@ export const HELP_PREVIEWS: Record<string, ComponentType> = {
   'row-update': RowUpdatePreview,
   'random-row': RandomRowPreview,
   'column-profile': ColumnProfilePreview,
+  'column-search': ColumnSearchPreview,
   'ddl-rebuild': DdlRebuildPreview,
   'enum-types': EnumTypesPreview,
   'sequence-headroom': SequenceHeadroomPreview,
