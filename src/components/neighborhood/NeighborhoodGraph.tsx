@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import TableName from '#/components/TableName'
 import { encodeConditions } from '#/lib/filter-model'
 import { NODE_HEIGHT, NODE_WIDTH, layoutNeighborhood } from '#/lib/neighborhood-layout'
-import type { NeighborNode, RowNeighborhood } from '#/lib/row-neighborhood'
+import type { Hops, NeighborNode, RowNeighborhood } from '#/lib/row-neighborhood'
 
 /** Why an edge was not read, in words. The table in it is a table name like
  *  any other, so it follows the *Table names* setting. */
@@ -38,7 +38,19 @@ function FilteredTableLink({ database, schema, node, children }: { database: str
   )
 }
 
-function NodeBody({ database, schema, node, isRoot }: { database: string; schema: string; node: NeighborNode; isRoot: boolean }) {
+function NodeBody({
+  database,
+  schema,
+  node,
+  isRoot,
+  hops,
+}: {
+  database: string
+  schema: string
+  node: NeighborNode
+  isRoot: boolean
+  hops: Hops
+}) {
   const title = (
     <span className="block truncate font-mono text-[11px] font-semibold text-[var(--sea-ink)]">
       <TableName table={node.table} />
@@ -62,12 +74,14 @@ function NodeBody({ database, schema, node, isRoot }: { database: string; schema
     const id = node.key ?? node.value
     const col = node.key !== null ? node.keyColumn : node.column
     const search = col && col !== 'id' ? { col } : {}
+    // Walking keeps the depth the reader chose; one hop is the default and stays out of the URL.
+    const centerSearch = hops === 2 ? { ...search, hops: 2 as const } : search
     return (
       <>
         <Link
           to="/d/$database/t/$schema/$table/neighborhood/$id"
           params={{ database, schema, table: node.table, id }}
-          search={search}
+          search={centerSearch}
           title="Center the neighborhood on this row"
           className="block no-underline"
         >
@@ -119,7 +133,17 @@ function NodeBody({ database, schema, node, isRoot }: { database: string; schema
  * curves are SVG. An inferred reference is dashed — found, and labelled as
  * inferred.
  */
-export default function NeighborhoodGraph({ database, schema, graph }: { database: string; schema: string; graph: RowNeighborhood }) {
+export default function NeighborhoodGraph({
+  database,
+  schema,
+  graph,
+  hops = 1,
+}: {
+  database: string
+  schema: string
+  graph: RowNeighborhood
+  hops?: Hops
+}) {
   const layout = layoutNeighborhood(graph)
   const byId = new Map(graph.nodes.map((node) => [node.id, node]))
   const basisOf = new Map(graph.edges.map((edge) => [`${edge.from}|${edge.to}|${edge.column}`, edge.basis]))
@@ -159,7 +183,7 @@ export default function NeighborhoodGraph({ database, schema, graph }: { databas
               }`}
               style={{ left: placed.x, top: placed.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
             >
-              <NodeBody database={database} schema={schema} node={node} isRoot={isRoot} />
+              <NodeBody database={database} schema={schema} node={node} isRoot={isRoot} hops={hops} />
             </div>
           )
         })}

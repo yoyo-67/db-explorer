@@ -8,7 +8,11 @@ import { setSetting } from '#/hooks/useAppSettings'
 import type { RowNeighborhood } from '#/lib/row-neighborhood'
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children, title }: { children: React.ReactNode; title?: string }) => <a href="#" title={title}>{children}</a>,
+  Link: ({ children, title, search }: { children: React.ReactNode; title?: string; search?: unknown }) => (
+    <a href="#" title={title} data-search={JSON.stringify(search ?? {})}>
+      {children}
+    </a>
+  ),
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({ location: { pathname: '/d/shop_db/t/public/orders/neighborhood/10' } }),
 }))
@@ -66,5 +70,26 @@ describe('NeighborhoodGraph', () => {
     }
     render(<NeighborhoodGraph database="shop_db" schema="public" graph={failed} />)
     expect(document.body.textContent).toContain('not read — permission denied for table invoices')
+  })
+
+  it('keeps two hops when centering on another row', () => {
+    const parent: RowNeighborhood = {
+      ...graph,
+      nodes: [
+        ...graph.nodes,
+        { kind: 'row', id: 'row:customers:id=7', table: 'customers', depth: -1, column: 'id', value: '7', keyColumn: 'id', key: '7', label: null },
+      ],
+    }
+    render(<NeighborhoodGraph database="shop_db" schema="public" graph={parent} hops={2} />)
+    const centers = screen.getAllByTitle('Center the neighborhood on this row')
+    for (const link of centers) expect(JSON.parse(link.getAttribute('data-search')!)).toMatchObject({ hops: 2 })
+    // The row page has no hops; it does not get one.
+    for (const link of screen.getAllByTitle('Open this row')) expect(JSON.parse(link.getAttribute('data-search')!)).not.toHaveProperty('hops')
+  })
+
+  it('leaves one hop out of the URL, as the page does', () => {
+    render(<NeighborhoodGraph database="shop_db" schema="public" graph={graph} hops={1} />)
+    const center = screen.getByTitle('Center the neighborhood on this row')
+    expect(JSON.parse(center.getAttribute('data-search')!)).not.toHaveProperty('hops')
   })
 })

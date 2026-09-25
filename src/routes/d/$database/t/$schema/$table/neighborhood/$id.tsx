@@ -91,7 +91,7 @@ function NeighborhoodPage() {
               model map or a column name, not a constraint.
               {neighborhood.data.truncated && ' Stopped at 80 nodes — center on a neighbor to see further.'}
             </p>
-            <NeighborhoodGraph database={database} schema={schema} graph={neighborhood.data} />
+            <NeighborhoodGraph database={database} schema={schema} graph={neighborhood.data} hops={hops} />
           </section>
         )}
       </div>
