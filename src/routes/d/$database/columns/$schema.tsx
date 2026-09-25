@@ -65,12 +65,10 @@ function ColumnsPage() {
           </h1>
         </header>
 
-        <ColumnFilters search={search} types={types} onChange={update} />
-
         {index.facetsError && (
-          <p className="text-[11px] text-[var(--destructive)]">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
             Index, statistics and comments are unavailable: {index.facetsError}
-          </p>
+          </div>
         )}
 
         {oldestAnalyze !== undefined && !index.facetsLoading && !index.facetsError && (
@@ -81,22 +79,29 @@ function ColumnsPage() {
           </p>
         )}
 
-        {index.entries === null ? (
-          <p className="text-sm text-[var(--sea-ink-soft)]">Reading the schema…</p>
-        ) : (
-          <>
-            <p className="text-[11px] text-[var(--sea-ink-soft)]">
-              {results.length.toLocaleString('en-US')} of{' '}
-              {index.entries.length.toLocaleString('en-US')} columns
-            </p>
-            <ColumnTable
-              database={database}
-              schema={schema}
-              entries={results}
-              graphLoading={index.graphLoading}
-            />
-          </>
-        )}
+        <section className="island-shell rounded-xl">
+          <div className="border-b border-[var(--line)] px-3 py-2">
+            <ColumnFilters search={search} types={types} onChange={update} />
+          </div>
+          <div className="space-y-2 px-3 py-2">
+            {index.entries === null ? (
+              <p className="text-sm text-[var(--sea-ink-soft)]">Reading the schema…</p>
+            ) : (
+              <>
+                <p className="text-[11px] text-[var(--sea-ink-soft)]">
+                  {results.length.toLocaleString('en-US')} of{' '}
+                  {index.entries.length.toLocaleString('en-US')} columns
+                </p>
+                <ColumnTable
+                  database={database}
+                  schema={schema}
+                  entries={results}
+                  graphLoading={index.graphLoading}
+                />
+              </>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   )

@@ -122,7 +122,7 @@ function ColumnRow({
         ) : entry.reference ? (
           <span className="inline-flex items-center gap-1">
             <span className="font-mono text-[11px]">
-              {entry.reference.toTable}.{entry.reference.toColumn}
+              <TableName table={entry.reference.toTable} />.{entry.reference.toColumn}
             </span>
             <BasisTag basis={entry.reference.basis} />
           </span>

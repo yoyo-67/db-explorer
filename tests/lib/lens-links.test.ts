@@ -35,6 +35,10 @@ describe('schemaFromPathname', () => {
     expect(schemaFromPathname('/d/app_db/pressure/public')).toBe('public')
   })
 
+  it('reads the schema off the column survey, so its table names follow the setting', () => {
+    expect(schemaFromPathname('/d/app_db/columns/public')).toBe('public')
+  })
+
   it('decodes an encoded schema name', () => {
     expect(schemaFromPathname('/d/app_db/lens/my%20schema')).toBe('my schema')
   })
