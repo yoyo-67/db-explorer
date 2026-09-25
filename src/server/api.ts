@@ -28,6 +28,7 @@ import { getTablePhysical } from '#/server/table-physical'
 import { getServerProfile } from '#/server/server-profile'
 import { getLiveActivity } from '#/server/live-activity'
 import { getSchemaAnatomy } from '#/server/schema-anatomy'
+import { getColumnFacets } from '#/server/column-facets'
 import { findValueOwners, findValueReach } from '#/server/find-value'
 import { getQueryStats } from '#/server/query-board'
 import { readPerfLog, setPerfLogging } from '#/server/perf-log'
@@ -672,6 +673,15 @@ export const $getLiveActivity = createServerFn({ method: 'GET' })
 export const $getSchemaAnatomy = createServerFn({ method: 'GET' })
   .inputValidator((data: Scoped & { schema?: string }) => data)
   .handler(scoped((data) => getSchemaAnatomy(data.schema)))
+
+/**
+ * The column survey's one extra read: index position, planner statistics and
+ * comments for every column in the schema. Name, type and references are
+ * already on the client from introspection and the graph.
+ */
+export const $getColumnFacets = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped & { schema?: string }) => data)
+  .handler(scoped((data) => getColumnFacets(data.schema)))
 
 /**
  * Find, in two calls because it is two questions: whose id is this, and where
