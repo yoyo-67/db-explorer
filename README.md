@@ -138,6 +138,14 @@ Keep secrets out of the file by referencing environment variables:
 ]
 ```
 
+A database that listens only on its own server's loopback is reached with
+`"ssh": "user@server"` (or an `~/.ssh/config` alias) on the preset, or the *SSH
+tunnel* field on the connect screen. `host` and `port` are then the database as
+that server sees it — usually `127.0.0.1`. The app runs your `ssh -N -L` (your
+keys and agent; `BatchMode`, so a key needing a typed passphrase fails instead of
+hanging), shares one tunnel per server and target, and closes it on disconnect.
+`catalog:sync` and the other scripts tunnel the same way.
+
 `${VAR}` references are resolved from the process environment at runtime; a
 missing variable is reported rather than silently blanked. Saving from the
 connect screen rewrites only the preset you saved, so a `${VAR}` in any other

@@ -20,6 +20,7 @@ function configOf(preset: ConnectionPreset): ConnectionConfig {
     user: preset.user,
     password: preset.password,
     ssl: preset.ssl,
+    ssh: preset.ssh,
     slug: preset.slug,
     databaseAliases: preset.databaseAliases,
   }
@@ -40,6 +41,7 @@ function sameConnection(config: ConnectionConfig, preset: ConnectionPreset): boo
     config.user === saved.user &&
     config.password === saved.password &&
     Boolean(config.ssl) === Boolean(saved.ssl) &&
+    (config.ssh ?? '') === (saved.ssh ?? '') &&
     (config.slug ?? '') === (saved.slug ?? '') &&
     JSON.stringify(config.databaseAliases ?? {}) === JSON.stringify(saved.databaseAliases ?? {})
   )
@@ -442,6 +444,26 @@ export default function ConnectionForm({
           metadata. Defaults to the host — name it yourself when the host does not
           identify the server, as two local clusters both called{' '}
           <code>localhost</code> do.
+        </p>
+      </div>
+
+      <div>
+        <label className={labelClass} htmlFor={fieldId('ssh')}>
+          SSH tunnel <span className="font-normal text-[var(--sea-ink-soft)]">(optional)</span>
+        </label>
+        <input
+          id={fieldId('ssh')}
+          type="text"
+          value={config.ssh ?? ''}
+          onChange={(e) => update('ssh', e.target.value)}
+          className={inputClass}
+          placeholder="user@server or an ~/.ssh/config alias"
+        />
+        <p className="mt-1.5 text-xs text-[var(--sea-ink-soft)]">
+          For a database that only listens on its own server. Host and port above
+          are then the database as that server sees it — usually{' '}
+          <code>127.0.0.1</code>. Uses your <code>ssh</code>, keys and agent; a key
+          that needs a passphrase typed will fail rather than prompt.
         </p>
       </div>
 

@@ -18,8 +18,8 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
-import pg from 'pg'
-import { clientConfig, loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { openClient } from './lib/ssh-tunnel.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
@@ -50,8 +50,7 @@ if (existsSync(targetPath) && !force) {
   process.exit(1)
 }
 
-const client = new pg.Client(clientConfig(preset, to))
-await client.connect()
+const client = await openClient(preset, to)
 const live = new Set(
   (
     await client.query(

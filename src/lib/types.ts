@@ -21,6 +21,11 @@ export interface ConnectionConfig {
   user: string
   password: string
   ssl?: boolean
+  /** Reach the database through an SSH tunnel to this destination
+   *  (`user@host`, or an alias from `~/.ssh/config`). `host` and `port` are then
+   *  the database as that server sees it — usually `127.0.0.1`. See
+   *  `#/server/ssh-tunnel`. */
+  ssh?: string
   /** Which folder under `local/` this connection's private metadata lives in.
    *  Optional — see `connectionSlug` in `#/lib/local-metadata-path`. */
   slug?: string

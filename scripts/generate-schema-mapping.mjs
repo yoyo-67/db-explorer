@@ -28,8 +28,8 @@
  */
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
-import pg from 'pg'
-import { clientConfig, connectionSlug, loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { connectionSlug, loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { openClient } from './lib/ssh-tunnel.mjs'
 
 const args = process.argv.slice(2)
 const force = args.includes('--force')
@@ -46,8 +46,7 @@ const preset = loadPreset(presetName)
 const connection = connectionSlug(preset)
 
 const connect = async (database) => {
-  const client = new pg.Client(clientConfig(preset, database))
-  await client.connect()
+  const client = await openClient(preset, database)
   return client
 }
 

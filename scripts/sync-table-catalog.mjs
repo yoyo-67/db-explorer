@@ -24,8 +24,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, relative } from 'node:path'
-import pg from 'pg'
-import { clientConfig, connectionSlug, loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { connectionSlug, loadPreset, metadataPath } from './lib/local-metadata.mjs'
+import { openClient } from './lib/ssh-tunnel.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
@@ -86,8 +86,7 @@ const FKS_SQL = `
   ORDER BY child.relname, child_col.attname
 `
 
-const client = new pg.Client(clientConfig(preset, database))
-await client.connect()
+const client = await openClient(preset, database)
 
 const written = []
 for (const schema of schemas) {

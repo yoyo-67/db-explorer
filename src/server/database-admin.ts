@@ -81,9 +81,11 @@ async function onAdminSession<T>(
   body: (run: (sql: string, params?: unknown[]) => Promise<pg.QueryResult>) => Promise<T>,
 ): Promise<T> {
   const config = await sessionConfig()
+  const { endpointFor } = await import('#/server/ssh-tunnel')
+  const endpoint = await endpointFor(config)
   const client = new pg.Client({
-    host: config.host,
-    port: config.port,
+    host: endpoint.host,
+    port: endpoint.port,
     database: adminDatabaseFor(target, config.database),
     user: config.user,
     password: config.password,

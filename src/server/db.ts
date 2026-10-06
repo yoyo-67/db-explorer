@@ -2,6 +2,7 @@ import pg from 'pg'
 import type { ConnectionConfig } from '#/lib/types'
 import { appendPerfEntry } from '#/server/perf-log'
 import { currentDatabase } from '#/server/db-context'
+import { closeTunnels, endpointFor } from '#/server/ssh-tunnel'
 import {
   DEFAULT_STATEMENT_TIMEOUT_MS,
   clampStatementTimeout,
@@ -126,9 +127,10 @@ async function endPoolSafe(pool: pg.Pool): Promise<void> {
 
 /** Build a pool and prove it answers, or throw without leaving it behind. */
 async function buildPool(config: ConnectionConfig): Promise<pg.Pool> {
+  const endpoint = await endpointFor(config)
   const pool = new pg.Pool({
-    host: config.host,
-    port: config.port,
+    host: endpoint.host,
+    port: endpoint.port,
     database: config.database,
     user: config.user,
     password: config.password,
@@ -203,9 +205,13 @@ export async function createConnection(config: ConnectionConfig): Promise<void> 
     previous.port !== config.port ||
     previous.user !== config.user ||
     previous.password !== config.password ||
-    Boolean(previous.ssl) !== Boolean(config.ssl)
+    Boolean(previous.ssl) !== Boolean(config.ssl) ||
+    (previous.ssh ?? '') !== (config.ssh ?? '')
 
-  if (credentialsChanged) await closeAllPools()
+  if (credentialsChanged) {
+    await closeAllPools()
+    await closeTunnels()
+  }
 
   // The config has to be in place before the pool is built: `poolFor` reads the
   // credentials from it.
@@ -253,7 +259,8 @@ function sameConfig(a: ConnectionConfig, b: ConnectionConfig): boolean {
     a.database === b.database &&
     a.user === b.user &&
     a.password === b.password &&
-    Boolean(a.ssl) === Boolean(b.ssl)
+    Boolean(a.ssl) === Boolean(b.ssl) &&
+    (a.ssh ?? '') === (b.ssh ?? '')
   )
 }
 
@@ -300,6 +307,7 @@ export async function disconnect(): Promise<void> {
   setLastConfig(null)
   setPresetName(null)
   await closeAllPools()
+  await closeTunnels()
 }
 
 /**
