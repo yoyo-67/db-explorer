@@ -3,6 +3,7 @@ import { useDatabaseParam } from '#/hooks/useDatabase'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import LinkableValue from '#/components/LinkableValue'
+import CellLinks from '#/components/CellLinks'
 import {
   $getChildCount,
   $getCrossDbRefs,
@@ -202,6 +203,7 @@ function RowDetailPage() {
                     target={target}
                     crossTarget={col.crossRef}
                     variant={variant}
+                    linkAt={{ schema, table, row: root }}
                     rawSource={
                       rootPkColumn
                         ? { schema, table, keyColumn: rootPkColumn, keyValue: id }
@@ -277,6 +279,7 @@ function FieldRow({
   crossTarget,
   variant = 'fk',
   rawSource,
+  linkAt,
 }: {
   col: ColumnInfo
   value: JsonValue | undefined
@@ -287,6 +290,8 @@ function FieldRow({
   /** How to re-read this cell's stored bytes, where the row can be addressed.
    *  Absent on the reference tables below, whose rows are not keyed here. */
   rawSource?: { schema: string; table: string; keyColumn: string; keyValue: string }
+  /** Where the cell is, for the hand-written links out of the database. */
+  linkAt?: { schema: string; table: string; row: Record<string, unknown> }
 }) {
   // A `text` column holding a JSON document lays out like a `jsonb` one — the
   // declared type says nothing about what was stored in it.
@@ -317,6 +322,9 @@ function FieldRow({
             crossTarget={crossTarget}
             variant={variant}
           />
+        )}
+        {linkAt && (
+          <CellLinks schema={linkAt.schema} table={linkAt.table} column={col.name} value={value} row={linkAt.row} />
         )}
         {col.compression && rawSource && (
           <RawBytes

@@ -157,6 +157,11 @@ POSTGRES_PASSWORD=yourpassword npm run dev
 Open http://localhost:3001, pick a preset (or type connection details), and
 connect.
 
+`DB_EXPLORER_PRESET="<preset name>"` connects a fresh server to that preset on
+the first page load, so a deep link from another tool (`/d/<db>/t/<schema>/<table>/row/<id>`)
+opens straight onto data. A disconnect still stays disconnected. A preset whose
+`${VAR}` is unset is reported and left out; the others are still offered.
+
 ## Optional: local schema metadata
 
 Both files live in `local/` and both are optional.
@@ -202,6 +207,27 @@ the shape is:
 `conventions` name rules apply only to columns no constraint and no model edge
 already explains. Live constraints always win, and anything unresolved is left
 undrawn rather than guessed at.
+
+**`local/<connection>/cell-links.json`** turns cell values into links to other
+tools — an account id into its page on a dashboard, a step key into the app that
+shows it. Each rule names a column (optionally its `database`, `schema`,
+`table`), an optional `match` pattern the value must fit, and a `url` template:
+
+```json
+{
+  "links": [
+    {
+      "table": "records_record", "column": "key",
+      "match": "^([a-z0-9-]+)/", "url": "https://app.local/labs/{$1}", "label": "lab"
+    },
+    { "table": "accounts_account", "column": "id", "url": "https://ops.local/accounts/{value}" }
+  ]
+}
+```
+
+`{value}` is the cell, `{$1}`.. the pattern's groups, `{row.<column>}` another
+cell of the row; each is URL-encoded, and only http(s) links are produced. The
+link shows as a small `label ↗` after the value and opens in a new tab.
 
 **`local/<connection>/<database>/<schema>/table-inventory.json`** is the other
 side of the catalog: what the schema actually has, written by

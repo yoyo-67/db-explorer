@@ -86,9 +86,24 @@ export const $isConnected = createServerFn({ method: 'GET' }).handler(async () =
 })
 
 export const $reconnect = createServerFn({ method: 'POST' }).handler(async () => {
-  const { getLastConfig, ensureConnection } = await import('#/server/db')
+  const { getLastConfig, ensureConnection, setPresetName, wasEverConnected } = await import('#/server/db')
   const config = getLastConfig()
-  if (!config) return { success: false as const, error: 'No previous connection' }
+  if (!config) {
+    // A server nobody has connected yet takes the preset it was started with, so
+    // a deep link from another tool lands on data. Once connected, a disconnect
+    // stays a disconnect.
+    if (wasEverConnected()) return { success: false as const, error: 'No previous connection' }
+    const { startupPreset } = await import('#/lib/startup-preset')
+    const preset = startupPreset((await readPresets()).presets, process.env)
+    if (!preset) return { success: false as const, error: 'No previous connection' }
+    try {
+      await ensureConnection(preset)
+      setPresetName(preset.name)
+      return { success: true as const }
+    } catch (err) {
+      return { success: false as const, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
   try {
     await ensureConnection(config)
     return { success: true as const }
@@ -171,6 +186,19 @@ export const $getCrossDbRefs = createServerFn({ method: 'GET' })
     scoped(async (data) => {
       const { readCrossDbRefs } = await import('#/server/cross-db-refs')
       return { database: data.database, refs: await readCrossDbRefs() }
+    }),
+  )
+
+/**
+ * The hand-written links out of the database for this connection, and the
+ * database they are read from, so the client knows which rules apply.
+ */
+export const $getCellLinks = createServerFn({ method: 'GET' })
+  .inputValidator((data: Scoped) => data)
+  .handler(
+    scoped(async (data) => {
+      const { readCellLinks } = await import('#/server/cell-links')
+      return { database: data.database, rules: await readCellLinks() }
     }),
   )
 

@@ -7,6 +7,7 @@ import { formatJsonText } from '#/lib/json-text'
 import { isLinkableFkValue } from '#/lib/fk-resolver'
 import { describeCrossDbTarget } from '#/lib/cross-db-refs'
 import CrossDbLink from '#/components/CrossDbLink'
+import CellLinks from '#/components/CellLinks'
 import { useAppSettings } from '#/hooks/useAppSettings'
 import { describeRowBlock, fieldText, rowBlock } from '#/lib/row-edit'
 import type { ColumnInfo, JsonValue, TableSort } from '#/lib/types'
@@ -320,6 +321,7 @@ function ExpandableRow({
               fkTarget={fkTarget ?? pkTarget}
               crossTarget={col.crossRef}
               isPk={isPkCell}
+              linkAt={schema && table ? { schema, table, column: col.name, row } : undefined}
             />
           )
         })}
@@ -378,6 +380,7 @@ function ExpandableRow({
                     crossTarget={col.crossRef}
                     variant={isPkCell ? 'pk' : 'fk'}
                     rawSource={rawSource ?? undefined}
+                    linkAt={schema && table ? { schema, table, row } : undefined}
                   />
                 )
               })}
@@ -398,6 +401,7 @@ function ExpandedField({
   crossTarget,
   variant,
   rawSource,
+  linkAt,
 }: {
   col: ColumnInfo
   value: JsonValue
@@ -405,6 +409,8 @@ function ExpandedField({
   target?: { schema: string; table: string; column: string }
   crossTarget?: ColumnInfo['crossRef']
   variant: 'fk' | 'pk'
+  /** Where the cell is, for the hand-written links out of the database. */
+  linkAt?: { schema: string; table: string; row: Record<string, JsonValue> }
   /** How to re-read this cell's stored bytes, where the row can be addressed at
    *  all. Absent for a preview or a keyless row, which has no cell to ask for. */
   rawSource?: { schema: string; table: string; keyColumn: string; keyValue: string }
@@ -437,6 +443,9 @@ function ExpandedField({
             variant={variant}
           />
         )}
+        {linkAt && (
+          <CellLinks schema={linkAt.schema} table={linkAt.table} column={col.name} value={value} row={linkAt.row} />
+        )}
         {col.compression && rawSource && (
           <RawBytes
             schema={rawSource.schema}
@@ -457,12 +466,15 @@ function HoverExpandCell({
   fkTarget,
   crossTarget,
   isPk = false,
+  linkAt,
 }: {
   value: JsonValue
   prettyJson: boolean
   fkTarget?: { schema: string; table: string; column: string }
   crossTarget?: ColumnInfo['crossRef']
   isPk?: boolean
+  /** Where the cell is, for the hand-written links out of the database. */
+  linkAt?: { schema: string; table: string; column: string; row: Record<string, JsonValue> }
 }) {
   const database = useDatabaseParam()
   const [hovered, setHovered] = useState(false)
@@ -491,7 +503,8 @@ function HoverExpandCell({
       onMouseEnter={showPopup}
       onMouseLeave={() => setHovered(false)}
     >
-      <div className="max-w-[300px] truncate whitespace-nowrap">
+      <div className="flex max-w-[300px] items-center whitespace-nowrap">
+        <span className="min-w-0 truncate">
         {crossTarget && value !== null && value !== undefined ? (
           <CrossDbLink
             target={crossTarget}
@@ -525,6 +538,12 @@ function HoverExpandCell({
           </Link>
         ) : (
           <CellValue value={value} />
+        )}
+        </span>
+        {linkAt && (
+          <span className="shrink-0">
+            <CellLinks schema={linkAt.schema} table={linkAt.table} column={linkAt.column} value={value} row={linkAt.row} />
+          </span>
         )}
       </div>
       {hovered && isLong && (

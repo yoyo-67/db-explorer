@@ -23,6 +23,7 @@ const g = globalThis as unknown as {
   __dbPools?: Map<string, Promise<pg.Pool>>
   __dbLastConfig?: ConnectionConfig | null
   __dbPresetName?: string | null
+  __dbEverConnected?: boolean
 }
 
 function pools(): Map<string, Promise<pg.Pool>> {
@@ -52,6 +53,11 @@ export function getLastConfig(): ConnectionConfig | null {
 
 function setLastConfig(config: ConnectionConfig | null) {
   g.__dbLastConfig = config
+}
+
+/** Whether this process has ever held a connection — a disconnect does not reset it. */
+export function wasEverConnected(): boolean {
+  return g.__dbEverConnected ?? false
 }
 
 /**
@@ -211,6 +217,7 @@ export async function createConnection(config: ConnectionConfig): Promise<void> 
   }
   try {
     await poolFor(config.database)
+    g.__dbEverConnected = true
   } catch (err) {
     if (credentialsChanged) setLastConfig(previous ?? null)
     throw err

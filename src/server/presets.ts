@@ -39,16 +39,32 @@ async function writeRawPresets(presets: Array<Record<string, unknown>>): Promise
   await writeFile(path, `${JSON.stringify(presets, null, 2)}\n`, 'utf-8')
 }
 
-/** The connections named in the file, with `$VARS` resolved from the environment. */
+/**
+ * The connections named in the file, with `$VARS` resolved from the environment.
+ *
+ * Resolved one at a time: a preset whose variable is unset is reported and left
+ * out, and every other connection is still offered.
+ */
 export async function readPresets(): Promise<{
   presets: ConnectionPreset[]
   error: string | null
 }> {
+  let raw: Array<Record<string, unknown>>
   try {
-    return { presets: resolvePresets(await readRawPresets(), process.env), error: null }
+    raw = await readRawPresets()
   } catch (err) {
     return { presets: [], error: err instanceof Error ? err.message : String(err) }
   }
+  const presets: ConnectionPreset[] = []
+  const errors: string[] = []
+  for (const entry of raw) {
+    try {
+      presets.push(...resolvePresets([entry], process.env))
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err))
+    }
+  }
+  return { presets, error: errors.length > 0 ? errors.join('; ') : null }
 }
 
 /**

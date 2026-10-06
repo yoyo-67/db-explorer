@@ -100,4 +100,13 @@ describe('connection presets in local/', () => {
     await removePreset('Local Postgres')
     expect(raw()).toEqual([])
   })
+
+  // One preset whose variable is unset (a tunnel's password, say) must not take
+  // every other connection off the connect screen with it.
+  it('still offers the presets that resolve when one does not', async () => {
+    write([{ ...local, name: 'Remote', password: '${NEVER_SET}' }, local])
+    const { presets, error } = await readPresets()
+    expect(presets.map((p) => p.name)).toEqual(['Local Postgres'])
+    expect(error).toContain('NEVER_SET')
+  })
 })
