@@ -8,9 +8,12 @@ import net from 'node:net'
 import pg from 'pg'
 import { clientConfig } from './local-metadata.mjs'
 
-/** A connected `pg.Client` for the preset; `end()` also closes its tunnel. */
-export async function openClient(preset, database) {
-  const config = clientConfig(preset, database)
+/**
+ * A connected `pg.Client` for the preset; `end()` also closes its tunnel.
+ * `extra` is merged into the client config (`options`, `application_name`).
+ */
+export async function openClient(preset, database, extra = {}) {
+  const config = { ...clientConfig(preset, database), ...extra }
   let tunnel = null
   if (preset.ssh) {
     tunnel = await openTunnel(preset.ssh, config.host, config.port)

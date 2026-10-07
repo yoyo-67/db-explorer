@@ -15,7 +15,8 @@
     "test:types": "vitest typecheck",
     "test:live": "vitest run -c vitest.live.config.ts",
     "catalog:sync": "node scripts/sync-table-catalog.mjs",
-    "flow": "node scripts/flow.mjs"
+    "flow": "node scripts/flow.mjs",
+    "query": "node scripts/query.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
